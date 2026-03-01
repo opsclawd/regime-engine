@@ -1,54 +1,174 @@
-# Regime Engine + CHOP CLMM Carry — Status & Audit Log
+# Regime Engine — documentation.md
 
-## Current status
+This document is updated continuously as milestones land so it reflects reality. 0
 
-- Milestone: M0 (not started)
-- Mode: Phase 1 — alert + one-click execution (user signs)
+## What Regime Engine is
 
-## Repo assumptions
+- A local-first **policy + analytics** microservice that produces deterministic trading plans.
+- It classifies market regime (**UP / DOWN / CHOP**) with hysteresis, applies churn governance, and outputs target exposures (**SOL/USDC bps**) plus **REQUEST_\*** actions for an external execution service.
+- It maintains an append-only **truth ledger** of plan requests, plans, and execution results, and can generate weekly reports from the ledger only.
 
-- Monorepo with `pnpm` workspace (adjust if different)
-- Existing Solana CLMM stop-loss scaffolding and receipt program may already exist
-- Target pair: SOL/USDC only
+## What Regime Engine is not
 
-## How to run (placeholder; fill as milestones land)
+- It does **not** execute trades.
+- It does **not** talk to Solana RPC, Orca, Jupiter, wallets, or receipts.
+- It does **not** manage CLMM positions. It only emits `allowClmm` and `REQUEST_ENTER_CLMM` / `REQUEST_EXIT_CLMM` actions.
 
-### Quality
+## Status
 
-- `pnpm -r lint`
-- `pnpm -r typecheck`
-- `pnpm -r test`
-- `pnpm -r build`
+- Milestone 01: pending
+- Milestone 02: pending
+- Milestone 03: pending
+- Milestone 04: pending
+- Milestone 05: pending
+- Milestone 06: pending
+- Milestone 07: pending
+- Milestone 08: pending
+- Milestone 09: pending
+- Milestone 10: pending
+- Milestone 11: pending
+- Milestone 12: pending
+- Milestone 13: pending
+- Milestone 14: pending
+- Milestone 15: pending
+- Milestone 16: pending
 
-### Harness
+(Keep this list current as you check milestones off in `plan.md`.)
 
-- TBD in M0 (will produce `artifacts/plan.json`)
+## Local setup
 
-### Ledger + reports
+- Node LTS on macOS.
+- Install deps: `npm install`
+- Start service: `npm run dev`
+- Health check: `http://localhost:8787/health` (or configured port)
+- OpenAPI: `http://localhost:8787/v1/openapi.json`
 
-- TBD in M1/M10
+## Verification commands
 
-## Decisions (locked)
+- Lint: `npm run lint`
+- Typecheck: `npm run typecheck`
+- Tests: `npm run test`
+- Build: `npm run build`
 
-- Strategy is a **portfolio regime engine**: UP/DOWN/CHOP
-- CLMM is a **CHOP-only carry tactic** (never opened in UP/DOWN)
-- Partial shifts and volatility targeting are required; no default 0/100 flips
-- Hysteresis + churn budgets are mandatory
-- Execution is checkpointed, idempotent, receipt-guarded
-- Truth ledger is first-class and append-only
+## One-command demo (target state)
 
-## Known risks
+1) `npm run dev`
+2) In another terminal:
+   - `npm run harness -- --fixture ./fixtures/demo --from 2026-01-01 --to 2026-01-31`
+3) Inspect:
+   - `tmp/reports/weekly-*.md`
+   - `tmp/reports/weekly-*.json`
 
-- Regime systems can whipsaw; hysteresis and churn budgets must be strict
-- Execution quality under congestion is the main tail risk
-- Fee “APR” signals are unstable; carry score must be gated and conservative
+## HTTP API overview
 
-## Audit log
+### `GET /health`
 
-### YYYY-MM-DD
+Returns a small JSON payload confirming the server is running.
 
-- (empty) — first long-horizon run not started yet
+### `GET /version`
 
-## Next steps
+Returns build metadata (service name/version; optional commit hash if injected at build time).
 
-- Start M0: add/confirm quality commands and create a deterministic harness that outputs `artifacts/plan.json` from fixtures
+### `GET /v1/openapi.json`
+
+Returns the OpenAPI document for all v1 endpoints.
+
+### `POST /v1/plan`
+
+Input: candles + portfolio state + autopilot counters + config.
+
+Output: deterministic PlanResponse:
+
+- `planId`, `planHash`
+- `regime`: `UP | DOWN | CHOP`
+- `targets`: `{ solBps, usdcBps, allowClmm }`
+- `actions[]`: `REQUEST_*` plus optionally `HOLD`/`STAND_DOWN`
+- `constraints`: cooldowns/budgets/notes
+- `reasons[]`: canonical reason codes with severity
+- `telemetry`: computed indicators for inspection
+
+### `POST /v1/execution-result`
+
+Input: `(planId, planHash)` + per-action statuses + costs + `portfolioAfter`.
+
+Behavior:
+
+- Reject if `planId` not found or `planHash` mismatch.
+- Persist a linked execution result row.
+- Execution results are the authoritative source of realized costs and portfolio-after values.
+
+### `GET /v1/report/weekly?from=YYYY-MM-DD&to=YYYY-MM-DD`
+
+Returns weekly report output built from ledger only:
+
+- markdown report + JSON summary
+- regime distribution
+- churn / stand-down stats
+- execution success + costs (as reported by Autopilot)
+- baselines: SOL HODL, SOL DCA, USDC carry
+
+## How Regime Engine interacts with the CLMM Autopilot microservice
+
+### Contract boundary
+
+- Regime Engine produces **policy intent**:
+  - “what should be attempted next” (REQUEST_* actions)
+  - “what is allowed” (allowClmm)
+  - “how aggressively” (targets + caps + constraints)
+- Autopilot produces **execution truth**:
+  - what actually executed
+  - costs and slippage
+  - portfolioAfter
+
+### Typical loop
+
+1) Autopilot gathers candles + its own internal counters/cooldowns and calls `POST /v1/plan`.
+2) Regime Engine returns a Plan (deterministic, hashed).
+3) Autopilot decides whether to execute and then posts `POST /v1/execution-result`.
+4) Regime Engine logs results and reports on outcomes.
+
+## Repo structure overview (target)
+
+- `src/contract/v1/*`
+  - request/response types, validation, canonical JSON, hashing
+- `src/engine/*`
+  - `features/*` candle parsing + indicators (pure)
+  - `regime/*` regime classifier + hysteresis (pure)
+  - `churn/*` churn governor (pure)
+  - `allocation/*` partial shifts + caps + vol targeting (pure)
+  - `plan/*` plan builder (pure)
+- `src/http/*`
+  - routes, handlers, OpenAPI, error taxonomy
+- `src/ledger/*`
+  - sqlite schema, store, writer
+- `src/report/*`
+  - baselines, weekly report generator (ledger-only)
+- `scripts/*`
+  - harness to drive fixtures → plan → simulated results → report
+- `fixtures/*`
+  - deterministic candle sequences + autopilotState progressions
+
+## Determinism rules
+
+- Canonical JSON serialization is required for:
+  - planHash
+  - snapshot tests
+  - stable ledger-derived reporting artifacts
+- Stable ordering requirements:
+  - object keys are sorted
+  - arrays are either preserved as-is from input or explicitly sorted (document which)
+- Any detected non-determinism is a blocker.
+
+## Baselines (for weekly reports)
+
+- SOL HODL: hold SOL units constant across the window.
+- SOL DCA: buy SOL on a fixed schedule (defined in config).
+- USDC carry: apply a configurable APR on USDC balance (defined in config).
+  Baselines must be computed from candle close prices only.
+
+## Troubleshooting
+
+- Port already in use: kill the prior process or change `PORT`.
+- Hash mismatch on `/v1/execution-result`: Autopilot posted a mutated plan or stale planHash; it must post the exact `(planId, planHash)` returned by `/v1/plan`.
+- Report is empty: no ledger rows in the requested window, or execution results were never posted.
+- Regime flaps in fixtures: hysteresis thresholds too tight or `confirmBars/minHoldBars` misconfigured; fix policy defaults and lock with fixtures + snapshot tests.
