@@ -1,0 +1,78 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`weekly report > generates deterministic ledger-only markdown + JSON snapshots 1`] = `
+"# Weekly Report (2026-01-01 to 2026-01-31)
+
+- Plans: 2
+- Execution Results: 2
+
+## Regime Distribution
+- UP: 0 (0)
+- DOWN: 0 (0)
+- CHOP: 2 (1)
+
+## Churn
+- Stand-down Plans: 0
+- HOLD Plans: 0
+- Stand-down Rate: 0
+
+## Execution
+- Total Actions: 2
+- Success/Failed/Skipped: 1/1/0
+- Success Rate: 0.5
+- Costs (tx/priority/slippage): 0.12/0.03/0.22
+
+## Baselines
+- SOL HODL Final NAV: 8936.484739
+- SOL DCA Final NAV: 9946.824237
+- USDC Carry Final NAV: 10013.356164"
+`;
+
+exports[`weekly report > generates deterministic ledger-only markdown + JSON snapshots 2`] = `
+{
+  "baselines": {
+    "solDcaFinalNavUsd": 9946.824237,
+    "solHodlFinalNavUsd": 8936.484739,
+    "usdcCarryFinalNavUsd": 10013.356164,
+  },
+  "churn": {
+    "holdPlans": 0,
+    "standDownPct": 0,
+    "standDownPlans": 0,
+  },
+  "execution": {
+    "failedActions": 1,
+    "skippedActions": 0,
+    "successActions": 1,
+    "successRate": 0.5,
+    "totalActions": 2,
+    "totalPriorityFeesUsd": 0.03,
+    "totalSlippageUsd": 0.22,
+    "totalTxFeesUsd": 0.12,
+  },
+  "regimeDistribution": {
+    "CHOP": {
+      "count": 2,
+      "pct": 1,
+    },
+    "DOWN": {
+      "count": 0,
+      "pct": 0,
+    },
+    "UP": {
+      "count": 0,
+      "pct": 0,
+    },
+  },
+  "totals": {
+    "executionResults": 2,
+    "plans": 2,
+  },
+  "window": {
+    "from": "2026-01-01",
+    "fromUnixMs": 1767225600000,
+    "to": "2026-01-31",
+    "toUnixMs": 1769903999999,
+  },
+}
+`;
