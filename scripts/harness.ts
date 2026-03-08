@@ -1,6 +1,7 @@
 import { mkdirSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { buildApp } from "../src/app.js";
+import type { RegimeState } from "../src/contract/v1/types.js";
 
 interface HarnessExecutionFixture {
   status?: "SUCCESS" | "FAILED" | "SKIPPED";
@@ -94,6 +95,7 @@ const main = async (): Promise<void> => {
   process.env.LEDGER_DB_PATH = ledgerPath;
 
   const app = buildApp();
+  let regimeState: RegimeState | undefined;
   const runSummaries: Array<{
     index: number;
     planId: string;
@@ -103,10 +105,14 @@ const main = async (): Promise<void> => {
 
   for (let index = 0; index < fixtureSteps.length; index += 1) {
     const step = fixtureSteps[index];
+    const requestPayload = structuredClone(step.request) as Record<string, unknown>;
+    if (!("regimeState" in requestPayload) && regimeState) {
+      requestPayload.regimeState = regimeState;
+    }
     const planResponse = await app.inject({
       method: "POST",
       url: "/v1/plan",
-      payload: step.request
+      payload: requestPayload
     });
 
     if (planResponse.statusCode !== 200) {
@@ -119,7 +125,9 @@ const main = async (): Promise<void> => {
       planId: string;
       planHash: string;
       actions: Array<{ type: string }>;
+      nextRegimeState: RegimeState;
     };
+    regimeState = plan.nextRegimeState;
     const request = step.request as {
       asOfUnixMs: number;
       portfolio: {

@@ -98,6 +98,12 @@ const makePlanResponseFixture = (asOfUnixMs: number): PlanResponse => {
       standDownUntilUnixMs: 0,
       notes: ["test"]
     },
+    nextRegimeState: {
+      current: "CHOP",
+      barsInRegime: 1,
+      pending: null,
+      pendingBars: 0
+    },
     reasons: [
       {
         code: "STUB_PLAN",

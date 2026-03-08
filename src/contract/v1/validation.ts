@@ -13,6 +13,7 @@ import {
 const unixMsSchema = z.number().int().nonnegative();
 const nonNegativeNumberSchema = z.number().nonnegative();
 const bpsSchema = z.number().int().min(0).max(10_000);
+const regimeSchema = z.enum(["UP", "DOWN", "CHOP"]);
 
 const candleSchema = z
   .object({
@@ -53,6 +54,15 @@ const planRequestSchema = z
         strikeCount: z.number().int().nonnegative()
       })
       .strict(),
+    regimeState: z
+      .object({
+        current: regimeSchema,
+        barsInRegime: z.number().int().nonnegative(),
+        pending: regimeSchema.nullable(),
+        pendingBars: z.number().int().nonnegative()
+      })
+      .strict()
+      .optional(),
     config: z
       .object({
         regime: z

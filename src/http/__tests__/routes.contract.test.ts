@@ -131,6 +131,12 @@ describe("HTTP route contract stubs", () => {
       planId: string;
       planHash: string;
       targets: { solBps: number; usdcBps: number; allowClmm: boolean };
+      nextRegimeState: {
+        current: "UP" | "DOWN" | "CHOP";
+        barsInRegime: number;
+        pending: "UP" | "DOWN" | "CHOP" | null;
+        pendingBars: number;
+      };
     };
 
     expect(body).toEqual(
@@ -142,10 +148,16 @@ describe("HTTP route contract stubs", () => {
           solBps: expect.any(Number),
           usdcBps: expect.any(Number),
           allowClmm: expect.any(Boolean)
+        }),
+        nextRegimeState: expect.objectContaining({
+          current: expect.any(String),
+          barsInRegime: expect.any(Number),
+          pendingBars: expect.any(Number)
         })
       })
     );
     expect(["UP", "DOWN", "CHOP"]).toContain(body.regime);
+    expect(["UP", "DOWN", "CHOP"]).toContain(body.nextRegimeState.current);
   });
 
   it("returns canonical validation errors for invalid /v1/plan", async () => {

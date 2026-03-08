@@ -9,7 +9,7 @@ export const createPlanHandler = (store: LedgerStore) => {
   return async (request: FastifyRequest, reply: FastifyReply) => {
     try {
       const body = parsePlanRequest(request.body);
-      const plan = buildPlan(body);
+      const plan = buildPlan(body, body.regimeState);
 
       writePlanLedgerEntry(store, {
         planRequest: body,

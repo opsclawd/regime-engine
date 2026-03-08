@@ -64,11 +64,12 @@ export const buildPlan = (
   request: PlanRequest,
   regimeState?: RegimeState
 ): PlanResponse => {
+  const effectiveRegimeState = regimeState ?? request.regimeState;
   const indicators = computeIndicators(request.market.candles);
   const regime = classifyRegime({
     telemetry: indicators,
     config: request.config.regime,
-    state: regimeState
+    state: effectiveRegimeState
   });
 
   const churn = applyChurnGovernor({
@@ -124,6 +125,7 @@ export const buildPlan = (
       standDownUntilUnixMs: churn.constraints.standDownUntilUnixMs,
       notes: churn.constraints.notes
     },
+    nextRegimeState: regime.nextState,
     reasons: [
       ...regime.reasons,
       ...churn.reasons,

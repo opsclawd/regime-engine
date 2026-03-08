@@ -12,6 +12,12 @@ export const createPlanStubHandler = (store: LedgerStore) => {
   return async (request: FastifyRequest, reply: FastifyReply) => {
     try {
       const body = parsePlanRequest(request.body);
+      const currentRegimeState = body.regimeState ?? {
+        current: "CHOP" as const,
+        barsInRegime: 0,
+        pending: null,
+        pendingBars: 0
+      };
       const basePlan: Omit<PlanResponse, "planHash"> = {
         schemaVersion: SCHEMA_VERSION,
         planId: `stub-${body.asOfUnixMs}`,
@@ -32,6 +38,12 @@ export const createPlanStubHandler = (store: LedgerStore) => {
           cooldownUntilUnixMs: body.autopilotState.cooldownUntilUnixMs,
           standDownUntilUnixMs: body.autopilotState.standDownUntilUnixMs,
           notes: ["stub_plan_response"]
+        },
+        nextRegimeState: {
+          current: currentRegimeState.current,
+          barsInRegime: currentRegimeState.barsInRegime + 1,
+          pending: null,
+          pendingBars: 0
         },
         reasons: [
           {

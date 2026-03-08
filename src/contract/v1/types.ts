@@ -54,6 +54,13 @@ export interface PlanRequestConfig {
   };
 }
 
+export interface RegimeState {
+  current: Regime;
+  barsInRegime: number;
+  pending: Regime | null;
+  pendingBars: number;
+}
+
 export interface PlanRequest {
   schemaVersion: SchemaVersion;
   asOfUnixMs: number;
@@ -75,6 +82,7 @@ export interface PlanRequest {
     standDownUntilUnixMs: number;
     strikeCount: number;
   };
+  regimeState?: RegimeState;
   config: PlanRequestConfig;
 }
 
@@ -106,6 +114,7 @@ export interface PlanResponse {
     standDownUntilUnixMs: number;
     notes: string[];
   };
+  nextRegimeState: RegimeState;
   reasons: PlanReason[];
   telemetry: Record<string, number | string | boolean>;
 }

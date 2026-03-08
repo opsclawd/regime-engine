@@ -113,6 +113,21 @@ describe("v1 validation", () => {
     expect(parsed).toEqual(validPlanRequestFixture);
   });
 
+  it("accepts optional regimeState on /v1/plan requests", () => {
+    const payload: PlanRequest = {
+      ...validPlanRequestFixture,
+      regimeState: {
+        current: "CHOP",
+        barsInRegime: 3,
+        pending: "UP",
+        pendingBars: 1
+      }
+    };
+
+    const parsed = parsePlanRequest(payload);
+    expect(parsed).toEqual(payload);
+  });
+
   it("accepts valid /v1/execution-result fixture", () => {
     const parsed = parseExecutionResultRequest(validExecutionResultFixture);
     expect(parsed).toEqual(validExecutionResultFixture);
