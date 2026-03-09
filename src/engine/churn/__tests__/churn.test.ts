@@ -90,6 +90,60 @@ describe("churn governor", () => {
     ).toBe(true);
   });
 
+  it("does not extend stand-down window when only stand-down is active", () => {
+    const standDownUntilUnixMs = AS_OF + 10_000;
+    const firstDecision = applyChurnGovernor({
+      asOfUnixMs: AS_OF,
+      state: {
+        ...baseState,
+        standDownUntilUnixMs
+      },
+      config: churnConfig
+    });
+
+    const secondDecision = applyChurnGovernor({
+      asOfUnixMs: AS_OF + 1_000,
+      state: {
+        ...baseState,
+        standDownUntilUnixMs: firstDecision.constraints.standDownUntilUnixMs
+      },
+      config: churnConfig
+    });
+
+    expect(firstDecision.shouldStandDown).toBe(true);
+    expect(secondDecision.shouldStandDown).toBe(true);
+    expect(secondDecision.constraints.standDownUntilUnixMs).toBe(
+      firstDecision.constraints.standDownUntilUnixMs
+    );
+  });
+
+  it("does not keep extending stand-down while cooldown remains active", () => {
+    const initialDecision = applyChurnGovernor({
+      asOfUnixMs: AS_OF,
+      state: {
+        ...baseState,
+        cooldownUntilUnixMs: AS_OF + 4_000
+      },
+      config: churnConfig
+    });
+
+    const followupDecision = applyChurnGovernor({
+      asOfUnixMs: AS_OF + 500,
+      state: {
+        ...baseState,
+        cooldownUntilUnixMs: AS_OF + 4_000,
+        standDownUntilUnixMs: initialDecision.constraints.standDownUntilUnixMs
+      },
+      config: churnConfig
+    });
+
+    expect(initialDecision.shouldStandDown).toBe(true);
+    expect(followupDecision.shouldStandDown).toBe(true);
+    expect(followupDecision.constraints.standDownUntilUnixMs).toBe(
+      initialDecision.constraints.standDownUntilUnixMs
+    );
+  });
+
   it("halts fakeout progression once thresholds are crossed", () => {
     const fakeoutSequence: PlanRequest["autopilotState"][] = [
       {
