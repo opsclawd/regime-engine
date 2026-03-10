@@ -44,6 +44,8 @@ export interface WeeklyReportOutput {
   summary: WeeklyReportSummary;
 }
 
+export class ReportRangeError extends Error {}
+
 const round = (value: number, precision = 6): number => {
   const factor = 10 ** precision;
   return Math.round(value * factor) / factor;
@@ -54,11 +56,11 @@ const parseDateWindow = (from: string, to: string) => {
   const toUnixMs = Date.parse(`${to}T23:59:59.999Z`);
 
   if (!Number.isFinite(fromUnixMs) || !Number.isFinite(toUnixMs)) {
-    throw new Error("Invalid weekly report date range.");
+    throw new ReportRangeError("Invalid weekly report date range.");
   }
 
   if (fromUnixMs > toUnixMs) {
-    throw new Error("Invalid weekly report date range: from > to.");
+    throw new ReportRangeError("Invalid weekly report date range: from > to.");
   }
 
   return { fromUnixMs, toUnixMs };

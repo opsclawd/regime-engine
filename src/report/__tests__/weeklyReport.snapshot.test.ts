@@ -237,4 +237,64 @@ describe("weekly report", () => {
 
     await app.close();
   });
+
+  it("returns 400 for invalid weekly report date ranges", async () => {
+    const app = buildApp();
+
+    const reportResponse = await app.inject({
+      method: "GET",
+      url: "/v1/report/weekly?from=2026-01-31&to=2026-01-01"
+    });
+
+    expect(reportResponse.statusCode).toBe(400);
+    expect(reportResponse.json()).toEqual({
+      schemaVersion: "1.0",
+      error: {
+        code: "INVALID_REPORT_RANGE",
+        message: "Invalid weekly report date range: from > to.",
+        details: []
+      }
+    });
+
+    await app.close();
+  });
+
+  it("returns 500 for malformed persisted report rows", async () => {
+    const dbPath = join(
+      tmpdir(),
+      `regime-engine-weekly-invalid-${Date.now()}-${Math.floor(Math.random() * 10_000)}.sqlite`
+    );
+    createdDbPaths.push(dbPath);
+
+    const store = createLedgerStore(dbPath);
+    store.db
+      .prepare(
+        `
+          INSERT INTO plans
+            (plan_id, plan_hash, as_of_unix_ms, plan_json, created_at_unix_ms)
+          VALUES
+            (?, ?, ?, ?, ?)
+        `
+      )
+      .run(
+        "plan-invalid-json",
+        "hash-invalid-json",
+        Date.parse("2026-01-08T00:00:00.000Z"),
+        "{not-json",
+        Date.parse("2026-01-08T00:00:00.000Z")
+      );
+    store.close();
+
+    process.env.LEDGER_DB_PATH = dbPath;
+    const app = buildApp();
+
+    const reportResponse = await app.inject({
+      method: "GET",
+      url: "/v1/report/weekly?from=2026-01-01&to=2026-01-31"
+    });
+
+    expect(reportResponse.statusCode).toBe(500);
+
+    await app.close();
+  });
 });
