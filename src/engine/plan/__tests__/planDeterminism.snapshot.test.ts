@@ -81,4 +81,22 @@ describe("plan determinism", () => {
     expect(toCanonicalJson(plan)).toMatchSnapshot();
     expect(plan.planHash).toMatchSnapshot();
   });
+
+  it("normalizes candle ordering for plan decisions", () => {
+    const ascendingPlan = buildPlan(fixtureRequest);
+    const descendingPlan = buildPlan({
+      ...fixtureRequest,
+      market: {
+        ...fixtureRequest.market,
+        candles: [...fixtureRequest.market.candles].reverse()
+      }
+    });
+
+    expect(descendingPlan.regime).toBe(ascendingPlan.regime);
+    expect(descendingPlan.telemetry.currentSolBps).toBe(
+      ascendingPlan.telemetry.currentSolBps
+    );
+    expect(descendingPlan.targets).toEqual(ascendingPlan.targets);
+    expect(descendingPlan.actions).toEqual(ascendingPlan.actions);
+  });
 });

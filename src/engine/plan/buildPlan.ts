@@ -5,17 +5,20 @@ import { evaluateChopGate } from "../chopGate.js";
 import { computeAllocationTargets } from "../allocation/policy.js";
 import { applyVolatilityTargeting } from "../allocation/volTarget.js";
 import { applyChurnGovernor } from "../churn/governor.js";
+import { sortCandlesByUnixMs } from "../features/candles.js";
 import { computeIndicators } from "../features/indicators.js";
 import { classifyRegime } from "../regime/classifier.js";
 import type { RegimeState } from "../regime/types.js";
 
-const computeCurrentSolBps = (request: PlanRequest): number => {
+const computeCurrentSolBps = (
+  request: PlanRequest,
+  sortedCandles = sortCandlesByUnixMs(request.market.candles)
+): number => {
   if (request.portfolio.navUsd <= 0) {
     return 0;
   }
 
-  const latestClose =
-    request.market.candles[request.market.candles.length - 1]?.close ?? 0;
+  const latestClose = sortedCandles[sortedCandles.length - 1]?.close ?? 0;
   const currentSolUsd = request.portfolio.solUnits * latestClose;
   return Math.min(
     10_000,
@@ -65,7 +68,8 @@ export const buildPlan = (
   regimeState?: RegimeState
 ): PlanResponse => {
   const effectiveRegimeState = regimeState ?? request.regimeState;
-  const indicators = computeIndicators(request.market.candles);
+  const sortedCandles = sortCandlesByUnixMs(request.market.candles);
+  const indicators = computeIndicators(sortedCandles);
   const regime = classifyRegime({
     telemetry: indicators,
     config: request.config.regime,
@@ -78,7 +82,7 @@ export const buildPlan = (
     config: request.config.churn
   });
 
-  const currentSolBps = computeCurrentSolBps(request);
+  const currentSolBps = computeCurrentSolBps(request, sortedCandles);
   const allocation = computeAllocationTargets({
     regime: regime.regime,
     currentSolBps,
