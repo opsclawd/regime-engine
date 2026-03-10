@@ -189,6 +189,41 @@ describe("HTTP route contract stubs", () => {
     );
   });
 
+  it("rejects /v1/plan candles later than asOfUnixMs", async () => {
+    const response = await app.inject({
+      method: "POST",
+      url: "/v1/plan",
+      payload: {
+        ...planRequestFixture,
+        market: {
+          ...planRequestFixture.market,
+          candles: [
+            {
+              ...planRequestFixture.market.candles[0],
+              unixMs: planRequestFixture.asOfUnixMs + 1
+            }
+          ]
+        }
+      }
+    });
+
+    expect(response.statusCode).toBe(400);
+    expect(response.json()).toEqual({
+      schemaVersion: "1.0",
+      error: {
+        code: "VALIDATION_ERROR",
+        message: "Invalid /v1/plan request body",
+        details: [
+          {
+            path: "$.market.candles[0].unixMs",
+            code: "INVALID_VALUE",
+            message: "Invalid value"
+          }
+        ]
+      }
+    });
+  });
+
   it("returns stub acknowledgement for /v1/execution-result", async () => {
     const planResponse = await app.inject({
       method: "POST",

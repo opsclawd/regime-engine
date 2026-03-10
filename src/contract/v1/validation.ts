@@ -103,7 +103,20 @@ const planRequestSchema = z
       })
       .strict()
   })
-  .strict();
+  .strict()
+  .superRefine((payload, context) => {
+    payload.market.candles.forEach((candle, index) => {
+      if (candle.unixMs <= payload.asOfUnixMs) {
+        return;
+      }
+
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["market", "candles", index, "unixMs"],
+        message: "Candle unixMs must be less than or equal to asOfUnixMs"
+      });
+    });
+  });
 
 const executionResultRequestSchema = z
   .object({

@@ -216,6 +216,47 @@ describe("v1 validation", () => {
     });
   });
 
+  it("rejects candles later than asOfUnixMs", () => {
+    const response = captureValidationError(() =>
+      parsePlanRequest({
+        ...validPlanRequestFixture,
+        market: {
+          ...validPlanRequestFixture.market,
+          candles: [
+            {
+              ...validPlanRequestFixture.market.candles[0],
+              unixMs: validPlanRequestFixture.asOfUnixMs + 1
+            },
+            {
+              ...validPlanRequestFixture.market.candles[0],
+              unixMs: validPlanRequestFixture.asOfUnixMs + 2
+            }
+          ]
+        }
+      })
+    );
+
+    expect(response).toEqual({
+      schemaVersion: SCHEMA_VERSION,
+      error: {
+        code: ERROR_CODES.VALIDATION_ERROR,
+        message: "Invalid /v1/plan request body",
+        details: [
+          {
+            path: "$.market.candles[0].unixMs",
+            code: "INVALID_VALUE",
+            message: "Invalid value"
+          },
+          {
+            path: "$.market.candles[1].unixMs",
+            code: "INVALID_VALUE",
+            message: "Invalid value"
+          }
+        ]
+      }
+    });
+  });
+
   it("returns canonical type error for invalid /v1/execution-result payload", () => {
     const response = captureValidationError(() =>
       parseExecutionResultRequest({
