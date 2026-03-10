@@ -58,7 +58,7 @@ Key files/modules:
 
 Acceptance criteria:
 
-- `npm install` succeeds on Node LTS.
+- `npm install` succeeds on Node 22.13.0+.
 - `npm run dev` starts service.
 - `GET /health` returns 200 JSON.
 

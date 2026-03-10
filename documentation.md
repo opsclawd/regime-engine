@@ -64,7 +64,7 @@ Decisions:
 
 Acceptance criteria:
 
-- `npm install` succeeds on Node LTS.
+- `npm install` succeeds on Node 22.13.0+.
 - `npm run dev` starts service.
 - `GET /health` returns 200 JSON.
 
@@ -827,12 +827,11 @@ How to run/demo now:
 
 Remaining risks:
 
-- SQLite currently uses `node:sqlite` experimental API warnings in this runtime.
 - `jq` is not installed in this environment; JSON validation used Node parser fallback in final sweep.
 
 ## Local setup
 
-- Node LTS on macOS.
+- Node 22.13.0+ on macOS.
 - Install deps: `npm install`
 - Start service: `npm run dev`
 - Health check: `http://localhost:8787/health` (or configured port)

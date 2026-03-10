@@ -5,7 +5,7 @@
   "description": "Regime Engine microservice",
   "type": "module",
   "engines": {
-    "node": ">=20"
+    "node": ">=22.13.0"
   },
   "scripts": {
     "dev": "tsx watch src/server.ts",

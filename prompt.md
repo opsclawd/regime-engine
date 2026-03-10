@@ -38,7 +38,7 @@ Given candle history + portfolio state + autopilot counters, produce a determini
 
 ### Local run experience
 
-- Must run on macOS with Node LTS.
+- Must run on macOS with Node 22.13.0+.
 - Must run fully locally: no hosted services.
 - One command to start the service (document exact commands).
 - Provide scripts:
