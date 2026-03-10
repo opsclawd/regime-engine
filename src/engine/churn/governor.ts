@@ -93,13 +93,16 @@ export const applyChurnGovernor = (input: {
     redeployBudgetExceeded ||
     strikeTriggered;
 
-  const enteringStandDown = shouldStandDown && !standDownActive;
+  const triggeredStandDownUntilUnixMs = Math.max(
+    input.state.standDownUntilUnixMs,
+    cooldownActive ? input.state.cooldownUntilUnixMs : 0,
+    stopoutBudgetExceeded || redeployBudgetExceeded || strikeTriggered
+      ? input.asOfUnixMs + input.config.cooldownMsAfterStopout
+      : 0
+  );
 
-  const computedStandDownUntilUnixMs = enteringStandDown
-    ? Math.max(
-        input.state.standDownUntilUnixMs,
-        input.asOfUnixMs + input.config.cooldownMsAfterStopout
-      )
+  const computedStandDownUntilUnixMs = shouldStandDown
+    ? triggeredStandDownUntilUnixMs
     : input.state.standDownUntilUnixMs;
 
   if (!shouldStandDown) {

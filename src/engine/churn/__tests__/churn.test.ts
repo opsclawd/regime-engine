@@ -47,9 +47,26 @@ describe("churn governor", () => {
 
     expect(decision.shouldStandDown).toBe(true);
     expect(decision.action).toBe("STAND_DOWN");
+    expect(decision.constraints.standDownUntilUnixMs).toBe(AS_OF + 1_000);
     expect(decision.reasons.some((item) => item.code === "CHURN_COOLDOWN_ACTIVE")).toBe(
       true
     );
+  });
+
+  it("anchors stand-down to the existing cooldown expiry mid-window", () => {
+    const cooldownUntilUnixMs = AS_OF + 4_000;
+
+    const decision = applyChurnGovernor({
+      asOfUnixMs: AS_OF + 2_500,
+      state: {
+        ...baseState,
+        cooldownUntilUnixMs
+      },
+      config: churnConfig
+    });
+
+    expect(decision.shouldStandDown).toBe(true);
+    expect(decision.constraints.standDownUntilUnixMs).toBe(cooldownUntilUnixMs);
   });
 
   it("enters stand-down when stopout budget is exceeded", () => {
