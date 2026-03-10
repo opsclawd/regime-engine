@@ -1,0 +1,5 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`canonical JSON + plan hash > generates canonical plan JSON snapshot 1`] = `"{"actions":[{"reasonCode":"R001","type":"HOLD"}],"constraints":{"cooldownUntilUnixMs":0,"notes":["within_caps"],"standDownUntilUnixMs":0},"planId":"plan-001","reasons":[{"code":"R001","message":"neutral","severity":"INFO"}],"regime":"CHOP","schemaVersion":"1.0","targets":{"allowClmm":true,"solBps":4800,"usdcBps":5200},"telemetry":{"negZero":0,"ratio":0.012345}}"`;
+
+exports[`canonical JSON + plan hash > generates deterministic plan hash snapshot 1`] = `"76bde3c187903c9c9e146b20afa8fa5a0fb719100bce0e525fca43da6d96f140"`;

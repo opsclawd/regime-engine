@@ -14,20 +14,20 @@ Guiding principles:
 
 Core commands (run after every milestone):
 
-- [ ] `npm run lint`
-- [ ] `npm run typecheck`
-- [ ] `npm run test`
-- [ ] `npm run build`
+- [x] `npm run lint`
+- [x] `npm run typecheck`
+- [x] `npm run test`
+- [x] `npm run build`
 
 Final validation sweep (exit criteria):
 
-- [ ] `npm run dev` (service starts; /health ok)
-- [ ] `npm run build`
-- [ ] `npm run lint`
-- [ ] `npm run typecheck`
-- [ ] `npm run test`
-- [ ] `npm run harness -- --fixture ./fixtures/demo --from 2026-01-01 --to 2026-01-31`
-- [ ] `curl -s http://localhost:<PORT>/v1/openapi.json | jq . >/dev/null`
+- [x] `npm run dev` (service starts; /health ok)
+- [x] `npm run build`
+- [x] `npm run lint`
+- [x] `npm run typecheck`
+- [x] `npm run test`
+- [x] `npm run harness -- --fixture ./fixtures/demo --from 2026-01-01 --to 2026-01-31`
+- [x] `curl -s http://localhost:<PORT>/v1/openapi.json | jq . >/dev/null`
 
 ---
 
@@ -36,6 +36,12 @@ Final validation sweep (exit criteria):
 Each milestone includes scope, key files/modules, acceptance criteria, and verification commands.
 
 ### Milestone 01 — Repo scaffold + tooling foundation
+
+Status: completed (2026-03-03)
+
+Goal:
+
+- Establish a runnable local Fastify + TypeScript service foundation with strict tooling.
 
 Scope:
 
@@ -52,7 +58,7 @@ Key files/modules:
 
 Acceptance criteria:
 
-- `npm install` succeeds on Node LTS.
+- `npm install` succeeds on Node 22.13.0+.
 - `npm run dev` starts service.
 - `GET /health` returns 200 JSON.
 
@@ -61,9 +67,20 @@ Verification commands:
 - `npm run dev`
 - `npm run lint && npm run typecheck && npm run test && npm run build`
 
+Validation run (2026-03-03):
+
+- `npm run dev` (validated `/health` response: `{"ok":true}`)
+- `npm run lint && npm run typecheck && npm run test && npm run build`
+
 ---
 
 ### Milestone 02 — v1 Contract types + schema validation + error taxonomy
+
+Status: completed (2026-03-03)
+
+Goal:
+
+- Define explicit v1 request contracts with runtime validation and deterministic error taxonomy.
 
 Scope:
 
@@ -89,9 +106,20 @@ Verification commands:
 - `npm run test -- validation`
 - `npm run lint && npm run typecheck && npm run test && npm run build`
 
+Validation run (2026-03-03):
+
+- `npm run test -- validation`
+- `npm run lint && npm run typecheck && npm run test && npm run build`
+
 ---
 
 ### Milestone 03 — Canonical JSON + planHash
+
+Status: completed (2026-03-03)
+
+Goal:
+
+- Produce deterministic canonical JSON serialization and stable SHA-256 plan hashes.
 
 Scope:
 
@@ -115,9 +143,20 @@ Verification commands:
 - `npm run test -- canonicalHash`
 - `npm run lint && npm run typecheck && npm run test && npm run build`
 
+Validation run (2026-03-03):
+
+- `npm run test -- canonicalHash`
+- `npm run lint && npm run typecheck && npm run test && npm run build`
+
 ---
 
 ### Milestone 04 — HTTP API skeleton + OpenAPI
+
+Status: completed (2026-03-03)
+
+Goal:
+
+- Expose the initial v1 HTTP contract surface and OpenAPI document with deterministic stub responses.
 
 Scope:
 
@@ -147,9 +186,20 @@ Verification commands:
 - `npm run test -- routes.contract`
 - `npm run lint && npm run typecheck && npm run test && npm run build`
 
+Validation run (2026-03-03):
+
+- `npm run test -- routes.contract`
+- `npm run lint && npm run typecheck && npm run test && npm run build`
+
 ---
 
 ### Milestone 05 — Ledger v1 (append-only truth store)
+
+Status: completed (2026-03-03)
+
+Goal:
+
+- Add an append-only SQLite ledger with transactional writes and wire API stubs to persist truth records.
 
 Scope:
 
@@ -177,9 +227,20 @@ Verification commands:
 - `npm run test -- ledger`
 - `npm run lint && npm run typecheck && npm run test && npm run build`
 
+Validation run (2026-03-03):
+
+- `npm run test -- ledger`
+- `npm run lint && npm run typecheck && npm run test && npm run build`
+
 ---
 
 ### Milestone 06 — Feature extraction from candles (pure)
+
+Status: completed (2026-03-03)
+
+Goal:
+
+- Implement deterministic candle-derived indicators (vol short/long/ratio, trend proxy, compression proxy).
 
 Scope:
 
@@ -204,9 +265,20 @@ Verification commands:
 - `npm run test -- indicators`
 - `npm run lint && npm run typecheck && npm run test && npm run build`
 
+Validation run (2026-03-03):
+
+- `npm run test -- indicators`
+- `npm run lint && npm run typecheck && npm run test && npm run build`
+
 ---
 
 ### Milestone 07 — Regime classifier (UP/DOWN/CHOP) + hysteresis
+
+Status: completed (2026-03-03)
+
+Goal:
+
+- Build a hysteresis-aware regime classifier with confirmation and hold constraints to suppress whipsaw flips.
 
 Scope:
 
@@ -232,9 +304,20 @@ Verification commands:
 - `npm run test -- regime.fixtures`
 - `npm run lint && npm run typecheck && npm run test && npm run build`
 
+Validation run (2026-03-03):
+
+- `npm run test -- regime.fixtures`
+- `npm run lint && npm run typecheck && npm run test && npm run build`
+
 ---
 
 ### Milestone 08 — Churn governor (budgets + cooldowns + stand-down)
+
+Status: completed (2026-03-03)
+
+Goal:
+
+- Enforce churn budgets/cooldowns/two-strike stand-down with deterministic constraints output and stand-down signaling.
 
 Scope:
 
@@ -260,9 +343,20 @@ Verification commands:
 - `npm run test -- churn`
 - `npm run lint && npm run typecheck && npm run test && npm run build`
 
+Validation run (2026-03-03):
+
+- `npm run test -- churn`
+- `npm run lint && npm run typecheck && npm run test && npm run build`
+
 ---
 
 ### Milestone 09 — Allocation policy (partial shifts + caps)
+
+Status: completed (2026-03-03)
+
+Goal:
+
+- Produce regime-based deterministic allocation targets with bounded exposure-change caps.
 
 Scope:
 
@@ -289,9 +383,20 @@ Verification commands:
 - `npm run test -- allocation`
 - `npm run lint && npm run typecheck && npm run test && npm run build`
 
+Validation run (2026-03-03):
+
+- `npm run test -- allocation`
+- `npm run lint && npm run typecheck && npm run test && npm run build`
+
 ---
 
 ### Milestone 10 — Volatility targeting (overlay scaling)
+
+Status: completed (2026-03-03)
+
+Goal:
+
+- Add a deterministic volatility overlay that de-risks on high vol and increases UP tilt on low vol, while preserving cap constraints.
 
 Scope:
 
@@ -314,9 +419,20 @@ Verification commands:
 - `npm run test -- volTarget`
 - `npm run lint && npm run typecheck && npm run test && npm run build`
 
+Validation run (2026-03-03):
+
+- `npm run test -- volTarget`
+- `npm run lint && npm run typecheck && npm run test && npm run build`
+
 ---
 
 ### Milestone 11 — CHOP gate output (allowClmm only in CHOP)
+
+Status: completed (2026-03-03)
+
+Goal:
+
+- Emit deterministic CHOP gate output where `allowClmm` is only true in CHOP and never during stand-down.
 
 Scope:
 
@@ -338,9 +454,20 @@ Verification commands:
 - `npm run test -- chopGate`
 - `npm run lint && npm run typecheck && npm run test && npm run build`
 
+Validation run (2026-03-03):
+
+- `npm run test -- chopGate`
+- `npm run lint && npm run typecheck && npm run test && npm run build`
+
 ---
 
 ### Milestone 12 — Plan builder (pure, deterministic)
+
+Status: completed (2026-03-03)
+
+Goal:
+
+- Compose pure deterministic plan pipeline from validation inputs through features/regime/churn/allocation/chop gate into final plan object.
 
 Scope:
 
@@ -366,9 +493,20 @@ Verification commands:
 - `npm run test -- planDeterminism`
 - `npm run lint && npm run typecheck && npm run test && npm run build`
 
+Validation run (2026-03-03):
+
+- `npm run test -- planDeterminism`
+- `npm run lint && npm run typecheck && npm run test && npm run build`
+
 ---
 
 ### Milestone 13 — Wire /v1/plan to builder + ledger
+
+Status: completed (2026-03-03)
+
+Goal:
+
+- Connect `/v1/plan` to the real deterministic plan builder and ledger persistence path.
 
 Scope:
 
@@ -393,9 +531,20 @@ Verification commands:
 - `npm run test -- plan.e2e`
 - `npm run lint && npm run typecheck && npm run test && npm run build`
 
+Validation run (2026-03-03):
+
+- `npm run test -- plan.e2e`
+- `npm run lint && npm run typecheck && npm run test && npm run build`
+
 ---
 
 ### Milestone 14 — Wire /v1/execution-result + idempotency checks
+
+Status: completed (2026-03-03)
+
+Goal:
+
+- Wire `/v1/execution-result` to linked ledger writes with canonical mismatch/missing handling and idempotent replay behavior.
 
 Scope:
 
@@ -418,9 +567,20 @@ Verification commands:
 - `npm run test -- executionResult.e2e`
 - `npm run lint && npm run typecheck && npm run test && npm run build`
 
+Validation run (2026-03-03):
+
+- `npm run test -- executionResult.e2e`
+- `npm run lint && npm run typecheck && npm run test && npm run build`
+
 ---
 
 ### Milestone 15 — Baselines + weekly report (ledger-only)
+
+Status: completed (2026-03-03)
+
+Goal:
+
+- Generate deterministic ledger-only weekly reports with baseline comparisons and expose them via HTTP.
 
 Scope:
 
@@ -452,9 +612,20 @@ Verification commands:
 - `npm run test -- weeklyReport`
 - `npm run lint && npm run typecheck && npm run test && npm run build`
 
+Validation run (2026-03-03):
+
+- `npm run test -- weeklyReport`
+- `npm run lint && npm run typecheck && npm run test && npm run build`
+
 ---
 
 ### Milestone 16 — Local harness + fixtures + docs hardening
+
+Status: completed (2026-03-03)
+
+Goal:
+
+- Provide a runnable fixture harness and harden operator documentation/demo flow for end-to-end local execution.
 
 Scope:
 
@@ -487,6 +658,39 @@ Verification commands:
 
 - `npm run harness -- --fixture ./fixtures/demo --from 2026-01-01 --to 2026-01-31`
 - Final validation sweep
+
+Validation run (2026-03-03):
+
+- `npm run harness -- --fixture ./fixtures/demo --from 2026-01-01 --to 2026-01-31`
+- Final validation sweep:
+  - `npm run dev` with `/health` check
+  - `npm run build`
+  - `npm run lint`
+  - `npm run typecheck`
+  - `npm run test`
+  - `npm run harness -- --fixture ./fixtures/demo --from 2026-01-01 --to 2026-01-31`
+  - `/v1/openapi.json` JSON validity check (used Node parser because `jq` is unavailable in environment)
+
+---
+
+## Implementation Notes
+
+- 2026-03-03 (M01): interpreted “path aliases” as compile-time TypeScript aliasing only (`@/* -> src/*`) to keep runtime startup simple and deterministic.
+- 2026-03-03 (M02): canonical validation detail messages are generated in `src/http/errors.ts` rather than using raw Zod messages to guarantee stable error payloads across runs.
+- 2026-03-03 (M03): canonical serializer sorts object keys recursively, preserves array order, normalizes `-0` to `0`, and rejects non-finite numbers.
+- 2026-03-03 (M04): `/v1/plan` and `/v1/execution-result` are wired as validation-aware stubs first to preserve incremental delivery before ledger + engine integration milestones.
+- 2026-03-03 (M05): execution-result linkage integrity is enforced in `writer.ts` (planId/planHash checks) instead of a DB foreign key, keeping schema simple while preserving deterministic error behavior.
+- 2026-03-03 (M06): indicator outputs are rounded to fixed precision to avoid floating-point noise in snapshots and downstream regime decisions.
+- 2026-03-03 (M07): classifier state tracks pending target regime + confirmation bars separately from `barsInRegime`, allowing deterministic hysteresis without hidden mutable globals.
+- 2026-03-03 (M08): cooldown, budget exhaustion, and two-strike triggers all funnel into explicit `STAND_DOWN` action output to halt fakeout churn deterministically.
+- 2026-03-03 (M09): exposure shift per cycle is capped by `min(maxDeltaExposureBpsPerDay, maxTurnoverPerDayBps)` for deterministic bounded transitions.
+- 2026-03-03 (M10): volatility overlay scales SOL tilt around neutral `5000` bps, then reapplies exposure caps to guarantee policy limits remain authoritative.
+- 2026-03-03 (M11): CHOP gate is isolated in `src/engine/chopGate.ts` so `allowClmm` logic remains explicit, testable, and independent from allocation math.
+- 2026-03-03 (M12): `planId` is derived from request canonical hash (`plan-<16 hex>`) to keep plan outputs byte-identical for identical inputs.
+- 2026-03-03 (M13): `/v1/plan` now uses `buildPlan` end-to-end; prior stub handler is retained only as legacy scaffolding and is no longer routed.
+- 2026-03-03 (M14): `/v1/execution-result` treats exact replays as idempotent success and conflicting replays as `EXECUTION_RESULT_CONFLICT` to preserve append-only truth.
+- 2026-03-03 (M15): weekly report reads only persisted ledger rows (`plan_requests`, `plans`, `execution_results`) and does not depend on live engine recomputation.
+- 2026-03-03 (M16): harness executes in-process HTTP calls (`app.inject`) against fixture steps to keep local demos reproducible without external infrastructure.
 
 ---
 
