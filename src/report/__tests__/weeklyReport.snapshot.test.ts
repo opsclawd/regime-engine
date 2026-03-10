@@ -259,6 +259,40 @@ describe("weekly report", () => {
     await app.close();
   });
 
+  it("returns 400 for malformed weekly report date values", async () => {
+    const app = buildApp();
+
+    const overflowDateResponse = await app.inject({
+      method: "GET",
+      url: "/v1/report/weekly?from=2026-02-30&to=2026-03-01"
+    });
+    expect(overflowDateResponse.statusCode).toBe(400);
+    expect(overflowDateResponse.json()).toEqual({
+      schemaVersion: "1.0",
+      error: {
+        code: "INVALID_REPORT_RANGE",
+        message: "Invalid weekly report date range.",
+        details: []
+      }
+    });
+
+    const nonLeapYearResponse = await app.inject({
+      method: "GET",
+      url: "/v1/report/weekly?from=2026-02-28&to=2026-02-29"
+    });
+    expect(nonLeapYearResponse.statusCode).toBe(400);
+    expect(nonLeapYearResponse.json()).toEqual({
+      schemaVersion: "1.0",
+      error: {
+        code: "INVALID_REPORT_RANGE",
+        message: "Invalid weekly report date range.",
+        details: []
+      }
+    });
+
+    await app.close();
+  });
+
   it("returns 500 for malformed persisted report rows", async () => {
     const dbPath = join(
       tmpdir(),

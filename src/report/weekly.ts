@@ -51,13 +51,39 @@ const round = (value: number, precision = 6): number => {
   return Math.round(value * factor) / factor;
 };
 
-const parseDateWindow = (from: string, to: string) => {
-  const fromUnixMs = Date.parse(`${from}T00:00:00.000Z`);
-  const toUnixMs = Date.parse(`${to}T23:59:59.999Z`);
+const DATE_ONLY_PATTERN = /^(\d{4})-(\d{2})-(\d{2})$/;
 
-  if (!Number.isFinite(fromUnixMs) || !Number.isFinite(toUnixMs)) {
+const parseDate = (value: string, endOfDay: boolean): number => {
+  const match = DATE_ONLY_PATTERN.exec(value);
+  if (!match) {
     throw new ReportRangeError("Invalid weekly report date range.");
   }
+
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+  const hours = endOfDay ? 23 : 0;
+  const minutes = endOfDay ? 59 : 0;
+  const seconds = endOfDay ? 59 : 0;
+  const milliseconds = endOfDay ? 999 : 0;
+
+  const unixMs = Date.UTC(year, month - 1, day, hours, minutes, seconds, milliseconds);
+  const parsed = new Date(unixMs);
+
+  if (
+    parsed.getUTCFullYear() !== year ||
+    parsed.getUTCMonth() !== month - 1 ||
+    parsed.getUTCDate() !== day
+  ) {
+    throw new ReportRangeError("Invalid weekly report date range.");
+  }
+
+  return unixMs;
+};
+
+const parseDateWindow = (from: string, to: string) => {
+  const fromUnixMs = parseDate(from, false);
+  const toUnixMs = parseDate(to, true);
 
   if (fromUnixMs > toUnixMs) {
     throw new ReportRangeError("Invalid weekly report date range: from > to.");
