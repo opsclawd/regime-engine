@@ -1,5 +1,4 @@
 import type { Regime } from "../../contract/v1/types.js";
-import { applyExposureCaps } from "./caps.js";
 
 export interface AllocationConfig {
   upSolBps: number;
@@ -24,6 +23,10 @@ export interface AllocationDecision {
   }>;
 }
 
+const clampBps = (value: number): number => {
+  return Math.min(10_000, Math.max(0, Math.round(value)));
+};
+
 const desiredByRegime = (
   regime: Regime,
   config: AllocationConfig
@@ -44,13 +47,8 @@ export const computeAllocationTargets = (input: {
   currentSolBps: number;
   config: AllocationConfig;
 }): AllocationDecision => {
-  const desiredSolBps = desiredByRegime(input.regime, input.config);
-  const capped = applyExposureCaps({
-    currentSolBps: input.currentSolBps,
-    desiredSolBps,
-    maxDeltaExposureBpsPerDay: input.config.maxDeltaExposureBpsPerDay,
-    maxTurnoverPerDayBps: input.config.maxTurnoverPerDayBps
-  });
+  const desiredSolBps = clampBps(desiredByRegime(input.regime, input.config));
+  const currentSolBps = clampBps(input.currentSolBps);
 
   const reasons: AllocationDecision["reasons"] = [];
   reasons.push({
@@ -59,23 +57,14 @@ export const computeAllocationTargets = (input: {
     message: `Desired target selected for regime ${input.regime}.`
   });
 
-  if (capped.wasCapped) {
-    reasons.push({
-      code: "ALLOCATION_CAP_APPLIED",
-      severity: "WARN",
-      message:
-        "Exposure change was capped by maxDeltaExposureBpsPerDay/maxTurnoverPerDayBps."
-    });
-  }
-
   return {
     targets: {
-      solBps: capped.targetSolBps,
-      usdcBps: 10_000 - capped.targetSolBps
+      solBps: desiredSolBps,
+      usdcBps: 10_000 - desiredSolBps
     },
     desiredSolBps,
-    appliedDeltaBps: capped.appliedDeltaBps,
-    capped: capped.wasCapped,
+    appliedDeltaBps: desiredSolBps - currentSolBps,
+    capped: false,
     reasons
   };
 };

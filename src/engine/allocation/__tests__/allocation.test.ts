@@ -10,7 +10,7 @@ const config = {
 };
 
 describe("allocation policy", () => {
-  it("moves toward UP target with cap-limited step", () => {
+  it("selects the uncapped UP regime target", () => {
     const decision = computeAllocationTargets({
       regime: "UP",
       currentSolBps: 5_000,
@@ -19,14 +19,14 @@ describe("allocation policy", () => {
 
     expect(decision.desiredSolBps).toBe(8_000);
     expect(decision.targets).toEqual({
-      solBps: 5_600,
-      usdcBps: 4_400
+      solBps: 8_000,
+      usdcBps: 2_000
     });
-    expect(decision.appliedDeltaBps).toBe(600);
-    expect(decision.capped).toBe(true);
+    expect(decision.appliedDeltaBps).toBe(3_000);
+    expect(decision.capped).toBe(false);
   });
 
-  it("moves toward DOWN target with symmetric cap-limited step", () => {
+  it("selects the uncapped DOWN regime target", () => {
     const decision = computeAllocationTargets({
       regime: "DOWN",
       currentSolBps: 5_000,
@@ -35,11 +35,11 @@ describe("allocation policy", () => {
 
     expect(decision.desiredSolBps).toBe(1_500);
     expect(decision.targets).toEqual({
-      solBps: 4_400,
-      usdcBps: 5_600
+      solBps: 1_500,
+      usdcBps: 8_500
     });
-    expect(decision.appliedDeltaBps).toBe(-600);
-    expect(decision.capped).toBe(true);
+    expect(decision.appliedDeltaBps).toBe(-3_500);
+    expect(decision.capped).toBe(false);
   });
 
   it("keeps CHOP target near neutral and uncapped if already close", () => {
@@ -56,6 +56,21 @@ describe("allocation policy", () => {
     });
     expect(decision.appliedDeltaBps).toBe(-100);
     expect(decision.capped).toBe(false);
+  });
+
+  it("keeps the regime target available for downstream volatility scaling", () => {
+    const decision = computeAllocationTargets({
+      regime: "UP",
+      currentSolBps: 4_800,
+      config: {
+        ...config,
+        maxDeltaExposureBpsPerDay: 100,
+        maxTurnoverPerDayBps: 100
+      }
+    });
+
+    expect(decision.targets.solBps).toBe(8_000);
+    expect(decision.appliedDeltaBps).toBe(3_200);
   });
 
   it("always preserves 10_000 bps total exposure", () => {

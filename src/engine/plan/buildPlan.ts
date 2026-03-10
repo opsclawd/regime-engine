@@ -92,7 +92,7 @@ export const buildPlan = (
   const volTargeted = applyVolatilityTargeting({
     regime: regime.regime,
     currentSolBps,
-    targetSolBps: allocation.targets.solBps,
+    targetSolBps: allocation.desiredSolBps,
     volRatio: indicators.volRatio,
     maxDeltaExposureBpsPerDay: request.config.allocation.maxDeltaExposureBpsPerDay,
     maxTurnoverPerDayBps: request.config.allocation.maxTurnoverPerDayBps
@@ -133,6 +133,7 @@ export const buildPlan = (
       ...regime.reasons,
       ...churn.reasons,
       ...allocation.reasons,
+      ...volTargeted.reasons,
       ...chopGate.reasons
     ],
     telemetry: {

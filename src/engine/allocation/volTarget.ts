@@ -19,6 +19,11 @@ export interface VolTargetDecision {
   scale: number;
   desiredAfterVolSolBps: number;
   capped: boolean;
+  reasons: Array<{
+    code: string;
+    severity: "INFO" | "WARN";
+    message: string;
+  }>;
 }
 
 const clampBps = (value: number): number => {
@@ -52,6 +57,16 @@ export const applyVolatilityTargeting = (
     maxTurnoverPerDayBps: input.maxTurnoverPerDayBps
   });
 
+  const reasons: VolTargetDecision["reasons"] = [];
+  if (capped.wasCapped) {
+    reasons.push({
+      code: "ALLOCATION_CAP_APPLIED",
+      severity: "WARN",
+      message:
+        "Exposure change was capped by maxDeltaExposureBpsPerDay/maxTurnoverPerDayBps."
+    });
+  }
+
   return {
     targets: {
       solBps: capped.targetSolBps,
@@ -60,6 +75,7 @@ export const applyVolatilityTargeting = (
     volRatio: input.volRatio,
     scale,
     desiredAfterVolSolBps,
-    capped: capped.wasCapped
+    capped: capped.wasCapped,
+    reasons
   };
 };

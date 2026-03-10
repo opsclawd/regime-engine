@@ -48,5 +48,28 @@ describe("volatility targeting overlay", () => {
     expect(decision.targets.solBps).toBe(2_400);
     expect(decision.targets.usdcBps).toBe(7_600);
     expect(decision.capped).toBe(true);
+    expect(decision.reasons).toEqual([
+      {
+        code: "ALLOCATION_CAP_APPLIED",
+        severity: "WARN",
+        message:
+          "Exposure change was capped by maxDeltaExposureBpsPerDay/maxTurnoverPerDayBps."
+      }
+    ]);
+  });
+
+  it("preserves positive UP rebalances when low-vol scaling is applied before caps", () => {
+    const decision = applyVolatilityTargeting({
+      regime: "UP",
+      currentSolBps: 4_800,
+      targetSolBps: 8_000,
+      volRatio: 0.5,
+      maxDeltaExposureBpsPerDay: 100,
+      maxTurnoverPerDayBps: 100
+    });
+
+    expect(decision.desiredAfterVolSolBps).toBe(8_450);
+    expect(decision.targets.solBps).toBe(4_900);
+    expect(decision.targets.solBps).toBeGreaterThan(4_800);
   });
 });
