@@ -58,6 +58,12 @@ export const buildOpenApiDocument = () => {
             },
             "400": {
               description: "Validation error"
+            },
+            "404": {
+              description: "Referenced plan was not found"
+            },
+            "409": {
+              description: "Plan linkage or execution result conflict"
             }
           }
         }

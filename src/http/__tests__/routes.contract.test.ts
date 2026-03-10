@@ -116,6 +116,14 @@ describe("HTTP route contract stubs", () => {
         })
       })
     );
+    expect(document.paths["/v1/execution-result"].post.responses).toEqual(
+      expect.objectContaining({
+        "200": expect.any(Object),
+        "400": expect.any(Object),
+        "404": expect.any(Object),
+        "409": expect.any(Object)
+      })
+    );
   });
 
   it("returns plan response for /v1/plan", async () => {
