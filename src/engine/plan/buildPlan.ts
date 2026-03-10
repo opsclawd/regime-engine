@@ -93,8 +93,7 @@ export const buildPlan = (
     regime: regime.regime,
     currentSolBps,
     targetSolBps: allocation.targets.solBps,
-    realizedVolShort: indicators.realizedVolShort,
-    realizedVolLong: indicators.realizedVolLong,
+    volRatio: indicators.volRatio,
     maxDeltaExposureBpsPerDay: request.config.allocation.maxDeltaExposureBpsPerDay,
     maxTurnoverPerDayBps: request.config.allocation.maxTurnoverPerDayBps
   });

@@ -33,4 +33,20 @@ describe("feature indicators", () => {
   it("matches fixture snapshot", () => {
     expect(computeIndicators(fixtureCandles)).toMatchSnapshot();
   });
+
+  it("computes a volRatio that is neutral to window-length scaling", () => {
+    const telemetry = computeIndicators(fixtureCandles, {
+      volShortWindow: 8,
+      volLongWindow: 21
+    });
+
+    const shortPerBarVol = telemetry.realizedVolShort / Math.sqrt(8);
+    const longPerBarVol = telemetry.realizedVolLong / Math.sqrt(21);
+
+    expect(telemetry.volRatio).toBeCloseTo(shortPerBarVol / longPerBarVol, 11);
+    expect(telemetry.volRatio).not.toBeCloseTo(
+      telemetry.realizedVolShort / telemetry.realizedVolLong,
+      6
+    );
+  });
 });

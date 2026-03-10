@@ -6,6 +6,6 @@ exports[`feature indicators > matches fixture snapshot 1`] = `
   "realizedVolLong": 0.01591751141,
   "realizedVolShort": 0.008825930763,
   "trendStrength": 0.006792069342,
-  "volRatio": 0.554479311221,
+  "volRatio": 0.898359159664,
 }
 `;

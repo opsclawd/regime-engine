@@ -7,8 +7,7 @@ describe("volatility targeting overlay", () => {
       regime: "UP",
       currentSolBps: 7_000,
       targetSolBps: 8_000,
-      realizedVolShort: 0.04,
-      realizedVolLong: 0.02,
+      volRatio: 2,
       maxDeltaExposureBpsPerDay: 5_000,
       maxTurnoverPerDayBps: 5_000
     });
@@ -24,8 +23,7 @@ describe("volatility targeting overlay", () => {
       regime: "UP",
       currentSolBps: 7_000,
       targetSolBps: 8_000,
-      realizedVolShort: 0.01,
-      realizedVolLong: 0.02,
+      volRatio: 0.5,
       maxDeltaExposureBpsPerDay: 5_000,
       maxTurnoverPerDayBps: 5_000
     });
@@ -41,8 +39,7 @@ describe("volatility targeting overlay", () => {
       regime: "UP",
       currentSolBps: 2_000,
       targetSolBps: 8_000,
-      realizedVolShort: 0.01,
-      realizedVolLong: 0.02,
+      volRatio: 0.5,
       maxDeltaExposureBpsPerDay: 500,
       maxTurnoverPerDayBps: 400
     });

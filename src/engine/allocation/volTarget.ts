@@ -5,8 +5,7 @@ export interface VolTargetInput {
   regime: Regime;
   currentSolBps: number;
   targetSolBps: number;
-  realizedVolShort: number;
-  realizedVolLong: number;
+  volRatio: number;
   maxDeltaExposureBpsPerDay: number;
   maxTurnoverPerDayBps: number;
 }
@@ -41,12 +40,7 @@ const computeScale = (regime: Regime, volRatio: number): number => {
 export const applyVolatilityTargeting = (
   input: VolTargetInput
 ): VolTargetDecision => {
-  const volRatio =
-    input.realizedVolLong > 0
-      ? input.realizedVolShort / input.realizedVolLong
-      : 1;
-
-  const scale = computeScale(input.regime, volRatio);
+  const scale = computeScale(input.regime, input.volRatio);
   const neutralSolBps = 5_000;
   const tilt = input.targetSolBps - neutralSolBps;
   const desiredAfterVolSolBps = clampBps(neutralSolBps + tilt * scale);
@@ -63,7 +57,7 @@ export const applyVolatilityTargeting = (
       solBps: capped.targetSolBps,
       usdcBps: 10_000 - capped.targetSolBps
     },
-    volRatio,
+    volRatio: input.volRatio,
     scale,
     desiredAfterVolSolBps,
     capped: capped.wasCapped

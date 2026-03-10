@@ -97,6 +97,19 @@ const realizedVol = (returns: readonly number[]): number => {
   return standardDeviation(returns) * Math.sqrt(returns.length);
 };
 
+const relativeVolatility = (
+  shortReturns: readonly number[],
+  longReturns: readonly number[]
+): number => {
+  const longVol = standardDeviation(longReturns);
+  if (longVol === 0) {
+    return 0;
+  }
+
+  // Compare per-bar volatility so the ratio is not biased by the window lengths.
+  return standardDeviation(shortReturns) / longVol;
+};
+
 const bollingerCompression = (closes: readonly number[]): number => {
   if (closes.length === 0) {
     return 0;
@@ -118,9 +131,11 @@ export const computeIndicators = (
   const merged: IndicatorConfig = { ...DEFAULT_CONFIG, ...config };
   const closes = candleCloses(candles);
   const returns = logReturns(closes);
+  const shortReturns = takeLast(returns, merged.volShortWindow);
+  const longReturns = takeLast(returns, merged.volLongWindow);
 
-  const volShort = realizedVol(takeLast(returns, merged.volShortWindow));
-  const volLong = realizedVol(takeLast(returns, merged.volLongWindow));
+  const volShort = realizedVol(shortReturns);
+  const volLong = realizedVol(longReturns);
   const trend = trendSlope(takeLast(closes, merged.trendWindow));
   const compression = bollingerCompression(
     takeLast(closes, merged.compressionWindow)
@@ -129,7 +144,7 @@ export const computeIndicators = (
   return {
     realizedVolShort: roundStable(volShort),
     realizedVolLong: roundStable(volLong),
-    volRatio: roundStable(volLong > 0 ? volShort / volLong : 0),
+    volRatio: roundStable(relativeVolatility(shortReturns, longReturns)),
     trendStrength: roundStable(trend),
     compression: roundStable(compression)
   };
