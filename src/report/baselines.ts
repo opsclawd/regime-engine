@@ -1,4 +1,8 @@
 export interface BaselineInputs {
+  window: {
+    fromUnixMs: number;
+    toUnixMs: number;
+  };
   planRequests: Array<{
     asOfUnixMs: number;
     request: {
@@ -33,12 +37,16 @@ const roundUsd = (value: number): number => {
 };
 
 const buildPriceSeries = (
-  planRequests: BaselineInputs["planRequests"]
+  planRequests: BaselineInputs["planRequests"],
+  window: BaselineInputs["window"]
 ): Array<{ unixMs: number; close: number }> => {
   const candlesByUnixMs = new Map<number, number>();
 
   for (const entry of planRequests) {
     for (const candle of entry.request.market.candles) {
+      if (candle.unixMs < window.fromUnixMs || candle.unixMs > window.toUnixMs) {
+        continue;
+      }
       candlesByUnixMs.set(candle.unixMs, candle.close);
     }
   }
@@ -120,19 +128,25 @@ export const computeBaselines = (input: BaselineInputs): BaselineSummary => {
   const sortedRequests = [...input.planRequests].sort(
     (left, right) => left.asOfUnixMs - right.asOfUnixMs
   );
-  const priceSeries = buildPriceSeries(sortedRequests);
+  const priceSeries = buildPriceSeries(sortedRequests, input.window);
+  const baselineConfig = sortedRequests[0]?.request.config.baselines;
+  const initialNavUsd = sortedRequests[0]?.request.portfolio.navUsd ?? 0;
 
   if (priceSeries.length === 0) {
-    const fallbackNav = sortedRequests[0]?.request.portfolio.navUsd ?? 0;
+    const usdcCarry = computeUsdcCarry({
+      initialNavUsd,
+      usdcCarryApr: baselineConfig.usdcCarryApr,
+      startUnixMs: input.window.fromUnixMs,
+      endUnixMs: input.window.toUnixMs
+    });
+
     return {
-      solHodlFinalNavUsd: roundUsd(fallbackNav),
-      solDcaFinalNavUsd: roundUsd(fallbackNav),
-      usdcCarryFinalNavUsd: roundUsd(fallbackNav)
+      solHodlFinalNavUsd: roundUsd(initialNavUsd),
+      solDcaFinalNavUsd: roundUsd(initialNavUsd),
+      usdcCarryFinalNavUsd: roundUsd(usdcCarry)
     };
   }
 
-  const initialNavUsd = sortedRequests[0]?.request.portfolio.navUsd ?? 0;
-  const baselineConfig = sortedRequests[0]?.request.config.baselines;
   const firstPrice = priceSeries[0].close;
   const lastPoint = priceSeries[priceSeries.length - 1];
 
@@ -146,8 +160,8 @@ export const computeBaselines = (input: BaselineInputs): BaselineSummary => {
   const usdcCarry = computeUsdcCarry({
     initialNavUsd,
     usdcCarryApr: baselineConfig.usdcCarryApr,
-    startUnixMs: priceSeries[0].unixMs,
-    endUnixMs: lastPoint.unixMs
+    startUnixMs: input.window.fromUnixMs,
+    endUnixMs: input.window.toUnixMs
   });
 
   return {

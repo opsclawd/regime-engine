@@ -176,6 +176,10 @@ export const generateWeeklyReport = (input: {
   const totalActions = successActions + failedActions + skippedActions;
 
   const baselines = computeBaselines({
+    window: {
+      fromUnixMs: window.fromUnixMs,
+      toUnixMs: window.toUnixMs
+    },
     planRequests: planRequests.map((row) => ({
       asOfUnixMs: row.as_of_unix_ms,
       request: asRecord(row.request_json) as {

@@ -25,7 +25,7 @@ exports[`weekly report > generates deterministic ledger-only markdown + JSON sna
 ## Baselines
 - SOL HODL Final NAV: 8936.484739
 - SOL DCA Final NAV: 9946.824237
-- USDC Carry Final NAV: 10013.356164"
+- USDC Carry Final NAV: 10050.958904"
 `;
 
 exports[`weekly report > generates deterministic ledger-only markdown + JSON snapshots 2`] = `
@@ -33,7 +33,7 @@ exports[`weekly report > generates deterministic ledger-only markdown + JSON sna
   "baselines": {
     "solDcaFinalNavUsd": 9946.824237,
     "solHodlFinalNavUsd": 8936.484739,
-    "usdcCarryFinalNavUsd": 10013.356164,
+    "usdcCarryFinalNavUsd": 10050.958904,
   },
   "churn": {
     "holdPlans": 0,
