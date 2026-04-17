@@ -34,5 +34,6 @@ ENV PORT=8787
 ENV LEDGER_DB_PATH=tmp/ledger.sqlite
 EXPOSE 8787
 
-# Optionally mount a .env file and load it via --env-file
-CMD ["node", "--env-file=.env", "dist/src/server.js"]
+# --env-file-if-exists makes .env optional (won't crash if absent)
+# For deployments that inject env vars directly (Docker -e, K8s env:), no .env is needed.
+CMD ["node", "--env-file-if-exists=.env", "dist/src/server.js"]
