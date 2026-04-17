@@ -6,8 +6,5 @@ dockerfilePath = "Dockerfile"
 startCommand = "node --env-file-if-exists=.env dist/src/server.js"
 healthcheckPath = "/health"
 healthcheckTimeout = 30
-restartPolicyType = "on_failure"
-
-[[deploy.volume]]
-name = "ledger"
-mountPath = "/data"
+restartPolicyType = "ON_FAILURE"
+requiredMountPath = "/data"

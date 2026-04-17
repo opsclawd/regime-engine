@@ -58,21 +58,26 @@ npm run harness -- --fixture ./fixtures/demo --from 2026-01-01 --to 2026-01-31
 
 1. Push this repo to a Railway project — Railway detects the `railway.toml` config automatically.
 
-2. Add a **persistent volume**:
+2. Add a **persistent volume** in the Railway service settings:
    - Name: `ledger`
    - Mount path: `/data`
 
-3. Set environment variables in the Railway dashboard (or via `.env` file mounted at `/app/.env`):
+   The `railway.toml` declares `requiredMountPath = "/data"` which will prompt for volume creation on first deploy.
+
+3. Set the `RAILWAY_RUN_UID` environment variable to `0` in the Railway dashboard. The container runs as a non-root user (`app`), but Railway mounts volumes with root ownership. Setting `RAILWAY_RUN_UID=0` ensures the process can write to `/data/ledger.sqlite`.
+
+4. Set environment variables in the Railway dashboard (or via `.env` file mounted at `/app/.env`):
 
    | Variable | Default | Description |
    |---|---|---|
-   | `PORT` | `8787` | HTTP server port (Railway sets this automatically) |
+   | `PORT` | — | Railway sets this automatically |
    | `HOST` | `0.0.0.0` | Host binding |
    | `LEDGER_DB_PATH` | `/data/ledger.sqlite` | SQLite path — **must point to the volume mount** |
    | `NODE_ENV` | `production` | Node environment |
    | `COMMIT_SHA` | — | Optional, shown in `/version` |
+   | `RAILWAY_RUN_UID` | `0` | **Required** — allows volume writes for non-root container |
 
-4. Railway handles HTTPS termination and SIGTERM — the service shuts down gracefully on deploy.
+5. Railway handles HTTPS termination and SIGTERM — the service shuts down gracefully on deploy.
 
 ## Determinism strategy
 
