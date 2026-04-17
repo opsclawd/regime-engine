@@ -48,9 +48,7 @@ describe("churn governor", () => {
     expect(decision.shouldStandDown).toBe(true);
     expect(decision.action).toBe("STAND_DOWN");
     expect(decision.constraints.standDownUntilUnixMs).toBe(AS_OF + 1_000);
-    expect(decision.reasons.some((item) => item.code === "CHURN_COOLDOWN_ACTIVE")).toBe(
-      true
-    );
+    expect(decision.reasons.some((item) => item.code === "CHURN_COOLDOWN_ACTIVE")).toBe(true);
   });
 
   it("anchors stand-down to the existing cooldown expiry mid-window", () => {
@@ -81,11 +79,9 @@ describe("churn governor", () => {
 
     expect(decision.shouldStandDown).toBe(true);
     expect(decision.constraints.stopoutsRemaining).toBe(0);
-    expect(
-      decision.reasons.some(
-        (item) => item.code === "CHURN_STOPOUT_BUDGET_EXCEEDED"
-      )
-    ).toBe(true);
+    expect(decision.reasons.some((item) => item.code === "CHURN_STOPOUT_BUDGET_EXCEEDED")).toBe(
+      true
+    );
   });
 
   it("enters stand-down when two-strike trigger is reached", () => {
@@ -100,11 +96,7 @@ describe("churn governor", () => {
 
     expect(decision.shouldStandDown).toBe(true);
     expect(decision.action).toBe("STAND_DOWN");
-    expect(
-      decision.reasons.some(
-        (item) => item.code === "CHURN_TWO_STRIKE_STAND_DOWN"
-      )
-    ).toBe(true);
+    expect(decision.reasons.some((item) => item.code === "CHURN_TWO_STRIKE_STAND_DOWN")).toBe(true);
   });
 
   it("does not extend stand-down window when only stand-down is active", () => {
@@ -189,12 +181,13 @@ describe("churn governor", () => {
       }
     ];
 
-    const actions = fakeoutSequence.map((state) =>
-      applyChurnGovernor({
-        asOfUnixMs: AS_OF,
-        state,
-        config: churnConfig
-      }).action
+    const actions = fakeoutSequence.map(
+      (state) =>
+        applyChurnGovernor({
+          asOfUnixMs: AS_OF,
+          state,
+          config: churnConfig
+        }).action
     );
 
     expect(actions).toEqual(["HOLD", "HOLD", "STAND_DOWN", "STAND_DOWN"]);

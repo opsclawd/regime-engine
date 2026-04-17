@@ -56,11 +56,7 @@ const buildPriceSeries = (
     .sort((left, right) => left.unixMs - right.unixMs);
 };
 
-const computeSolHodl = (
-  initialNavUsd: number,
-  firstPrice: number,
-  lastPrice: number
-): number => {
+const computeSolHodl = (initialNavUsd: number, firstPrice: number, lastPrice: number): number => {
   if (firstPrice <= 0) {
     return initialNavUsd;
   }

@@ -30,10 +30,7 @@ export const createLedgerStore = (databasePath: string): LedgerStore => {
   };
 };
 
-export const runInTransaction = <T>(
-  store: LedgerStore,
-  operation: () => T
-): T => {
+export const runInTransaction = <T>(store: LedgerStore, operation: () => T): T => {
   store.db.exec("BEGIN");
   try {
     const result = operation();
@@ -47,17 +44,13 @@ export const runInTransaction = <T>(
 
 export const getLedgerCounts = (store: LedgerStore) => {
   const planRequests =
-    (store.db
-      .prepare("SELECT COUNT(*) AS count FROM plan_requests")
-      .get() as { count: number }).count ?? 0;
+    (store.db.prepare("SELECT COUNT(*) AS count FROM plan_requests").get() as { count: number })
+      .count ?? 0;
   const plans =
-    (store.db
-      .prepare("SELECT COUNT(*) AS count FROM plans")
-      .get() as { count: number }).count ?? 0;
+    (store.db.prepare("SELECT COUNT(*) AS count FROM plans").get() as { count: number }).count ?? 0;
   const executionResults =
-    (store.db
-      .prepare("SELECT COUNT(*) AS count FROM execution_results")
-      .get() as { count: number }).count ?? 0;
+    (store.db.prepare("SELECT COUNT(*) AS count FROM execution_results").get() as { count: number })
+      .count ?? 0;
 
   return {
     planRequests,
@@ -66,10 +59,7 @@ export const getLedgerCounts = (store: LedgerStore) => {
   };
 };
 
-export const findPlanHashByPlanId = (
-  store: LedgerStore,
-  planId: string
-): string | null => {
+export const findPlanHashByPlanId = (store: LedgerStore, planId: string): string | null => {
   const row = store.db
     .prepare("SELECT plan_hash FROM plans WHERE plan_id = ? ORDER BY id DESC LIMIT 1")
     .get(planId) as { plan_hash: string } | undefined;

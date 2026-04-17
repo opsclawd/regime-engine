@@ -2,9 +2,7 @@ import type { FastifyReply, FastifyRequest } from "fastify";
 import { planHashFromPlan } from "../../contract/v1/hash.js";
 import { SCHEMA_VERSION, type PlanResponse } from "../../contract/v1/types.js";
 import { parsePlanRequest } from "../../contract/v1/validation.js";
-import {
-  type LedgerStore
-} from "../../ledger/store.js";
+import { type LedgerStore } from "../../ledger/store.js";
 import { writePlanLedgerEntry } from "../../ledger/writer.js";
 import { ContractValidationError } from "../errors.js";
 

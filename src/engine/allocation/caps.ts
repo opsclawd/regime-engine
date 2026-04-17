@@ -20,10 +20,7 @@ export const applyExposureCaps = (input: {
 
   const maxStep = Math.max(
     0,
-    Math.min(
-      Math.round(input.maxDeltaExposureBpsPerDay),
-      Math.round(input.maxTurnoverPerDayBps)
-    )
+    Math.min(Math.round(input.maxDeltaExposureBpsPerDay), Math.round(input.maxTurnoverPerDayBps))
   );
 
   const cappedDeltaMagnitude = Math.min(Math.abs(rawDelta), maxStep);

@@ -1,15 +1,7 @@
 import { toCanonicalJson } from "../contract/v1/canonical.js";
 import { sha256Hex } from "../contract/v1/hash.js";
-import type {
-  ExecutionResultRequest,
-  PlanRequest,
-  PlanResponse
-} from "../contract/v1/types.js";
-import {
-  findPlanHashByPlanId,
-  runInTransaction,
-  type LedgerStore
-} from "./store.js";
+import type { ExecutionResultRequest, PlanRequest, PlanResponse } from "../contract/v1/types.js";
+import { findPlanHashByPlanId, runInTransaction, type LedgerStore } from "./store.js";
 
 export const LEDGER_ERROR_CODES = {
   PLAN_NOT_FOUND: "PLAN_NOT_FOUND",
@@ -85,10 +77,7 @@ export const writeExecutionResultLedgerEntry = (
   }
 ): { inserted: boolean; idempotent: boolean } => {
   const receivedAtUnixMs = input.receivedAtUnixMs ?? Date.now();
-  const storedPlanHash = findPlanHashByPlanId(
-    store,
-    input.executionResult.planId
-  );
+  const storedPlanHash = findPlanHashByPlanId(store, input.executionResult.planId);
 
   if (!storedPlanHash) {
     throw new LedgerWriteError(
@@ -116,10 +105,9 @@ export const writeExecutionResultLedgerEntry = (
         LIMIT 1
       `
     )
-    .get(
-      input.executionResult.planId,
-      input.executionResult.planHash
-    ) as { result_json: string } | undefined;
+    .get(input.executionResult.planId, input.executionResult.planHash) as
+    | { result_json: string }
+    | undefined;
 
   if (existingExecutionResult) {
     if (existingExecutionResult.result_json === canonicalExecutionResult) {

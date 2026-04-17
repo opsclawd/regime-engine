@@ -1,8 +1,5 @@
 import type { FastifyReply, FastifyRequest } from "fastify";
-import {
-  SCHEMA_VERSION,
-  type ExecutionResultResponse
-} from "../../contract/v1/types.js";
+import { SCHEMA_VERSION, type ExecutionResultResponse } from "../../contract/v1/types.js";
 import { parseExecutionResultRequest } from "../../contract/v1/validation.js";
 import { type LedgerStore } from "../../ledger/store.js";
 import {
@@ -35,8 +32,7 @@ export const createExecutionResultHandler = (store: LedgerStore) => {
       }
 
       if (error instanceof LedgerWriteError) {
-        const statusCode =
-          error.code === LEDGER_ERROR_CODES.PLAN_NOT_FOUND ? 404 : 409;
+        const statusCode = error.code === LEDGER_ERROR_CODES.PLAN_NOT_FOUND ? 404 : 409;
         return reply.code(statusCode).send({
           schemaVersion: SCHEMA_VERSION,
           error: {

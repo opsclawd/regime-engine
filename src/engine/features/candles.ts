@@ -1,8 +1,6 @@
 import type { Candle } from "../../contract/v1/types.js";
 
-export const sortCandlesByUnixMs = (
-  candles: readonly Candle[]
-): Candle[] => {
+export const sortCandlesByUnixMs = (candles: readonly Candle[]): Candle[] => {
   return [...candles].sort((left, right) => left.unixMs - right.unixMs);
 };
 

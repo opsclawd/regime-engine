@@ -36,9 +36,7 @@ const canonicalize = (value: unknown): string => {
 
   if (isPlainObject(value)) {
     const keys = Object.keys(value).sort();
-    const entries = keys.map(
-      (key) => `${JSON.stringify(key)}:${canonicalize(value[key])}`
-    );
+    const entries = keys.map((key) => `${JSON.stringify(key)}:${canonicalize(value[key])}`);
     return `{${entries.join(",")}}`;
   }
 

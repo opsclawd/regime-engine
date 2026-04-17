@@ -26,21 +26,21 @@ This runbook defines the non-negotiable operating rules for completing the entir
 
 ### Milestone loop (repeat for each milestone)
 
-1) Read: `prompt.md`, `plan.md`, `documentation.md`, `architecture.md`
-2) Identify the first incomplete milestone in `plan.md`
-3) Implement ONLY the scope of that milestone
-4) Add/update tests for the milestone’s core behavior (unit + snapshot where required)
-5) Run milestone verification commands (or full sweep)
-6) If any verification fails:
+1. Read: `prompt.md`, `plan.md`, `documentation.md`, `architecture.md`
+2. Identify the first incomplete milestone in `plan.md`
+3. Implement ONLY the scope of that milestone
+4. Add/update tests for the milestone’s core behavior (unit + snapshot where required)
+5. Run milestone verification commands (or full sweep)
+6. If any verification fails:
    - write/adjust a failing test that reproduces it (where applicable)
    - fix the bug
    - re-run verification until green
    - record a short note in `plan.md` under **Implementation Notes**
-7) Update docs:
+7. Update docs:
    - `documentation.md`: how to run + what changed + known issues
    - `architecture.md`: only if architecture changed
-8) Mark milestone complete in `plan.md`
-9) Commit with a small, reviewable diff
+8. Mark milestone complete in `plan.md`
+9. Commit with a small, reviewable diff
 
 ### Commit discipline
 
@@ -112,6 +112,6 @@ Create and maintain `documentation.md` as a concise operator doc. Keep it update
 
 ## Start procedure
 
-1) Read `plan.md`
-2) Begin Milestone 01
-3) Continue sequentially until final validation sweep passes and completion criteria are satisfied
+1. Read `plan.md`
+2. Begin Milestone 01
+3. Continue sequentially until final validation sweep passes and completion criteria are satisfied

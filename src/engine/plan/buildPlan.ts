@@ -63,10 +63,7 @@ const buildActions = (input: {
   return actions;
 };
 
-export const buildPlan = (
-  request: PlanRequest,
-  regimeState?: RegimeState
-): PlanResponse => {
+export const buildPlan = (request: PlanRequest, regimeState?: RegimeState): PlanResponse => {
   const effectiveRegimeState = regimeState ?? request.regimeState;
   const sortedCandles = sortCandlesByUnixMs(request.market.candles);
   const indicators = computeIndicators(sortedCandles);

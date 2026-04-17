@@ -81,7 +81,7 @@ const trendSlope = (values: readonly number[]): number => {
     return 0;
   }
 
-  return (numerator / denominator) / meanY;
+  return numerator / denominator / meanY;
 };
 
 const roundStable = (value: number, digits = 12): number => {
@@ -137,9 +137,7 @@ export const computeIndicators = (
   const volShort = realizedVol(shortReturns);
   const volLong = realizedVol(longReturns);
   const trend = trendSlope(takeLast(closes, merged.trendWindow));
-  const compression = bollingerCompression(
-    takeLast(closes, merged.compressionWindow)
-  );
+  const compression = bollingerCompression(takeLast(closes, merged.compressionWindow));
 
   return {
     realizedVolShort: roundStable(volShort),

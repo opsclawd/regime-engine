@@ -251,9 +251,7 @@ describe("ledger writer", () => {
       });
     } catch (error) {
       expect(error).toBeInstanceOf(LedgerWriteError);
-      expect((error as LedgerWriteError).code).toBe(
-        LEDGER_ERROR_CODES.PLAN_NOT_FOUND
-      );
+      expect((error as LedgerWriteError).code).toBe(LEDGER_ERROR_CODES.PLAN_NOT_FOUND);
     }
 
     store.close();

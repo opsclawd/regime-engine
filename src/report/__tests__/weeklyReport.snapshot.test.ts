@@ -5,10 +5,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { buildApp } from "../../app.js";
 import { buildPlan } from "../../engine/plan/buildPlan.js";
 import { createLedgerStore } from "../../ledger/store.js";
-import {
-  writeExecutionResultLedgerEntry,
-  writePlanLedgerEntry
-} from "../../ledger/writer.js";
+import { writeExecutionResultLedgerEntry, writePlanLedgerEntry } from "../../ledger/writer.js";
 import { generateWeeklyReport } from "../weekly.js";
 import type { PlanRequest } from "../../contract/v1/types.js";
 
@@ -21,10 +18,7 @@ afterEach(() => {
   delete process.env.LEDGER_DB_PATH;
 });
 
-const buildRequestFixture = (
-  asOfUnixMs: number,
-  driftPerBar: number
-): PlanRequest => {
+const buildRequestFixture = (asOfUnixMs: number, driftPerBar: number): PlanRequest => {
   return {
     schemaVersion: "1.0",
     asOfUnixMs,
@@ -91,14 +85,8 @@ const buildRequestFixture = (
 describe("weekly report", () => {
   it("generates deterministic ledger-only markdown + JSON snapshots", () => {
     const store = createLedgerStore(":memory:");
-    const firstRequest = buildRequestFixture(
-      Date.parse("2026-01-05T00:00:00.000Z"),
-      0.5
-    );
-    const secondRequest = buildRequestFixture(
-      Date.parse("2026-01-12T00:00:00.000Z"),
-      -0.4
-    );
+    const firstRequest = buildRequestFixture(Date.parse("2026-01-05T00:00:00.000Z"), 0.5);
+    const secondRequest = buildRequestFixture(Date.parse("2026-01-12T00:00:00.000Z"), -0.4);
 
     const firstPlan = buildPlan(firstRequest);
     const secondPlan = buildPlan(secondRequest);

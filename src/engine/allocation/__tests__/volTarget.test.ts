@@ -52,8 +52,7 @@ describe("volatility targeting overlay", () => {
       {
         code: "ALLOCATION_CAP_APPLIED",
         severity: "WARN",
-        message:
-          "Exposure change was capped by maxDeltaExposureBpsPerDay/maxTurnoverPerDayBps."
+        message: "Exposure change was capped by maxDeltaExposureBpsPerDay/maxTurnoverPerDayBps."
       }
     ]);
   });
