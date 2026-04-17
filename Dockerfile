@@ -30,4 +30,5 @@ ENV NODE_ENV=production
 ENV PORT=8787
 EXPOSE 8787
 
-CMD ["node", "dist/server.js"]
+# Optionally mount a .env file and load it via --env-file
+CMD ["node", "--env-file=.env", "dist/server.js"]
