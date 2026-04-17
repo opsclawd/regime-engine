@@ -72,7 +72,7 @@ npm run harness -- --fixture ./fixtures/demo --from 2026-01-01 --to 2026-01-31
    |---|---|---|
    | `PORT` | — | Railway sets this automatically |
    | `HOST` | `0.0.0.0` | Host binding |
-   | `LEDGER_DB_PATH` | `/data/ledger.sqlite` | SQLite path — **must point to the volume mount** |
+   | `LEDGER_DB_PATH` | `tmp/ledger.sqlite` | **Override to `/data/ledger.sqlite`** to use the persistent volume |
    | `NODE_ENV` | `production` | Node environment |
    | `COMMIT_SHA` | — | Optional, shown in `/version` |
    | `RAILWAY_RUN_UID` | `0` | **Required** — allows volume writes for non-root container |

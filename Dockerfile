@@ -31,7 +31,7 @@ USER app
 
 ENV NODE_ENV=production
 ENV PORT=8787
-ENV LEDGER_DB_PATH=/data/ledger.sqlite
+ENV LEDGER_DB_PATH=tmp/ledger.sqlite
 EXPOSE 8787
 
 # --env-file-if-exists makes .env optional (won't crash if absent)
