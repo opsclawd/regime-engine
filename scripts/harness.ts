@@ -60,10 +60,7 @@ const loadFixtureSteps = (fixturePath: string): HarnessStepFixture[] => {
   return [JSON.parse(readFileSync(resolvedPath, "utf8")) as HarnessStepFixture];
 };
 
-const toActionResults = (
-  actionTypes: string[],
-  status: "SUCCESS" | "FAILED" | "SKIPPED"
-) => {
+const toActionResults = (actionTypes: string[], status: "SUCCESS" | "FAILED" | "SKIPPED") => {
   if (actionTypes.length === 0) {
     return [
       {
@@ -116,9 +113,7 @@ const main = async (): Promise<void> => {
     });
 
     if (planResponse.statusCode !== 200) {
-      throw new Error(
-        `Plan request failed at step ${index + 1}: ${planResponse.body}`
-      );
+      throw new Error(`Plan request failed at step ${index + 1}: ${planResponse.body}`);
     }
 
     const plan = planResponse.json() as {
@@ -162,9 +157,7 @@ const main = async (): Promise<void> => {
     });
 
     if (executionResponse.statusCode !== 200) {
-      throw new Error(
-        `Execution-result failed at step ${index + 1}: ${executionResponse.body}`
-      );
+      throw new Error(`Execution-result failed at step ${index + 1}: ${executionResponse.body}`);
     }
 
     runSummaries.push({

@@ -16,8 +16,7 @@ export const ERROR_DETAIL_CODES = {
   UNKNOWN_KEY: "UNKNOWN_KEY"
 } as const;
 
-export type ErrorDetailCode =
-  (typeof ERROR_DETAIL_CODES)[keyof typeof ERROR_DETAIL_CODES];
+export type ErrorDetailCode = (typeof ERROR_DETAIL_CODES)[keyof typeof ERROR_DETAIL_CODES];
 
 export interface ErrorDetail {
   path: string;
@@ -137,9 +136,7 @@ const zodIssueToDetails = (issue: ZodIssue): ErrorDetail[] => {
   ];
 };
 
-export const unsupportedSchemaVersionError = (
-  receivedVersion: string
-): ContractValidationError => {
+export const unsupportedSchemaVersionError = (receivedVersion: string): ContractValidationError => {
   return new ContractValidationError(400, {
     schemaVersion: SCHEMA_VERSION,
     error: {
@@ -160,9 +157,7 @@ export const validationErrorFromZod = (
   message: string,
   issues: ZodIssue[]
 ): ContractValidationError => {
-  const details = stableSortDetails(
-    issues.flatMap((issue) => zodIssueToDetails(issue))
-  );
+  const details = stableSortDetails(issues.flatMap((issue) => zodIssueToDetails(issue)));
 
   return new ContractValidationError(400, {
     schemaVersion: SCHEMA_VERSION,

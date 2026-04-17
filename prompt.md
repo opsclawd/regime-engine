@@ -2,7 +2,7 @@
 
 You are Codex acting as a senior staff engineer and tech lead. Implement ONLY the **Regime Engine** microservice for a two-service Solana trading system:
 
-- **Regime Engine (this repo):** policy + analytics. Computes regime (UP/DOWN/CHOP), target exposures (SOL/USDC bps), CLMM allowance gate, churn/stand-down constraints, and emits REQUEST_* actions. Maintains an append-only truth ledger and weekly reports.
+- **Regime Engine (this repo):** policy + analytics. Computes regime (UP/DOWN/CHOP), target exposures (SOL/USDC bps), CLMM allowance gate, churn/stand-down constraints, and emits REQUEST\_\* actions. Maintains an append-only truth ledger and weekly reports.
 - **CLMM Autopilot (other microservice):** execution. Owns all on-chain interactions (Orca/Jupiter/Solana), receipts/idempotency, and posts execution results back to Regime Engine.
 
 This repo MUST NOT contain any on-chain execution adapters or Solana RPC logic beyond integration stubs for contract tests.
@@ -13,7 +13,7 @@ Reference blueprint file: 0
 
 ## One-sentence goal
 
-Given candle history + portfolio state + autopilot counters, produce a deterministic Plan (regime + targets + constraints + REQUEST_* actions) and record a truth ledger suitable for audit-grade performance evaluation and scaling decisions.
+Given candle history + portfolio state + autopilot counters, produce a deterministic Plan (regime + targets + constraints + REQUEST\_\* actions) and record a truth ledger suitable for audit-grade performance evaluation and scaling decisions.
 
 ---
 
@@ -65,7 +65,7 @@ Given candle history + portfolio state + autopilot counters, produce a determini
 
 ### Microservice boundary
 
-- Regime Engine outputs REQUEST_* actions only (never claims execution happened).
+- Regime Engine outputs REQUEST\_\* actions only (never claims execution happened).
 - Autopilot is authoritative for:
   - what executed
   - costs (tx fees/priority/slippage)
@@ -100,7 +100,7 @@ Implement these endpoints:
   - `planId`, `planHash`, `asOfUnixMs`
   - `regime: UP|DOWN|CHOP`
   - `targets: { solBps, usdcBps, allowClmm }`
-  - `actions[]`: REQUEST_* and/or HOLD/STAND_DOWN (no imperative “EXECUTE” semantics)
+  - `actions[]`: REQUEST\_\* and/or HOLD/STAND_DOWN (no imperative “EXECUTE” semantics)
   - `constraints`: cooldowns/budgets + notes
   - `reasons[]`: canonical codes with severity
   - `telemetry`: computed indicator values for inspection
@@ -154,12 +154,12 @@ Generate:
 
 ## Process requirements (follow strictly)
 
-1) Planning first
+1. Planning first
 
 - Ensure `plan.md` exists and matches actual milestones.
 - Do not implement beyond the current milestone.
 
-2) Implement milestone-by-milestone
+2. Implement milestone-by-milestone
    For each milestone:
 
 - implement only the scoped deliverables
@@ -168,7 +168,7 @@ Generate:
 - fix failures immediately
 - update documentation and mark milestone complete
 
-3) Quality gates
+3. Quality gates
 
 - Determinism is a blocker: any non-determinism must be fixed before proceeding.
 - Contract drift is a blocker: OpenAPI and contract fixtures must remain correct.

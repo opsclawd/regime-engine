@@ -5,7 +5,7 @@ This document is updated continuously as milestones land so it reflects reality.
 ## What Regime Engine is
 
 - A local-first **policy + analytics** microservice that produces deterministic trading plans.
-- It classifies market regime (**UP / DOWN / CHOP**) with hysteresis, applies churn governance, and outputs target exposures (**SOL/USDC bps**) plus **REQUEST_\*** actions for an external execution service.
+- It classifies market regime (**UP / DOWN / CHOP**) with hysteresis, applies churn governance, and outputs target exposures (**SOL/USDC bps**) plus **REQUEST\_\*** actions for an external execution service.
 - It maintains an append-only **truth ledger** of plan requests, plans, and execution results, and can generate weekly reports from the ledger only.
 
 ## What Regime Engine is not
@@ -846,10 +846,10 @@ Remaining risks:
 
 ## One-command demo
 
-1) `npm run dev`
-2) In another terminal:
+1. `npm run dev`
+2. In another terminal:
    - `npm run harness -- --fixture ./fixtures/demo --from 2026-01-01 --to 2026-01-31`
-3) Inspect:
+3. Inspect:
    - `tmp/reports/weekly-*.md`
    - `tmp/reports/weekly-*.json`
 
@@ -906,7 +906,7 @@ Returns weekly report output built from ledger only:
 ### Contract boundary
 
 - Regime Engine produces **policy intent**:
-  - “what should be attempted next” (REQUEST_* actions)
+  - “what should be attempted next” (REQUEST\_\* actions)
   - “what is allowed” (allowClmm)
   - “how aggressively” (targets + caps + constraints)
 - Autopilot produces **execution truth**:
@@ -916,10 +916,10 @@ Returns weekly report output built from ledger only:
 
 ### Typical loop
 
-1) Autopilot gathers candles + its own internal counters/cooldowns and calls `POST /v1/plan`.
-2) Regime Engine returns a Plan (deterministic, hashed).
-3) Autopilot decides whether to execute and then posts `POST /v1/execution-result`.
-4) Regime Engine logs results and reports on outcomes.
+1. Autopilot gathers candles + its own internal counters/cooldowns and calls `POST /v1/plan`.
+2. Regime Engine returns a Plan (deterministic, hashed).
+3. Autopilot decides whether to execute and then posts `POST /v1/execution-result`.
+4. Regime Engine logs results and reports on outcomes.
 
 ## Repo structure overview (target)
 

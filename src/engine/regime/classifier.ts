@@ -52,11 +52,7 @@ export const classifyRegime = (input: {
   state?: RegimeState;
 }): RegimeDecision => {
   const state = input.state ?? defaultState;
-  const desired = evaluateDesiredRegime(
-    state.current,
-    input.telemetry,
-    input.config
-  );
+  const desired = evaluateDesiredRegime(state.current, input.telemetry, input.config);
 
   if (desired === state.current) {
     return {
@@ -67,9 +63,7 @@ export const classifyRegime = (input: {
         pending: null,
         pendingBars: 0
       },
-      reasons: [
-        reason("REGIME_STABLE", "INFO", `Regime remains ${state.current}.`)
-      ],
+      reasons: [reason("REGIME_STABLE", "INFO", `Regime remains ${state.current}.`)],
       telemetry: input.telemetry
     };
   }

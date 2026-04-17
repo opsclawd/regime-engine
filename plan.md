@@ -476,7 +476,7 @@ Scope:
 - Produce:
   - `planId` (UUIDv7 recommended)
   - `planHash` (canonical)
-  - `reasons[]`, `telemetry{}` and `actions[]` (REQUEST_* only + HOLD/STAND_DOWN)
+  - `reasons[]`, `telemetry{}` and `actions[]` (REQUEST\_\* only + HOLD/STAND_DOWN)
 
 Key files/modules:
 
@@ -696,23 +696,23 @@ Validation run (2026-03-03):
 
 ## Risk register (top technical risks + mitigations)
 
-1) Regime flip-flop (whipsaw) causing churn
+1. Regime flip-flop (whipsaw) causing churn
 
 - Mitigation: hysteresis + confirmBars + minHoldBars + churn governor stand-down.
 
-2) Hidden non-determinism (key order, float formatting)
+2. Hidden non-determinism (key order, float formatting)
 
 - Mitigation: canonical serializer + snapshot tests + explicit sorts for arrays/maps.
 
-3) Contract drift between microservices
+3. Contract drift between microservices
 
 - Mitigation: schemaVersion + OpenAPI + fixture-based contract tests.
 
-4) Ledger integrity under concurrent requests
+4. Ledger integrity under concurrent requests
 
 - Mitigation: SQLite transactions, deterministic writes, indexed uniqueness where appropriate.
 
-5) Misleading reporting due to external execution authority
+5. Misleading reporting due to external execution authority
 
 - Mitigation: Autopilot is authoritative for portfolioAfter and costs; report separates PLAN vs EXECUTION outcomes.
 
@@ -720,14 +720,14 @@ Validation run (2026-03-03):
 
 ## Demo script (2–3 minutes)
 
-1) Start: `npm run dev`
-2) Health check: `GET /health`
-3) POST `/v1/plan` with CHOP fixture:
+1. Start: `npm run dev`
+2. Health check: `GET /health`
+3. POST `/v1/plan` with CHOP fixture:
    - expect `regime=CHOP`, `allowClmm=true`, targets near neutral
-4) POST `/v1/plan` with DOWN fixture:
+4. POST `/v1/plan` with DOWN fixture:
    - expect `regime=DOWN`, `allowClmm=false`, targets shift USDC-heavy
-5) POST simulated `/v1/execution-result` for both
-6) GET `/v1/report/weekly?from=...&to=...`
+5. POST simulated `/v1/execution-result` for both
+6. GET `/v1/report/weekly?from=...&to=...`
    - show regime distribution, churn/stand-down, costs, baseline comparisons
 
 ---
@@ -737,4 +737,4 @@ Validation run (2026-03-03):
 - Pure engine: indicators -> regime -> churn -> allocation -> chop gate -> plan.
 - Deterministic contract: canonical JSON + planHash.
 - Append-only ledger: requests, plans, results; reporting reads ledger only.
-- Microservice boundary: Regime Engine emits REQUEST_*; Autopilot executes and posts results.
+- Microservice boundary: Regime Engine emits REQUEST\_\*; Autopilot executes and posts results.

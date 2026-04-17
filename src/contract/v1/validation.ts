@@ -4,11 +4,7 @@ import {
   unsupportedSchemaVersionError,
   validationErrorFromZod
 } from "../../http/errors.js";
-import {
-  SCHEMA_VERSION,
-  type ExecutionResultRequest,
-  type PlanRequest
-} from "./types.js";
+import { SCHEMA_VERSION, type ExecutionResultRequest, type PlanRequest } from "./types.js";
 
 const unixMsSchema = z.number().int().nonnegative();
 const nonNegativeNumberSchema = z.number().nonnegative();
@@ -158,13 +154,8 @@ const executionResultRequestSchema = z
   })
   .strict();
 
-const maybeUnsupportedVersionError = (
-  raw: unknown
-): ContractValidationError | null => {
-  const schemaVersionProbe = z
-    .object({ schemaVersion: z.string() })
-    .passthrough()
-    .safeParse(raw);
+const maybeUnsupportedVersionError = (raw: unknown): ContractValidationError | null => {
+  const schemaVersionProbe = z.object({ schemaVersion: z.string() }).passthrough().safeParse(raw);
 
   if (!schemaVersionProbe.success) {
     return null;
@@ -177,11 +168,7 @@ const maybeUnsupportedVersionError = (
   return unsupportedSchemaVersionError(schemaVersionProbe.data.schemaVersion);
 };
 
-const parseWithSchema = <T>(
-  raw: unknown,
-  schema: z.ZodType<T>,
-  message: string
-): T => {
+const parseWithSchema = <T>(raw: unknown, schema: z.ZodType<T>, message: string): T => {
   const unsupportedVersion = maybeUnsupportedVersionError(raw);
   if (unsupportedVersion) {
     throw unsupportedVersion;
@@ -199,9 +186,7 @@ export const parsePlanRequest = (raw: unknown): PlanRequest => {
   return parseWithSchema(raw, planRequestSchema, "Invalid /v1/plan request body");
 };
 
-export const parseExecutionResultRequest = (
-  raw: unknown
-): ExecutionResultRequest => {
+export const parseExecutionResultRequest = (raw: unknown): ExecutionResultRequest => {
   return parseWithSchema(
     raw,
     executionResultRequestSchema,

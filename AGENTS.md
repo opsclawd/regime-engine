@@ -95,4 +95,4 @@ Quality gate (must pass before PR):
 - Authority model:
   - Regime Engine is authoritative for “what was planned”
   - Autopilot is authoritative for “what executed” + costs + portfolioAfter
-  - Regime Engine never claims execution happened; only emits REQUEST_* actions
+  - Regime Engine never claims execution happened; only emits REQUEST\_\* actions

@@ -34,12 +34,9 @@ export const applyChurnGovernor = (input: {
 
   const cooldownActive = input.state.cooldownUntilUnixMs > input.asOfUnixMs;
   const standDownActive = input.state.standDownUntilUnixMs > input.asOfUnixMs;
-  const stopoutBudgetExceeded =
-    input.state.stopouts24h >= input.config.maxStopouts24h;
-  const redeployBudgetExceeded =
-    input.state.redeploys24h >= input.config.maxRedeploys24h;
-  const strikeTriggered =
-    input.state.strikeCount >= input.config.standDownTriggerStrikes;
+  const stopoutBudgetExceeded = input.state.stopouts24h >= input.config.maxStopouts24h;
+  const redeployBudgetExceeded = input.state.redeploys24h >= input.config.maxRedeploys24h;
+  const strikeTriggered = input.state.strikeCount >= input.config.standDownTriggerStrikes;
 
   if (cooldownActive) {
     reasons.push({
@@ -120,14 +117,8 @@ export const applyChurnGovernor = (input: {
     constraints: {
       cooldownUntilUnixMs: input.state.cooldownUntilUnixMs,
       standDownUntilUnixMs: computedStandDownUntilUnixMs,
-      stopoutsRemaining: clampRemaining(
-        input.config.maxStopouts24h,
-        input.state.stopouts24h
-      ),
-      redeploysRemaining: clampRemaining(
-        input.config.maxRedeploys24h,
-        input.state.redeploys24h
-      ),
+      stopoutsRemaining: clampRemaining(input.config.maxStopouts24h, input.state.stopouts24h),
+      redeploysRemaining: clampRemaining(input.config.maxRedeploys24h, input.state.redeploys24h),
       notes
     },
     reasons

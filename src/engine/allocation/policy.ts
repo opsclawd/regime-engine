@@ -27,10 +27,7 @@ const clampBps = (value: number): number => {
   return Math.min(10_000, Math.max(0, Math.round(value)));
 };
 
-const desiredByRegime = (
-  regime: Regime,
-  config: AllocationConfig
-): number => {
+const desiredByRegime = (regime: Regime, config: AllocationConfig): number => {
   if (regime === "UP") {
     return config.upSolBps;
   }

@@ -1,8 +1,5 @@
 import type { FastifyReply, FastifyRequest } from "fastify";
-import {
-  SCHEMA_VERSION,
-  type ExecutionResultResponse
-} from "../../contract/v1/types.js";
+import { SCHEMA_VERSION, type ExecutionResultResponse } from "../../contract/v1/types.js";
 import { type LedgerStore } from "../../ledger/store.js";
 import {
   LEDGER_ERROR_CODES,

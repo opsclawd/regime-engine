@@ -42,9 +42,7 @@ const computeScale = (regime: Regime, volRatio: number): number => {
   return 1;
 };
 
-export const applyVolatilityTargeting = (
-  input: VolTargetInput
-): VolTargetDecision => {
+export const applyVolatilityTargeting = (input: VolTargetInput): VolTargetDecision => {
   const scale = computeScale(input.regime, input.volRatio);
   const neutralSolBps = 5_000;
   const tilt = input.targetSolBps - neutralSolBps;
@@ -62,8 +60,7 @@ export const applyVolatilityTargeting = (
     reasons.push({
       code: "ALLOCATION_CAP_APPLIED",
       severity: "WARN",
-      message:
-        "Exposure change was capped by maxDeltaExposureBpsPerDay/maxTurnoverPerDayBps."
+      message: "Exposure change was capped by maxDeltaExposureBpsPerDay/maxTurnoverPerDayBps."
     });
   }
 

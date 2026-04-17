@@ -1,6 +1,6 @@
 # Regime Engine Microservice
 
-Deterministic policy + analytics service for SOL/USDC. This service does not execute trades. It emits REQUEST_* actions, persists truth records, and generates ledger-only weekly reports.
+Deterministic policy + analytics service for SOL/USDC. This service does not execute trades. It emits REQUEST\_\* actions, persists truth records, and generates ledger-only weekly reports.
 
 ## Scope boundary
 
@@ -38,14 +38,19 @@ Server endpoints:
 ## 3-minute local demo
 
 1. Start service:
+
 ```bash
 npm run dev
 ```
+
 2. In a second terminal run harness:
+
 ```bash
 npm run harness -- --fixture ./fixtures/demo --from 2026-01-01 --to 2026-01-31
 ```
+
 3. Inspect artifacts:
+
 - `tmp/reports/weekly-2026-01-01-2026-01-31.md`
 - `tmp/reports/weekly-2026-01-01-2026-01-31.json`
 

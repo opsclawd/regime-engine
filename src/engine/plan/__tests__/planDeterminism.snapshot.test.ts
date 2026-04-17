@@ -93,9 +93,7 @@ describe("plan determinism", () => {
     });
 
     expect(descendingPlan.regime).toBe(ascendingPlan.regime);
-    expect(descendingPlan.telemetry.currentSolBps).toBe(
-      ascendingPlan.telemetry.currentSolBps
-    );
+    expect(descendingPlan.telemetry.currentSolBps).toBe(ascendingPlan.telemetry.currentSolBps);
     expect(descendingPlan.targets).toEqual(ascendingPlan.targets);
     expect(descendingPlan.actions).toEqual(ascendingPlan.actions);
   });
