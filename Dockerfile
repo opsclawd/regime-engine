@@ -24,11 +24,15 @@ RUN npm ci --omit=dev --ignore-scripts && npm cache clean --force
 
 COPY --from=builder /app/dist ./dist
 
+# Pre-create data directory writable by non-root user
+RUN mkdir -p /app/tmp && chown app:app /app/tmp
+
 USER app
 
 ENV NODE_ENV=production
 ENV PORT=8787
+ENV LEDGER_DB_PATH=tmp/ledger.sqlite
 EXPOSE 8787
 
 # Optionally mount a .env file and load it via --env-file
-CMD ["node", "--env-file=.env", "dist/server.js"]
+CMD ["node", "--env-file=.env", "dist/src/server.js"]
