@@ -54,6 +54,26 @@ npm run harness -- --fixture ./fixtures/demo --from 2026-01-01 --to 2026-01-31
 - `tmp/reports/weekly-2026-01-01-2026-01-31.md`
 - `tmp/reports/weekly-2026-01-01-2026-01-31.json`
 
+## Deploying to Railway
+
+1. Push this repo to a Railway project — Railway detects the `railway.toml` config automatically.
+
+2. Add a **persistent volume**:
+   - Name: `ledger`
+   - Mount path: `/data`
+
+3. Set environment variables in the Railway dashboard (or via `.env` file mounted at `/app/.env`):
+
+   | Variable | Default | Description |
+   |---|---|---|
+   | `PORT` | `8787` | HTTP server port (Railway sets this automatically) |
+   | `HOST` | `0.0.0.0` | Host binding |
+   | `LEDGER_DB_PATH` | `/data/ledger.sqlite` | SQLite path — **must point to the volume mount** |
+   | `NODE_ENV` | `production` | Node environment |
+   | `COMMIT_SHA` | — | Optional, shown in `/version` |
+
+4. Railway handles HTTPS termination and SIGTERM — the service shuts down gracefully on deploy.
+
 ## Determinism strategy
 
 - Canonical JSON with sorted object keys.
