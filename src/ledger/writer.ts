@@ -1,12 +1,14 @@
 import { toCanonicalJson } from "../contract/v1/canonical.js";
 import { sha256Hex } from "../contract/v1/hash.js";
-import type { ExecutionResultRequest, PlanRequest, PlanResponse } from "../contract/v1/types.js";
+import type { ClmmExecutionEventRequest, ExecutionResultRequest, PlanRequest, PlanResponse } from "../contract/v1/types.js";
 import { findPlanHashByPlanId, runInTransaction, type LedgerStore } from "./store.js";
 
 export const LEDGER_ERROR_CODES = {
   PLAN_NOT_FOUND: "PLAN_NOT_FOUND",
   PLAN_HASH_MISMATCH: "PLAN_HASH_MISMATCH",
-  EXECUTION_RESULT_CONFLICT: "EXECUTION_RESULT_CONFLICT"
+  EXECUTION_RESULT_CONFLICT: "EXECUTION_RESULT_CONFLICT",
+  SR_LEVEL_BRIEF_CONFLICT: "SR_LEVEL_BRIEF_CONFLICT",
+  CLMM_EXECUTION_EVENT_CONFLICT: "CLMM_EXECUTION_EVENT_CONFLICT"
 } as const;
 
 type LedgerErrorCode = (typeof LEDGER_ERROR_CODES)[keyof typeof LEDGER_ERROR_CODES];
@@ -95,53 +97,100 @@ export const writeExecutionResultLedgerEntry = (
 
   const canonicalExecutionResult = toCanonicalJson(input.executionResult);
 
-  const existingExecutionResult = store.db
-    .prepare(
-      `
-        SELECT result_json
-        FROM execution_results
-        WHERE plan_id = ? AND plan_hash = ?
-        ORDER BY id DESC
-        LIMIT 1
-      `
-    )
-    .get(input.executionResult.planId, input.executionResult.planHash) as
-    | { result_json: string }
-    | undefined;
+  return runInTransaction(store, () => {
+    const existingExecutionResult = store.db
+      .prepare(
+        `
+          SELECT result_json
+          FROM execution_results
+          WHERE plan_id = ? AND plan_hash = ?
+          ORDER BY id DESC
+          LIMIT 1
+        `
+      )
+      .get(input.executionResult.planId, input.executionResult.planHash) as
+      | { result_json: string }
+      | undefined;
 
-  if (existingExecutionResult) {
-    if (existingExecutionResult.result_json === canonicalExecutionResult) {
-      return {
-        inserted: false,
-        idempotent: true
-      };
+    if (existingExecutionResult) {
+      if (existingExecutionResult.result_json === canonicalExecutionResult) {
+        return {
+          inserted: false,
+          idempotent: true
+        };
+      }
+
+      throw new LedgerWriteError(
+        LEDGER_ERROR_CODES.EXECUTION_RESULT_CONFLICT,
+        `Execution result conflict for planId "${input.executionResult.planId}".`
+      );
     }
 
-    throw new LedgerWriteError(
-      LEDGER_ERROR_CODES.EXECUTION_RESULT_CONFLICT,
-      `Execution result conflict for planId "${input.executionResult.planId}".`
-    );
+    store.db
+      .prepare(
+        `
+          INSERT INTO execution_results
+            (plan_id, plan_hash, as_of_unix_ms, result_json, created_at_unix_ms)
+          VALUES
+            (?, ?, ?, ?, ?)
+        `
+      )
+      .run(
+        input.executionResult.planId,
+        input.executionResult.planHash,
+        input.executionResult.asOfUnixMs,
+        canonicalExecutionResult,
+        receivedAtUnixMs
+      );
+
+    return {
+      inserted: true,
+      idempotent: false
+    };
+  });
+};
+
+export const writeClmmExecutionEvent = (
+  store: LedgerStore,
+  input: {
+    event: ClmmExecutionEventRequest;
+    receivedAtUnixMs?: number;
   }
+): { inserted: boolean; idempotent: boolean } => {
+  const receivedAtUnixMs = input.receivedAtUnixMs ?? Date.now();
+  const canonicalEvent = toCanonicalJson(input.event);
 
-  store.db
-    .prepare(
-      `
-        INSERT INTO execution_results
-          (plan_id, plan_hash, as_of_unix_ms, result_json, created_at_unix_ms)
-        VALUES
-          (?, ?, ?, ?, ?)
-      `
-    )
-    .run(
-      input.executionResult.planId,
-      input.executionResult.planHash,
-      input.executionResult.asOfUnixMs,
-      canonicalExecutionResult,
-      receivedAtUnixMs
-    );
+  store.db.exec("BEGIN IMMEDIATE");
+  try {
+    const existing = store.db
+      .prepare(
+        `SELECT event_json FROM clmm_execution_events WHERE correlation_id = ?`
+      )
+      .get(input.event.correlationId) as { event_json: string } | undefined;
 
-  return {
-    inserted: true,
-    idempotent: false
-  };
+    if (existing) {
+      if (existing.event_json === canonicalEvent) {
+        store.db.exec("COMMIT");
+        return { inserted: false, idempotent: true };
+      }
+
+      store.db.exec("ROLLBACK");
+      throw new LedgerWriteError(
+        LEDGER_ERROR_CODES.CLMM_EXECUTION_EVENT_CONFLICT,
+        `CLMM execution event conflict for correlationId "${input.event.correlationId}".`
+      );
+    }
+
+    store.db
+      .prepare(
+        `INSERT INTO clmm_execution_events (correlation_id, event_json, received_at_unix_ms) VALUES (?, ?, ?)`
+      )
+      .run(input.event.correlationId, canonicalEvent, receivedAtUnixMs);
+
+    store.db.exec("COMMIT");
+    return { inserted: true, idempotent: false };
+  } catch (error) {
+    try { store.db.exec("ROLLBACK"); } catch (_rollbackError) { void _rollbackError }
+    throw error;
+  }
 };

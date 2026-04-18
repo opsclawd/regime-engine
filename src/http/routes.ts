@@ -1,9 +1,12 @@
 import type { FastifyInstance } from "fastify";
 import { buildOpenApiDocument } from "./openapi.js";
 import { createLedgerStore } from "../ledger/store.js";
+import { createClmmExecutionResultHandler } from "./handlers/clmmExecutionResult.js";
 import { createExecutionResultHandler } from "./handlers/executionResult.js";
 import { createPlanHandler } from "./handlers/plan.js";
 import { createWeeklyReportHandler } from "./handlers/report.js";
+import { createSrLevelsIngestHandler } from "./handlers/srLevelsIngest.js";
+import { createSrLevelsCurrentHandler } from "./handlers/srLevelsCurrent.js";
 
 export const registerRoutes = (app: FastifyInstance): void => {
   const databasePath =
@@ -38,5 +41,8 @@ export const registerRoutes = (app: FastifyInstance): void => {
 
   app.post("/v1/plan", createPlanHandler(ledgerStore));
   app.post("/v1/execution-result", createExecutionResultHandler(ledgerStore));
+  app.post("/v1/clmm-execution-result", createClmmExecutionResultHandler(ledgerStore));
   app.get("/v1/report/weekly", createWeeklyReportHandler(ledgerStore));
+  app.post("/v1/sr-levels", createSrLevelsIngestHandler(ledgerStore));
+  app.get("/v1/sr-levels/current", createSrLevelsCurrentHandler(ledgerStore));
 };

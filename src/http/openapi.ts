@@ -68,6 +68,25 @@ export const buildOpenApiDocument = () => {
           }
         }
       },
+      "/v1/clmm-execution-result": {
+        post: {
+          summary: "Ingest CLMM execution event",
+          responses: {
+            "200": {
+              description: "CLMM execution event acknowledged"
+            },
+            "400": {
+              description: "Validation error"
+            },
+            "401": {
+              description: "Invalid or missing authentication token"
+            },
+            "409": {
+              description: "CLMM execution event conflict"
+            }
+          }
+        }
+      },
       "/v1/report/weekly": {
         get: {
           summary: "Generate weekly markdown + JSON report from ledger data",
@@ -77,6 +96,41 @@ export const buildOpenApiDocument = () => {
             },
             "400": {
               description: "Invalid date range"
+            }
+          }
+        }
+      },
+      "/v1/sr-levels": {
+        post: {
+          summary: "Ingest S/R level brief",
+          responses: {
+            "201": {
+              description: "S/R level brief ingested"
+            },
+            "200": {
+              description: "Idempotent replay of already-ingested brief"
+            },
+            "400": {
+              description: "Validation error"
+            },
+            "401": {
+              description: "Invalid or missing authentication token"
+            },
+            "409": {
+              description: "S/R level brief conflict"
+            }
+          }
+        }
+      },
+      "/v1/sr-levels/current": {
+        get: {
+          summary: "Get current S/R levels for symbol and source",
+          responses: {
+            "200": {
+              description: "Current S/R levels"
+            },
+            "404": {
+              description: "No S/R level brief found"
             }
           }
         }

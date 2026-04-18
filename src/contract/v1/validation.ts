@@ -4,7 +4,7 @@ import {
   unsupportedSchemaVersionError,
   validationErrorFromZod
 } from "../../http/errors.js";
-import { SCHEMA_VERSION, type ExecutionResultRequest, type PlanRequest } from "./types.js";
+import { SCHEMA_VERSION, type ClmmExecutionEventRequest, type ExecutionResultRequest, type PlanRequest, type SrLevelBriefRequest } from "./types.js";
 
 const unixMsSchema = z.number().int().nonnegative();
 const nonNegativeNumberSchema = z.number().nonnegative();
@@ -194,7 +194,65 @@ export const parseExecutionResultRequest = (raw: unknown): ExecutionResultReques
   );
 };
 
+const srLevelBriefRequestSchema = z
+  .object({
+    source: z.string().min(1),
+    symbol: z.string().min(1),
+    brief: z
+      .object({
+        briefId: z.string().min(1),
+        sourceRecordedAtIso: z.string().optional(),
+        summary: z.string().optional()
+      })
+      .strict(),
+    levels: z
+      .array(
+        z
+          .object({
+            levelType: z.enum(["support", "resistance"]),
+            price: z.number().nonnegative(),
+            timeframe: z.string().optional(),
+            rank: z.string().optional(),
+            invalidation: z.number().nonnegative().optional(),
+            notes: z.string().optional()
+          })
+          .strict()
+      )
+      .min(1)
+  })
+  .strict();
+
+export const parseSrLevelBriefRequest = (raw: unknown): SrLevelBriefRequest => {
+  return parseWithSchema(raw, srLevelBriefRequestSchema, "Invalid /v1/sr-levels request body");
+};
+
+const clmmExecutionEventRequestSchema = z
+  .object({
+    schemaVersion: z.literal(SCHEMA_VERSION),
+    correlationId: z.string().min(1),
+    positionId: z.string().min(1),
+    breachDirection: z.enum(["LowerBoundBreach", "UpperBoundBreach"]),
+    reconciledAtIso: z.string().min(1),
+    txSignature: z.string().min(1),
+    tokenOut: z.enum(["SOL", "USDC"]),
+    status: z.enum(["confirmed", "failed"]),
+    episodeId: z.string().min(1).optional(),
+    previewId: z.string().min(1).optional(),
+    detectedAtIso: z.string().min(1).optional(),
+    amountOutRaw: z.string().min(1).optional(),
+    txFeesUsd: z.number().nonnegative().optional(),
+    priorityFeesUsd: z.number().nonnegative().optional(),
+    slippageUsd: z.number().nonnegative().optional()
+  })
+  .strict();
+
+export const parseClmmExecutionEventRequest = (raw: unknown): ClmmExecutionEventRequest => {
+  return parseWithSchema(raw, clmmExecutionEventRequestSchema, "Invalid /v1/clmm-execution-result request body");
+};
+
 export const schemas = {
   planRequest: planRequestSchema,
-  executionResultRequest: executionResultRequestSchema
+  executionResultRequest: executionResultRequestSchema,
+  srLevelBriefRequest: srLevelBriefRequestSchema,
+  clmmExecutionEventRequest: clmmExecutionEventRequestSchema
 } as const;
