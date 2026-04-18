@@ -1,7 +1,7 @@
 import { toCanonicalJson } from "../contract/v1/canonical.js";
 import { SCHEMA_VERSION } from "../contract/v1/types.js";
 import type { SrLevelBriefRequest, SrLevelsCurrentResponse, SrLevelResponse } from "../contract/v1/types.js";
-import { runInTransaction, type LedgerStore } from "./store.js";
+import type { LedgerStore } from "./store.js";
 import { LEDGER_ERROR_CODES, LedgerWriteError } from "./writer.js";
 
 export const writeSrLevelBrief = (
@@ -12,7 +12,8 @@ export const writeSrLevelBrief = (
   const capturedAtUnixMs = receivedAtUnixMs ?? Date.now();
   const canonicalBrief = toCanonicalJson(input);
 
-  return runInTransaction(store, () => {
+  store.db.exec("BEGIN IMMEDIATE");
+  try {
     const existing = store.db
       .prepare(
         `SELECT brief_json FROM sr_level_briefs WHERE source = ? AND brief_id = ?`
@@ -21,8 +22,10 @@ export const writeSrLevelBrief = (
 
     if (existing) {
       if (existing.brief_json === canonicalBrief) {
+        store.db.exec("COMMIT");
         return { briefId: input.brief.briefId, insertedCount: 0, status: "already_ingested" as const };
       }
+      store.db.exec("ROLLBACK");
       throw new LedgerWriteError(
         LEDGER_ERROR_CODES.SR_LEVEL_BRIEF_CONFLICT,
         `S/R level brief conflict for source "${input.source}", briefId "${input.brief.briefId}".`
@@ -67,8 +70,12 @@ export const writeSrLevelBrief = (
       insertedCount++;
     }
 
+    store.db.exec("COMMIT");
     return { briefId: input.brief.briefId, insertedCount };
-  });
+  } catch (error) {
+    try { store.db.exec("ROLLBACK"); } catch (_rollbackError) { void _rollbackError }
+    throw error;
+  }
 };
 
 const mapLevel = (l: {
