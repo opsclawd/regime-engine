@@ -119,8 +119,9 @@ export const getCurrentSrLevels = (
   }
 
   const levels = store.db
-    .prepare(`SELECT level_type, price, timeframe, rank, invalidation, notes FROM sr_levels WHERE brief_id = ?`)
+    .prepare(`SELECT id, level_type, price, timeframe, rank, invalidation, notes FROM sr_levels WHERE brief_id = ? ORDER BY id`)
     .all(briefRow.id) as Array<{
+      id: number;
       level_type: string;
       price: number;
       timeframe: string | null;
@@ -131,12 +132,12 @@ export const getCurrentSrLevels = (
 
   const supports = levels
     .filter((l) => l.level_type === "support")
-    .sort((a, b) => a.price - b.price)
+    .sort((a, b) => a.price - b.price || a.id - b.id)
     .map(mapLevel);
 
   const resistances = levels
     .filter((l) => l.level_type === "resistance")
-    .sort((a, b) => a.price - b.price)
+    .sort((a, b) => a.price - b.price || a.id - b.id)
     .map(mapLevel);
 
   return {
