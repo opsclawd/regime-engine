@@ -5,7 +5,11 @@ import { getCurrentSrLevels } from "../../ledger/srLevelsWriter.js";
 
 export const createSrLevelsCurrentHandler = (store: LedgerStore) => {
   return async (request: FastifyRequest, reply: FastifyReply) => {
-    const { symbol, source } = request.query as { symbol?: string; source?: string };
+    const query = request.query as Record<string, string | string[] | undefined>;
+    const symbolParam = query["symbol"];
+    const sourceParam = query["source"];
+    const symbol = typeof symbolParam === "string" ? symbolParam : undefined;
+    const source = typeof sourceParam === "string" ? sourceParam : undefined;
 
     if (!symbol || !source) {
       return reply.code(400).send({
