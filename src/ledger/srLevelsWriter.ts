@@ -103,7 +103,7 @@ export const getCurrentSrLevels = (
       `SELECT id, brief_id, source_recorded_at_iso, summary, captured_at_unix_ms
        FROM sr_level_briefs
        WHERE symbol = ? AND source = ?
-       ORDER BY captured_at_unix_ms DESC
+       ORDER BY captured_at_unix_ms DESC, id DESC
        LIMIT 1`
     )
     .get(symbol, source) as {
