@@ -25,6 +25,8 @@ Target layout (keep responsibilities stable even if filenames change):
   - harness runner (fixtures → /v1/plan → /v1/execution-result → report)
 - `fixtures/`
   - deterministic candle sequences + autopilot state progressions
+- `docs/solutions/`
+  - documented solutions to past problems (auth patterns, idempotency, transactions), organized by category with YAML frontmatter (module, tags, problem_type)
 
 Tests:
 
