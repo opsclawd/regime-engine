@@ -8,6 +8,7 @@ import { createLedgerStore, getLedgerCounts } from "../../ledger/store.js";
 const createdDbPaths: string[] = [];
 
 const makePayload = (overrides: Record<string, unknown> = {}) => ({
+  schemaVersion: "1.0",
   source: "clmm-analyzer",
   symbol: "SOLUSDC",
   brief: {

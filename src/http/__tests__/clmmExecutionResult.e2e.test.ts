@@ -47,8 +47,9 @@ describe("/v1/clmm-execution-result e2e", () => {
     });
 
     expect(response.statusCode).toBe(200);
-    const body = response.json() as { ok: boolean; correlationId: string; idempotent?: boolean };
+    const body = response.json() as { schemaVersion: string; ok: boolean; correlationId: string; idempotent?: boolean };
     expect(body).toEqual({
+      schemaVersion: "1.0",
       ok: true,
       correlationId: "corr-001"
     });
@@ -75,6 +76,7 @@ describe("/v1/clmm-execution-result e2e", () => {
     });
     expect(first.statusCode).toBe(200);
     expect(first.json()).toEqual({
+      schemaVersion: "1.0",
       ok: true,
       correlationId: "corr-001"
     });
@@ -87,6 +89,7 @@ describe("/v1/clmm-execution-result e2e", () => {
     });
     expect(second.statusCode).toBe(200);
     expect(second.json()).toEqual({
+      schemaVersion: "1.0",
       ok: true,
       correlationId: "corr-001",
       idempotent: true

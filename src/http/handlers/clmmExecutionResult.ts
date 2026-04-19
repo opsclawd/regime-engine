@@ -19,6 +19,7 @@ export const createClmmExecutionResultHandler = (store: LedgerStore) => {
       const result = writeClmmExecutionEvent(store, { event: body });
 
       const response: ClmmExecutionEventResponse = {
+        schemaVersion: SCHEMA_VERSION,
         ok: true,
         correlationId: body.correlationId,
         idempotent: result.idempotent ? true : undefined

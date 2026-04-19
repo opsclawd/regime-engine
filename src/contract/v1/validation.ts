@@ -196,6 +196,7 @@ export const parseExecutionResultRequest = (raw: unknown): ExecutionResultReques
 
 const srLevelBriefRequestSchema = z
   .object({
+    schemaVersion: z.literal(SCHEMA_VERSION),
     source: z.string().min(1),
     symbol: z.string().min(1),
     brief: z

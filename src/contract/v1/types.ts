@@ -150,6 +150,7 @@ export interface ExecutionResultResponse {
 }
 
 export interface SrLevelBriefRequest {
+  schemaVersion: SchemaVersion;
   source: string;
   symbol: string;
   brief: {
@@ -192,6 +193,7 @@ export interface ClmmExecutionEventRequest {
 }
 
 export interface ClmmExecutionEventResponse {
+  schemaVersion: SchemaVersion;
   ok: true;
   correlationId: string;
   idempotent?: boolean;

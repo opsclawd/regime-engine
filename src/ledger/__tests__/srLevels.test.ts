@@ -6,6 +6,7 @@ import type { SrLevelBriefRequest } from "../../contract/v1/types.js";
 
 const makeBriefRequest = (overrides: Partial<SrLevelBriefRequest> = {}): SrLevelBriefRequest => {
   return {
+    schemaVersion: "1.0",
     source: "clmm-analyzer",
     symbol: "SOLUSDC",
     brief: {

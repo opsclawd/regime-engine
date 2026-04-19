@@ -84,9 +84,10 @@ interface SrLevelBriefRequest {
     invalidation?: number;
     notes?: string;
   }>;
-  capturedAtUnixMs: number;       // client-stamped; server preserves
 }
 ```
+
+`capturedAtUnixMs` is not client-supplied. Regime-engine stamps it on receipt and persists it for latest-brief selection and `capturedAtIso` in the read response.
 
 - `201` on first insert with `{ briefId, insertedCount }`.
 - `200` `{ status: "already_ingested" }` when a byte-identical payload arrives again for the same `(source, briefId)`.
