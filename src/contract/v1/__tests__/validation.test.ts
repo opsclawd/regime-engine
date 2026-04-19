@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { ContractValidationError, ERROR_CODES } from "../../../http/errors.js";
-import { parseExecutionResultRequest, parsePlanRequest } from "../validation.js";
+import { parseExecutionResultRequest, parsePlanRequest, parseSrLevelBriefRequest } from "../validation.js";
 import { SCHEMA_VERSION, type PlanRequest } from "../types.js";
 
 const validPlanRequestFixture: PlanRequest = {
@@ -87,6 +87,21 @@ const validExecutionResultFixture = {
   }
 } as const;
 
+const validSrLevelBriefFixture = {
+  schemaVersion: SCHEMA_VERSION,
+  source: "clmm-analyzer",
+  symbol: "SOLUSDC",
+  brief: {
+    briefId: "brief-001",
+    sourceRecordedAtIso: "2025-04-17T12:00:00Z",
+    summary: "Test S/R levels"
+  },
+  levels: [
+    { levelType: "support", price: 140.5 },
+    { levelType: "resistance", price: 180.25, rank: "strong", timeframe: "1h" }
+  ]
+} as const;
+
 const captureValidationError = (operation: () => unknown) => {
   try {
     operation();
@@ -125,6 +140,11 @@ describe("v1 validation", () => {
   it("accepts valid /v1/execution-result fixture", () => {
     const parsed = parseExecutionResultRequest(validExecutionResultFixture);
     expect(parsed).toEqual(validExecutionResultFixture);
+  });
+
+  it("accepts valid /v1/sr-levels brief fixture", () => {
+    const parsed = parseSrLevelBriefRequest(validSrLevelBriefFixture);
+    expect(parsed).toEqual(validSrLevelBriefFixture);
   });
 
   it("returns canonical error for unsupported schema version", () => {

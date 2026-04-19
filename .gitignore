@@ -3,3 +3,5 @@ dist
 coverage
 tmp
 *.log
+.codex
+.worktrees/

@@ -51,11 +51,20 @@ export const getLedgerCounts = (store: LedgerStore) => {
   const executionResults =
     (store.db.prepare("SELECT COUNT(*) AS count FROM execution_results").get() as { count: number })
       .count ?? 0;
+  const srLevelBriefs =
+    (store.db.prepare("SELECT COUNT(*) AS count FROM sr_level_briefs").get() as { count: number }).count ?? 0;
+  const srLevels =
+    (store.db.prepare("SELECT COUNT(*) AS count FROM sr_levels").get() as { count: number }).count ?? 0;
+  const clmmExecutionEvents =
+    (store.db.prepare("SELECT COUNT(*) AS count FROM clmm_execution_events").get() as { count: number }).count ?? 0;
 
   return {
     planRequests,
     plans,
-    executionResults
+    executionResults,
+    srLevelBriefs,
+    srLevels,
+    clmmExecutionEvents
   };
 };
 

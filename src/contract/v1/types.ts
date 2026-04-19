@@ -148,3 +148,73 @@ export interface ExecutionResultResponse {
   linkedPlanHash: string;
   idempotent?: boolean;
 }
+
+export interface SrLevelBriefRequest {
+  schemaVersion: SchemaVersion;
+  source: string;
+  symbol: string;
+  brief: {
+    briefId: string;
+    sourceRecordedAtIso?: string;
+    summary?: string;
+  };
+  levels: Array<{
+    levelType: "support" | "resistance";
+    price: number;
+    timeframe?: string;
+    rank?: string;
+    invalidation?: number;
+    notes?: string;
+  }>;
+}
+
+export interface SrLevelBriefIngestResponse {
+  briefId: string;
+  insertedCount: number;
+  status?: "already_ingested";
+}
+
+export interface ClmmExecutionEventRequest {
+  schemaVersion: SchemaVersion;
+  correlationId: string;
+  positionId: string;
+  breachDirection: "LowerBoundBreach" | "UpperBoundBreach";
+  reconciledAtIso: string;
+  txSignature: string;
+  tokenOut: "SOL" | "USDC";
+  status: "confirmed" | "failed";
+  episodeId?: string;
+  previewId?: string;
+  detectedAtIso?: string;
+  amountOutRaw?: string;
+  txFeesUsd?: number;
+  priorityFeesUsd?: number;
+  slippageUsd?: number;
+}
+
+export interface ClmmExecutionEventResponse {
+  schemaVersion: SchemaVersion;
+  ok: true;
+  correlationId: string;
+  idempotent?: boolean;
+}
+
+export interface SrLevelResponse {
+  price: number;
+  rank?: string;
+  timeframe?: string;
+  invalidation?: number;
+  notes?: string;
+}
+
+export interface SrLevelsCurrentResponse {
+  schemaVersion: SchemaVersion;
+  source: string;
+  symbol: string;
+  briefId: string;
+  sourceRecordedAtIso: string | null;
+  summary: string | null;
+  capturedAtIso: string;
+  supports: SrLevelResponse[];
+  resistances: SrLevelResponse[];
+}

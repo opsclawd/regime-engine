@@ -112,7 +112,10 @@ describe("HTTP route contract stubs", () => {
         openapi: "3.1.0",
         paths: expect.objectContaining({
           "/v1/plan": expect.any(Object),
-          "/v1/execution-result": expect.any(Object)
+          "/v1/execution-result": expect.any(Object),
+          "/v1/clmm-execution-result": expect.any(Object),
+          "/v1/sr-levels": expect.any(Object),
+          "/v1/sr-levels/current": expect.any(Object)
         })
       })
     );
@@ -121,6 +124,14 @@ describe("HTTP route contract stubs", () => {
         "200": expect.any(Object),
         "400": expect.any(Object),
         "404": expect.any(Object),
+        "409": expect.any(Object)
+      })
+    );
+    expect(document.paths["/v1/clmm-execution-result"].post.responses).toEqual(
+      expect.objectContaining({
+        "200": expect.any(Object),
+        "400": expect.any(Object),
+        "401": expect.any(Object),
         "409": expect.any(Object)
       })
     );

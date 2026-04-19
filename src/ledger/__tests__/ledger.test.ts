@@ -145,7 +145,10 @@ describe("ledger writer", () => {
     expect(getLedgerCounts(store)).toEqual({
       planRequests: 1,
       plans: 1,
-      executionResults: 0
+      executionResults: 0,
+      srLevelBriefs: 0,
+      srLevels: 0,
+      clmmExecutionEvents: 0
     });
     store.close();
   });
@@ -189,7 +192,10 @@ describe("ledger writer", () => {
     expect(getLedgerCounts(store)).toEqual({
       planRequests: 1,
       plans: 1,
-      executionResults: 1
+      executionResults: 1,
+      srLevelBriefs: 0,
+      srLevels: 0,
+      clmmExecutionEvents: 0
     });
     store.close();
   });
@@ -312,7 +318,10 @@ describe.sequential("ledger wiring via HTTP stubs", () => {
     expect(getLedgerCounts(verificationStore)).toEqual({
       planRequests: 1,
       plans: 1,
-      executionResults: 1
+      executionResults: 1,
+      srLevelBriefs: 0,
+      srLevels: 0,
+      clmmExecutionEvents: 0
     });
     verificationStore.close();
   });

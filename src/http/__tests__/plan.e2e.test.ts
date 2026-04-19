@@ -112,7 +112,10 @@ describe("/v1/plan e2e", () => {
     expect(getLedgerCounts(verificationStore)).toEqual({
       planRequests: 1,
       plans: 1,
-      executionResults: 0
+      executionResults: 0,
+      srLevelBriefs: 0,
+      srLevels: 0,
+      clmmExecutionEvents: 0
     });
     verificationStore.close();
   });
