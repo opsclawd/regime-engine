@@ -129,6 +129,9 @@ export const buildOpenApiDocument = () => {
             "200": {
               description: "Current S/R levels"
             },
+            "400": {
+              description: "Missing required query parameters"
+            },
             "404": {
               description: "No S/R level brief found"
             }

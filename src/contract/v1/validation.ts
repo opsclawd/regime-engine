@@ -201,7 +201,7 @@ const srLevelBriefRequestSchema = z
     brief: z
       .object({
         briefId: z.string().min(1),
-        sourceRecordedAtIso: z.string().optional(),
+        sourceRecordedAtIso: z.string().datetime().optional(),
         summary: z.string().optional()
       })
       .strict(),
