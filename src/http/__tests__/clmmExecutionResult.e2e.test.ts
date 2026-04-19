@@ -202,4 +202,38 @@ describe("/v1/clmm-execution-result e2e", () => {
 
     await app.close();
   });
+
+  it("breachDirection/tokenOut mismatch returns 400", async () => {
+    process.env.LEDGER_DB_PATH = ":memory:";
+    process.env.CLMM_INTERNAL_TOKEN = "test-clmm-token";
+
+    const app = buildApp();
+
+    const response = await app.inject({
+      method: "POST",
+      url: "/v1/clmm-execution-result",
+      headers: { "X-CLMM-Internal-Token": "test-clmm-token" },
+      payload: makeClmmEventPayload({ breachDirection: "LowerBoundBreach", tokenOut: "SOL" })
+    });
+    expect(response.statusCode).toBe(400);
+
+    await app.close();
+  });
+
+  it("UpperBoundBreach with tokenOut SOL is accepted", async () => {
+    process.env.LEDGER_DB_PATH = ":memory:";
+    process.env.CLMM_INTERNAL_TOKEN = "test-clmm-token";
+
+    const app = buildApp();
+
+    const response = await app.inject({
+      method: "POST",
+      url: "/v1/clmm-execution-result",
+      headers: { "X-CLMM-Internal-Token": "test-clmm-token" },
+      payload: makeClmmEventPayload({ breachDirection: "UpperBoundBreach", tokenOut: "SOL" })
+    });
+    expect(response.statusCode).toBe(200);
+
+    await app.close();
+  });
 });

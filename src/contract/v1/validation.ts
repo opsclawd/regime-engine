@@ -244,7 +244,15 @@ const clmmExecutionEventRequestSchema = z
     priorityFeesUsd: z.number().nonnegative().optional(),
     slippageUsd: z.number().nonnegative().optional()
   })
-  .strict();
+  .strict()
+  .refine(
+    (data) => {
+      if (data.breachDirection === "LowerBoundBreach" && data.tokenOut !== "USDC") return false;
+      if (data.breachDirection === "UpperBoundBreach" && data.tokenOut !== "SOL") return false;
+      return true;
+    },
+    { message: "breachDirection/tokenOut mismatch: LowerBoundBreach requires tokenOut USDC, UpperBoundBreach requires tokenOut SOL" }
+  );
 
 export const parseClmmExecutionEventRequest = (raw: unknown): ClmmExecutionEventRequest => {
   return parseWithSchema(raw, clmmExecutionEventRequestSchema, "Invalid /v1/clmm-execution-result request body");
