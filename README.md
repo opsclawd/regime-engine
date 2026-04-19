@@ -22,7 +22,10 @@ Server endpoints:
 - `GET /v1/openapi.json`
 - `POST /v1/plan`
 - `POST /v1/execution-result`
+- `POST /v1/clmm-execution-result`
 - `GET /v1/report/weekly?from=YYYY-MM-DD&to=YYYY-MM-DD`
+- `POST /v1/sr-levels`
+- `GET /v1/sr-levels/current?symbol=SYMBOL&source=SOURCE`
 
 ## Commands
 
@@ -75,6 +78,8 @@ npm run harness -- --fixture ./fixtures/demo --from 2026-01-01 --to 2026-01-31
    | `LEDGER_DB_PATH` | `tmp/ledger.sqlite` | **Override to `/data/ledger.sqlite`** to use the persistent volume |
    | `NODE_ENV` | `production` | Node environment |
    | `COMMIT_SHA` | — | Optional, shown in `/version` |
+   | `OPENCLAW_INGEST_TOKEN` | — | Required shared secret for `POST /v1/sr-levels` |
+   | `CLMM_INTERNAL_TOKEN` | — | Required shared secret for `POST /v1/clmm-execution-result` |
    | `RAILWAY_RUN_UID` | `0` | **Required** — allows volume writes for non-root container |
 
 5. Railway handles HTTPS termination and SIGTERM — the service shuts down gracefully on deploy.
