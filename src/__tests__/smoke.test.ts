@@ -66,3 +66,22 @@ describe("GET /v1/openapi.json", () => {
     );
   });
 });
+
+describe("server HOST handling", () => {
+  it("boots when HOST is set to dual-stack '::'", async () => {
+    const previous = process.env.HOST;
+    process.env.HOST = "::";
+    try {
+      const fresh = buildApp();
+      const response = await fresh.inject({ method: "GET", url: "/health" });
+      expect(response.statusCode).toBe(200);
+      await fresh.close();
+    } finally {
+      if (previous === undefined) {
+        delete process.env.HOST;
+      } else {
+        process.env.HOST = previous;
+      }
+    }
+  });
+});

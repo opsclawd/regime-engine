@@ -1,6 +1,8 @@
 import { buildApp } from "./app.js";
 
 const port = Number(process.env.PORT ?? 8787);
+// Default to 0.0.0.0 for local dev. Production deploys (Railway) must set HOST=::
+// so Fastify binds dual-stack and is reachable over Railway private networking.
 const host = process.env.HOST ?? "0.0.0.0";
 const SHUTDOWN_TIMEOUT_MS = 10_000;
 
