@@ -1,5 +1,11 @@
 import { afterEach, describe, expect, it } from "vitest";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { buildApp } from "../app.js";
+import {
+  parseSrLevelBriefRequest,
+  parseClmmExecutionEventRequest
+} from "../contract/v1/validation.js";
 
 let app = buildApp();
 
@@ -17,24 +23,35 @@ describe("GET /health", () => {
 });
 
 describe("GET /version", () => {
-  it("returns service identity", async () => {
-    const response = await app.inject({ method: "GET", url: "/version" });
-    expect(response.statusCode).toBe(200);
-    const body = response.json() as { name: string; version: string; commit?: string };
-    expect(body.name).toBe("regime-engine");
-    expect(typeof body.version).toBe("string");
-    expect(body.version.length).toBeGreaterThan(0);
+  it("returns service identity without commit when COMMIT_SHA unset", async () => {
+    const previous = process.env.COMMIT_SHA;
+    delete process.env.COMMIT_SHA;
+    try {
+      const fresh = buildApp();
+      const response = await fresh.inject({ method: "GET", url: "/version" });
+      expect(response.statusCode).toBe(200);
+      const body = response.json() as { name: string; version: string; commit?: string };
+      expect(body.name).toBe("regime-engine");
+      expect(typeof body.version).toBe("string");
+      expect(body.version.length).toBeGreaterThan(0);
+      expect(body).not.toHaveProperty("commit");
+      await fresh.close();
+    } finally {
+      if (previous !== undefined) {
+        process.env.COMMIT_SHA = previous;
+      }
+    }
   });
 
   it("includes commit SHA when COMMIT_SHA is set", async () => {
     const previous = process.env.COMMIT_SHA;
     process.env.COMMIT_SHA = "abcdef0";
     try {
-      await app.close();
-      app = buildApp();
-      const response = await app.inject({ method: "GET", url: "/version" });
+      const fresh = buildApp();
+      const response = await fresh.inject({ method: "GET", url: "/version" });
       expect(response.statusCode).toBe(200);
       expect(response.json()).toMatchObject({ commit: "abcdef0" });
+      await fresh.close();
     } finally {
       if (previous === undefined) {
         delete process.env.COMMIT_SHA;
@@ -52,10 +69,12 @@ describe("GET /v1/openapi.json", () => {
     const doc = response.json() as { openapi: string; paths: Record<string, unknown> };
     expect(doc.openapi).toMatch(/^3\./);
     const paths = Object.keys(doc.paths);
+    expect(paths).toHaveLength(9);
     expect(paths).toEqual(
       expect.arrayContaining([
         "/health",
         "/version",
+        "/v1/openapi.json",
         "/v1/plan",
         "/v1/execution-result",
         "/v1/clmm-execution-result",
@@ -83,5 +102,23 @@ describe("server HOST handling", () => {
         process.env.HOST = previous;
       }
     }
+  });
+});
+
+describe("fixture files validate against Zod schemas", () => {
+  const fixturesDir = join(import.meta.dirname, "../../fixtures");
+
+  it("sr-levels-brief.json parses through parseSrLevelBriefRequest", () => {
+    const raw = JSON.parse(readFileSync(join(fixturesDir, "sr-levels-brief.json"), "utf8"));
+    const result = parseSrLevelBriefRequest(raw);
+    expect(result.source).toBe("mco");
+    expect(result.levels).toHaveLength(4);
+  });
+
+  it("clmm-execution-event.json parses through parseClmmExecutionEventRequest", () => {
+    const raw = JSON.parse(readFileSync(join(fixturesDir, "clmm-execution-event.json"), "utf8"));
+    const result = parseClmmExecutionEventRequest(raw);
+    expect(result.status).toBe("confirmed");
+    expect(result.correlationId).toBe("runbook-attempt-2026-04-19-001");
   });
 });

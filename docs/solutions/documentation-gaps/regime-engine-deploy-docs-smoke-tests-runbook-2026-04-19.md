@@ -2,7 +2,7 @@
 title: "Regime-engine deploy-readiness gap: closing the loop with smoke tests, fixtures, runbook, and architecture docs"
 date: 2026-04-19
 category: documentation-gaps
-module: engine
+module: regime-engine
 problem_type: documentation_gap
 component: documentation
 severity: medium
