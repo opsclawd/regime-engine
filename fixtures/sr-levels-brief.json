@@ -1,0 +1,39 @@
+{
+  "schemaVersion": "1.0",
+  "source": "mco",
+  "symbol": "SOL/USDC",
+  "brief": {
+    "briefId": "runbook-smoke-2026-04-19",
+    "sourceRecordedAtIso": "2026-04-19T00:00:00.000Z",
+    "summary": "Runbook smoke fixture; not a real MCO brief."
+  },
+  "levels": [
+    {
+      "levelType": "support",
+      "price": 135.50,
+      "timeframe": "4h",
+      "rank": "primary",
+      "invalidation": 132.00,
+      "notes": "runbook fixture"
+    },
+    {
+      "levelType": "support",
+      "price": 128.75,
+      "timeframe": "1d",
+      "rank": "secondary"
+    },
+    {
+      "levelType": "resistance",
+      "price": 152.25,
+      "timeframe": "4h",
+      "rank": "primary",
+      "invalidation": 155.00
+    },
+    {
+      "levelType": "resistance",
+      "price": 161.00,
+      "timeframe": "1d",
+      "rank": "secondary"
+    }
+  ]
+}

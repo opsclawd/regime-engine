@@ -1,0 +1,17 @@
+{
+  "schemaVersion": "1.0",
+  "correlationId": "runbook-attempt-2026-04-19-001",
+  "positionId": "runbook-position-sol-usdc-01",
+  "breachDirection": "LowerBoundBreach",
+  "reconciledAtIso": "2026-04-19T00:10:00.000Z",
+  "txSignature": "RunbookTxSig1111111111111111111111111111111111111111111111111111",
+  "tokenOut": "USDC",
+  "status": "confirmed",
+  "episodeId": "runbook-episode-2026-04-19",
+  "previewId": "runbook-preview-2026-04-19",
+  "detectedAtIso": "2026-04-19T00:09:45.000Z",
+  "amountOutRaw": "100000000",
+  "txFeesUsd": 0.02,
+  "priorityFeesUsd": 0.01,
+  "slippageUsd": 0.05
+}
