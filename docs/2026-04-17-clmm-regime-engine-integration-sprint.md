@@ -4,6 +4,29 @@
 **Status:** Draft
 **Budget:** 18-26 hours across 2 weekends. If weekend 1 (items 1-4) doesn't land by end of Sunday, pause the sprint — do not extend into weekday time.
 
+## Resolved assumptions (Unit 6 addendum, 2026-04-19)
+
+The implementation plan at `docs/plans/2026-04-17-002-opus-clmm-regime-engine-integration-plan.md`
+is the executable decomposition of this sprint. Units 1-5 have shipped on `main`. Where this
+sprint doc's assumptions diverge from what was actually built, the implementation wins:
+
+- **Storage engine:** regime-engine is Fastify + Zod + `node:sqlite` (native). Not Postgres, not
+  Drizzle. The `CREATE SCHEMA regime_engine` DDL drafted here is non-applicable — real DDL is
+  in `src/ledger/schema.sql` and is documented in the plan §5.4.
+- **CLMM ingest route:** CLMM posts to a new endpoint, `POST /v1/clmm-execution-result`
+  (token-guarded by `X-CLMM-Internal-Token`). It does NOT reuse `POST /v1/execution-result`,
+  which is plan-linked and would return `PLAN_NOT_FOUND` for CLMM events.
+- **Wire `status`:** restricted to `"confirmed" | "failed"` on the wire. Transient states
+  (`partial`, `pending`, `submitted`) are NOT notified — they would 409-churn when the final
+  state arrives later.
+- **"Current S/R" model:** append-only ledger + latest-brief query (`ORDER BY
+  captured_at_unix_ms DESC, id DESC LIMIT 1`). There is no `superseded_at` column. Corrections
+  flow via a new brief, not a mutation.
+- **Volume mount path:** `/data` (declared by `railway.toml`, documented in the Railway deploy
+  runbook at `docs/runbooks/railway-deploy.md`). Local/dev default is still `tmp/ledger.sqlite`.
+- **Weekly report integration with CLMM events:** deferred. Events accumulate in
+  `clmm_execution_events` for post-shelf analytics; `src/report/weekly.ts` is untouched.
+
 ---
 
 ## Problem
