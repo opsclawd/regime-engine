@@ -31,6 +31,9 @@ USER app
 
 ENV NODE_ENV=production
 ENV PORT=8787
+# Local/dev default. Production deploys MUST override LEDGER_DB_PATH to a path
+# backed by a persistent volume (Railway: /data/ledger.sqlite with the volume
+# mounted at /data — see railway.toml and docs/runbooks/railway-deploy.md).
 ENV LEDGER_DB_PATH=tmp/ledger.sqlite
 EXPOSE 8787
 

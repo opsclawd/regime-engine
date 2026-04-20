@@ -77,7 +77,9 @@ describe("srLevelsWriter", () => {
       levels: [{ levelType: "support", price: 999 }]
     });
 
-    expect(() => writeSrLevelBrief(store, conflictInput, 1_700_000_001_000)).toThrow(LedgerWriteError);
+    expect(() => writeSrLevelBrief(store, conflictInput, 1_700_000_001_000)).toThrow(
+      LedgerWriteError
+    );
 
     try {
       writeSrLevelBrief(store, conflictInput, 1_700_000_002_000);
@@ -137,10 +139,21 @@ describe("srLevelsWriter", () => {
     writeSrLevelBrief(
       store,
       makeBriefRequest({
-        brief: { briefId: "brief-full", sourceRecordedAtIso: "2025-04-17T10:00:00Z", summary: "Market turning bullish" },
+        brief: {
+          briefId: "brief-full",
+          sourceRecordedAtIso: "2025-04-17T10:00:00Z",
+          summary: "Market turning bullish"
+        },
         levels: [
           { levelType: "support", price: 130, invalidation: 120, notes: "Key demand zone" },
-          { levelType: "resistance", price: 190, rank: "major", timeframe: "4h", invalidation: 200, notes: "Double top" }
+          {
+            levelType: "resistance",
+            price: 190,
+            rank: "major",
+            timeframe: "4h",
+            invalidation: 200,
+            notes: "Double top"
+          }
         ]
       }),
       1_700_000_000_000
@@ -155,7 +168,9 @@ describe("srLevelsWriter", () => {
     expect(result!.summary).toBe("Market turning bullish");
     expect(result!.capturedAtIso).toBe(new Date(1_700_000_000_000).toISOString());
     expect(result!.supports).toEqual([{ price: 130, invalidation: 120, notes: "Key demand zone" }]);
-    expect(result!.resistances).toEqual([{ price: 190, rank: "major", timeframe: "4h", invalidation: 200, notes: "Double top" }]);
+    expect(result!.resistances).toEqual([
+      { price: 190, rank: "major", timeframe: "4h", invalidation: 200, notes: "Double top" }
+    ]);
   });
 
   it("rolls back brief insertion when level insertion fails mid-transaction", () => {
@@ -170,7 +185,9 @@ describe("srLevelsWriter", () => {
       ]
     };
 
-    expect(() => writeSrLevelBrief(store, levelsWithInvalidType as SrLevelBriefRequest, 1_700_000_000_000)).toThrow();
+    expect(() =>
+      writeSrLevelBrief(store, levelsWithInvalidType as SrLevelBriefRequest, 1_700_000_000_000)
+    ).toThrow();
 
     expect(getLedgerCounts(store)).toEqual(
       expect.objectContaining({

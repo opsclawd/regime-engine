@@ -32,21 +32,21 @@ Facts the plan is anchored to, verified by reading current `main`:
 
 ## 3. Requirements trace
 
-| ID | Requirement | Covered by |
-|---|---|---|
-| R1 | Persist OpenClaw S/R levels by (symbol, source) | Unit 1 |
-| R2 | Preserve history; derive current set via query | Unit 1, 2 |
-| R3 | Read path for current SOL/USDC + mco levels | Unit 2, 5 |
-| R4 | CLMM surfaces current levels read-only with freshness + empty state | Unit 5 |
-| R5 | CLMM posts execution event after terminal state | Unit 4 |
-| R6 | Notification is best-effort, non-blocking | Unit 4 |
-| R7 | Event carries enough context for analytics | Unit 3 (contract), Unit 4 (payload) |
-| R8 | Replay of same correlationId is idempotent | Unit 3 |
-| R9 | Both services deployed in one Railway project | Unit 6 |
-| R10 | Minimum public surface; internal routes guarded | Unit 2, 3, 6 |
-| R11 | Shared-secret protection for write routes | Unit 2, 3 |
-| R12 | One manual end-to-end validation | Unit 6 |
-| R13 | Live $100 SOL/USDC position after validation | Unit 6 (post-sprint gate) |
+| ID  | Requirement                                                         | Covered by                          |
+| --- | ------------------------------------------------------------------- | ----------------------------------- |
+| R1  | Persist OpenClaw S/R levels by (symbol, source)                     | Unit 1                              |
+| R2  | Preserve history; derive current set via query                      | Unit 1, 2                           |
+| R3  | Read path for current SOL/USDC + mco levels                         | Unit 2, 5                           |
+| R4  | CLMM surfaces current levels read-only with freshness + empty state | Unit 5                              |
+| R5  | CLMM posts execution event after terminal state                     | Unit 4                              |
+| R6  | Notification is best-effort, non-blocking                           | Unit 4                              |
+| R7  | Event carries enough context for analytics                          | Unit 3 (contract), Unit 4 (payload) |
+| R8  | Replay of same correlationId is idempotent                          | Unit 3                              |
+| R9  | Both services deployed in one Railway project                       | Unit 6                              |
+| R10 | Minimum public surface; internal routes guarded                     | Unit 2, 3, 6                        |
+| R11 | Shared-secret protection for write routes                           | Unit 2, 3                           |
+| R12 | One manual end-to-end validation                                    | Unit 6                              |
+| R13 | Live $100 SOL/USDC position after validation                        | Unit 6 (post-sprint gate)           |
 
 ## 4. Architecture at a glance
 
@@ -69,8 +69,8 @@ Public endpoints: `GET /health`, `GET /version`, `GET /v1/openapi.json`, `GET /v
 ```ts
 interface SrLevelBriefRequest {
   schemaVersion: "1.0";
-  source: string;                 // "mco" in this sprint
-  symbol: string;                 // "SOL/USDC"
+  source: string; // "mco" in this sprint
+  symbol: string; // "SOL/USDC"
   brief: {
     briefId: string;
     sourceRecordedAtIso?: string;
@@ -104,7 +104,7 @@ interface SrLevelsCurrentResponse {
   briefId: string;
   sourceRecordedAtIso: string | null;
   summary: string | null;
-  capturedAtIso: string;          // ISO derived from capturedAtUnixMs
+  capturedAtIso: string; // ISO derived from capturedAtUnixMs
   supports: SrLevel[];
   resistances: SrLevel[];
 }
@@ -124,17 +124,17 @@ interface SrLevel {
 ```ts
 interface ClmmExecutionEventRequest {
   schemaVersion: "1.0";
-  correlationId: string;                    // CLMM attemptId; primary idempotency key
+  correlationId: string; // CLMM attemptId; primary idempotency key
   positionId: string;
   breachDirection: "LowerBoundBreach" | "UpperBoundBreach";
   reconciledAtIso: string;
   txSignature: string;
   tokenOut: "SOL" | "USDC";
-  status: "confirmed" | "failed";           // terminal only
+  status: "confirmed" | "failed"; // terminal only
   episodeId?: string;
   previewId?: string;
   detectedAtIso?: string;
-  amountOutRaw?: string;                    // string preserves precision
+  amountOutRaw?: string; // string preserves precision
   txFeesUsd?: number;
   priorityFeesUsd?: number;
   slippageUsd?: number;
@@ -198,16 +198,19 @@ Ordering matches the merged spec. Each unit has: files touched, approach, test s
 ### Unit 1 — S/R ledger persistence (regime-engine, 2h)
 
 Files:
+
 - Modify `src/ledger/schema.sql` — append §5.4 DDL only. Do not duplicate existing DDL statements.
 - Create `src/ledger/srLevels.ts` — exports `writeSrLevelBrief`, `getCurrentSrLevels`, `SrLevelsWriteError`, `SR_LEVELS_ERROR_CODES = { BRIEF_CONFLICT: "BRIEF_CONFLICT" }`.
 - Test `src/ledger/__tests__/srLevels.test.ts`.
 
 Approach:
+
 - `writeSrLevelBrief` does `BEGIN IMMEDIATE` for write-lock + check-then-insert. Inside the transaction: `SELECT brief_json FROM sr_level_briefs WHERE source = ? AND brief_id = ?`. If found and canonical-equal → idempotent. If found and differs → throw `BRIEF_CONFLICT`. Else insert brief row, grab `lastInsertRowid`, insert each level. Commit.
 - `getCurrentSrLevels` joins latest brief by `ORDER BY captured_at_unix_ms DESC, id DESC LIMIT 1` to levels via `LEFT JOIN`, returns `null` if no brief.
 - Canonical JSON via existing `toCanonicalJson`.
 
 Tests:
+
 - Insert brief with N levels → one brief row, N level rows, `insertedCount === N`.
 - Second insert with identical payload → `{ idempotent: true, insertedCount: 0 }`.
 - Second insert with same `(source, briefId)` but different levels → `BRIEF_CONFLICT`.
@@ -220,6 +223,7 @@ Acceptance: tests pass; existing plan/execution ledger tests unaffected.
 ### Unit 2 — S/R HTTP surface (regime-engine, 2.5h)
 
 Files:
+
 - Modify `src/contract/v1/types.ts` — add `SrLevelBriefRequest`, `SrLevelBriefResponse`, `SrLevelsCurrentResponse`.
 - Modify `src/contract/v1/validation.ts` — add Zod schemas and `parseSrLevelBriefRequest`, `parseSrLevelsCurrentQuery`.
 - Create `src/http/auth.ts` — `requireSharedSecret(request, headerName, envVar)`. Uses `timingSafeEqual` for constant-time compare. Throws `401` on bad/missing token and **500** when `envVar` is unset (misconfig ≠ bad request).
@@ -232,11 +236,13 @@ Files:
 - Modify `src/http/__tests__/routes.contract.test.ts` — include new routes.
 
 Approach:
+
 - Ingest handler: `requireSharedSecret(request, "X-Ingest-Token", "OPENCLAW_INGEST_TOKEN")` → `parseSrLevelBriefRequest` → `writeSrLevelBrief` → `201 { briefId, insertedCount }` or `200 { status: "already_ingested" }`.
 - Current handler: no auth; `parseSrLevelsCurrentQuery` → `getCurrentSrLevels`; `404` if null; `200` with grouped `supports/resistances` sorted by price.
 - `timingSafeEqual` requires equal-length buffers; normalize by returning 401 if lengths differ.
 
 Tests (e2e with in-memory DB via `LEDGER_DB_PATH=:memory:`):
+
 - POST with valid token + body → `201`, rows present.
 - POST with missing token → `401`; DB untouched.
 - POST with wrong token → `401`; DB untouched.
@@ -256,6 +262,7 @@ Acceptance: tests pass; OpenAPI snapshot updated; existing tests green.
 **Scope excludes weekly-report integration.** The merged spec drops it (non-goal §3.3). Events accumulate in the ledger; report consumers are post-shelf.
 
 Files:
+
 - Modify `src/ledger/schema.sql` — append `clmm_execution_events` DDL.
 - Modify `src/ledger/writer.ts` — add `writeClmmExecutionEvent`; extend `LEDGER_ERROR_CODES` with `CLMM_EXECUTION_EVENT_CONFLICT`.
 - Modify `src/contract/v1/types.ts` — add `ClmmExecutionEventRequest`, `ClmmExecutionEventResponse`.
@@ -267,11 +274,13 @@ Files:
 - Test `src/http/__tests__/clmmExecutionResult.e2e.test.ts`.
 
 Approach:
+
 - `writeClmmExecutionEvent` uses `BEGIN IMMEDIATE` for the check-then-insert. Inside: `SELECT event_json FROM clmm_execution_events WHERE correlation_id = ? ORDER BY id DESC LIMIT 1`. Idempotent if canonical-equal, conflict otherwise, insert on absent.
 - Handler: `requireSharedSecret(request, "X-CLMM-Internal-Token", "CLMM_INTERNAL_TOKEN")` → validate → write → `200 { ok: true, correlationId, idempotent? }`.
 - Return `409` on `CLMM_EXECUTION_EVENT_CONFLICT`, `500` on other `LedgerWriteError` codes. Dedicated error code avoids conflating this with plan-linked `EXECUTION_RESULT_CONFLICT`.
 
 Tests:
+
 - POST with valid token + confirmed payload → `200`, row present.
 - POST with `status: "pending"` or `"partial"` → `400` (Zod rejects the enum).
 - POST with missing token → `401`.
@@ -285,6 +294,7 @@ Acceptance: tests pass; weekly-report code **unchanged**.
 ### Unit 4 — CLMM outbound adapter + dual-seam wiring (clmm-superpowers-v2, 3h)
 
 Target repo files:
+
 - Create `packages/adapters/src/outbound/regime-engine/RegimeEngineExecutionEventAdapter.ts`.
 - Test `packages/adapters/src/outbound/regime-engine/RegimeEngineExecutionEventAdapter.test.ts`.
 - Modify `packages/adapters/src/composition/AdaptersModule.ts` — register adapter.
@@ -297,6 +307,7 @@ Target repo files:
 - Modify `packages/adapters/.env.sample` — add `REGIME_ENGINE_BASE_URL=`, `REGIME_ENGINE_INTERNAL_TOKEN=`.
 
 Approach:
+
 - Adapter signature: `notifyExecutionEvent(event: ClmmExecutionEventRequest): Promise<void>`. Posts JSON to `${REGIME_ENGINE_BASE_URL}/v1/clmm-execution-result` with `X-CLMM-Internal-Token` header; 5s timeout; up to 3 retries with exponential backoff starting 500ms; swallow+log final failure at `ERROR`. Never throws.
 - If `REGIME_ENGINE_BASE_URL` or `REGIME_ENGINE_INTERNAL_TOKEN` is missing, adapter resolves to a no-op that logs at `DEBUG` once per process. Keeps local dev and ephemeral review envs quiet.
 - Wiring rule: adapter is called **after** CLMM has persisted the terminal attempt state and appended the local lifecycle event. This is the key invariant — CLMM owns execution truth; notification is a side-effect.
@@ -304,6 +315,7 @@ Approach:
 - Payload mapping: `correlationId = attemptId`, `positionId`, `breachDirection` from trigger context, `txSignature`, `tokenOut`, `detectedAtIso`, `reconciledAtIso`, optional cost fields if available. Shape exactly matches §5.3.
 
 Tests:
+
 - Unit: adapter posts correct body + header; retries on 5xx; swallows after final retry; no-op when config missing.
 - Controller: on inline terminal confirmation, adapter called exactly once **after** attempt persistence + lifecycle-event append (assert call order).
 - Controller: on inline `submitted` (non-terminal) result, adapter **not** called.
@@ -316,6 +328,7 @@ Acceptance: tests pass; application layer unchanged; no new application port int
 ### Unit 5 — BFF enrichment of position detail with S/R levels (clmm-superpowers-v2, 3h)
 
 Files:
+
 - Modify `packages/application/src/dto/index.ts` — extend `PositionDetailDto` with optional `srLevels?: SrLevelsBlock`.
 - Create `packages/adapters/src/outbound/regime-engine/CurrentSrLevelsAdapter.ts`.
 - Test `packages/adapters/src/outbound/regime-engine/CurrentSrLevelsAdapter.test.ts`.
@@ -329,12 +342,14 @@ Files:
 - Modify `packages/ui/src/screens/PositionDetailScreen.test.tsx`.
 
 Approach:
+
 - `CurrentSrLevelsAdapter`: `fetchCurrent(symbol: string, source: "mco"): Promise<SrLevelsBlock | null>`. 2s timeout. On 404 or transport error → return `null` (not throw). No retry — this is a read path for UI; stale-or-empty is better than slow.
 - `PositionController`: for SOL/USDC positions, call adapter in parallel with existing position-detail lookups. Merge `srLevels` into response only when non-null.
 - UI: freshness = `Date.now() - capturedAtUnixMs`; show `"captured <relative>"`; warn if `> 48h`; render "No current MCO levels available" when block absent.
 - Fixed `(symbol, source) = ("SOL/USDC", "mco")` mapping in this sprint. Do not generalize.
 
 Tests:
+
 - Controller returns enriched DTO when adapter yields data.
 - Controller returns base DTO (no `srLevels` key) when adapter yields `null`.
 - Adapter returns `null` on 404 and on timeout; never throws.
@@ -348,6 +363,7 @@ Acceptance: tests pass; existing position-detail tests unaffected.
 ### Unit 6 — Deploy + E2E runbook (both repos, 2.5h)
 
 Files:
+
 - `regime-engine`:
   - Modify `src/server.ts` — confirm bind `::` (dual-stack) for Railway compatibility; default to `0.0.0.0` when `HOST` unset so local dev stays unchanged.
   - Modify `README.md` — document `OPENCLAW_INGEST_TOKEN`, `CLMM_INTERNAL_TOKEN`, `LEDGER_DB_PATH`, Railway volume requirement.
@@ -443,13 +459,13 @@ E2E (one manual run, no CI automation):
 
 ## 8. Gates, budget, hard stop
 
-| Gate | When | Criteria |
-|---|---|---|
-| G1 | End Sat W1 | Units 1-3 pass locally; existing tests green |
-| G2 | End Sun W1 | Unit 4 tests pass locally; no application-layer surface added |
-| G3 | Sat morning W2 | Unit 6 deploy section passes from §6's curl list |
-| G4 | Sat evening W2 | Unit 5 merged; E2E runbook steps 1-5 pass manually |
-| G5 | Sun W2 | $100 funded; one live SOL/USDC position opened; monitor running |
+| Gate | When           | Criteria                                                        |
+| ---- | -------------- | --------------------------------------------------------------- |
+| G1   | End Sat W1     | Units 1-3 pass locally; existing tests green                    |
+| G2   | End Sun W1     | Unit 4 tests pass locally; no application-layer surface added   |
+| G3   | Sat morning W2 | Unit 6 deploy section passes from §6's curl list                |
+| G4   | Sat evening W2 | Unit 5 merged; E2E runbook steps 1-5 pass manually              |
+| G5   | Sun W2         | $100 funded; one live SOL/USDC position opened; monitor running |
 
 **Hard stop:** if G1 or G2 misses by end of Sun W1, shelf the project. Do not extend into weekday time. Pronghorn starts Monday regardless. If G3 or G4 slip, ship code-done without live deployment — G5 can wait 2-4 weeks.
 
@@ -457,16 +473,16 @@ Budget by unit: U1 2h · U2 2.5h · U3 2h · U4 3h · U5 3h · U6 2.5h + 0.5h bu
 
 ## 9. Risks and mitigations
 
-| Risk | Mitigation |
-|---|---|
-| Railway private networking resolves slowly or misconfigures on first deploy. | Runbook step 7 tests reachability before CLMM wiring. Fallback to public URL + shared secret preserves the architecture. |
-| SQLite file goes to ephemeral disk if volume isn't mounted before first deploy. | Runbook step 1: create volume first. `LEDGER_DB_PATH` default points inside the mount path. Smoke test on fresh deploy detects ephemeral behavior by checking that a seeded brief survives a restart. |
-| CLMM reconciliation double-posts (controller + worker both fire for same attempt). | `correlation_id UNIQUE` on the server + canonical-JSON idempotency returns `200 { idempotent: true }`. Adapter test covers this. |
-| Timing-attack on shared secret via `===`. | Use `timingSafeEqual` on equal-length buffers; fail closed on length mismatch. |
-| Partial/pending states leak into the wire contract and cause 409 churn. | Wire type enforces `"confirmed" \| "failed"` only. Zod rejects other values. Dual-seam wiring checks `finalState` before calling adapter. |
-| Weekly-report consumers get a surprise CLMM section. | Deferred entirely. `src/report/weekly.ts` untouched this sprint. |
-| OpenClaw ships a brief shape that doesn't fit `SrLevelBriefRequest`. | Regime-engine contract is canonical. Translation goes on the OpenClaw side. Budget 1h buffer in U2 for this if needed. |
-| Scope creep via "while I'm in here". | Forbidden list §7. Re-read before every work session. |
+| Risk                                                                               | Mitigation                                                                                                                                                                                            |
+| ---------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Railway private networking resolves slowly or misconfigures on first deploy.       | Runbook step 7 tests reachability before CLMM wiring. Fallback to public URL + shared secret preserves the architecture.                                                                              |
+| SQLite file goes to ephemeral disk if volume isn't mounted before first deploy.    | Runbook step 1: create volume first. `LEDGER_DB_PATH` default points inside the mount path. Smoke test on fresh deploy detects ephemeral behavior by checking that a seeded brief survives a restart. |
+| CLMM reconciliation double-posts (controller + worker both fire for same attempt). | `correlation_id UNIQUE` on the server + canonical-JSON idempotency returns `200 { idempotent: true }`. Adapter test covers this.                                                                      |
+| Timing-attack on shared secret via `===`.                                          | Use `timingSafeEqual` on equal-length buffers; fail closed on length mismatch.                                                                                                                        |
+| Partial/pending states leak into the wire contract and cause 409 churn.            | Wire type enforces `"confirmed" \| "failed"` only. Zod rejects other values. Dual-seam wiring checks `finalState` before calling adapter.                                                             |
+| Weekly-report consumers get a surprise CLMM section.                               | Deferred entirely. `src/report/weekly.ts` untouched this sprint.                                                                                                                                      |
+| OpenClaw ships a brief shape that doesn't fit `SrLevelBriefRequest`.               | Regime-engine contract is canonical. Translation goes on the OpenClaw side. Budget 1h buffer in U2 for this if needed.                                                                                |
+| Scope creep via "while I'm in here".                                               | Forbidden list §7. Re-read before every work session.                                                                                                                                                 |
 
 ## 10. What I would do differently from GPT's plan
 

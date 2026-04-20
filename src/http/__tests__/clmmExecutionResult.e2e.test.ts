@@ -47,7 +47,12 @@ describe("/v1/clmm-execution-result e2e", () => {
     });
 
     expect(response.statusCode).toBe(200);
-    const body = response.json() as { schemaVersion: string; ok: boolean; correlationId: string; idempotent?: boolean };
+    const body = response.json() as {
+      schemaVersion: string;
+      ok: boolean;
+      correlationId: string;
+      idempotent?: boolean;
+    };
     expect(body).toEqual({
       schemaVersion: "1.0",
       ok: true,
@@ -122,7 +127,7 @@ describe("/v1/clmm-execution-result e2e", () => {
       schemaVersion: "1.0",
       error: {
         code: "CLMM_EXECUTION_EVENT_CONFLICT",
-        message: "CLMM execution event conflict for correlationId \"corr-001\".",
+        message: 'CLMM execution event conflict for correlationId "corr-001".',
         details: []
       }
     });

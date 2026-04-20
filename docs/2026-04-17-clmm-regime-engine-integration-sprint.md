@@ -4,6 +4,29 @@
 **Status:** Draft
 **Budget:** 18-26 hours across 2 weekends. If weekend 1 (items 1-4) doesn't land by end of Sunday, pause the sprint — do not extend into weekday time.
 
+## Resolved assumptions (Unit 6 addendum, 2026-04-19)
+
+The implementation plan at `docs/plans/2026-04-17-002-opus-clmm-regime-engine-integration-plan.md`
+is the executable decomposition of this sprint. Units 1-5 have shipped on `main`. Where this
+sprint doc's assumptions diverge from what was actually built, the implementation wins:
+
+- **Storage engine:** regime-engine is Fastify + Zod + `node:sqlite` (native). Not Postgres, not
+  Drizzle. The `CREATE SCHEMA regime_engine` DDL drafted here is non-applicable — real DDL is
+  in `src/ledger/schema.sql` and is documented in the plan §5.4.
+- **CLMM ingest route:** CLMM posts to a new endpoint, `POST /v1/clmm-execution-result`
+  (token-guarded by `X-CLMM-Internal-Token`). It does NOT reuse `POST /v1/execution-result`,
+  which is plan-linked and would return `PLAN_NOT_FOUND` for CLMM events.
+- **Wire `status`:** restricted to `"confirmed" | "failed"` on the wire. Transient states
+  (`partial`, `pending`, `submitted`) are NOT notified — they would 409-churn when the final
+  state arrives later.
+- **"Current S/R" model:** append-only ledger + latest-brief query (`ORDER BY
+captured_at_unix_ms DESC, id DESC LIMIT 1`). There is no `superseded_at` column. Corrections
+  flow via a new brief, not a mutation.
+- **Volume mount path:** `/data` (declared by `railway.toml`, documented in the Railway deploy
+  runbook at `docs/runbooks/railway-deploy.md`). Local/dev default is still `tmp/ledger.sqlite`.
+- **Weekly report integration with CLMM events:** deferred. Events accumulate in
+  `clmm_execution_events` for post-shelf analytics; `src/report/weekly.ts` is untouched.
+
 ---
 
 ## Problem
@@ -76,12 +99,14 @@ clmm-v2-monitor (Railway, internal)
 ```
 
 Public endpoints on regime-engine are limited to:
+
 - `GET /health`
 - `GET /v1/sr-levels/current?symbol=SOL/USDC` (read, for PWA consumption)
 - `POST /v1/sr-levels` (write, shared-secret auth)
 - `GET /v1/report/weekly` (read, optionally gated)
 
 Internal-only endpoints:
+
 - `POST /v1/execution-result` (CLMM → Regime Engine)
 - `POST /v1/plan` (not called this sprint, available for future)
 
@@ -151,6 +176,7 @@ CREATE INDEX idx_sr_levels_captured_at
 - Supersession and insert happen in a single transaction. Partial ingestion is not allowed.
 
 **Done criteria:**
+
 - Migration runs clean against a fresh Postgres.
 - Drizzle schema types compile.
 - A manual `INSERT` via psql succeeds, `SELECT` against the current-levels index returns rows.
@@ -188,6 +214,7 @@ CREATE INDEX idx_sr_levels_captured_at
 ```
 
 **Validation:**
+
 - Zod schema enforces shape, rejects with 400 on mismatch.
 - Duplicate `(source, brief_id)` returns 200 with body `{ status: 'already_ingested' }` — idempotent on brief_id. Does not re-supersede.
 - Empty `levels` array is rejected with 400. A brief with no levels is meaningless.
@@ -197,6 +224,7 @@ CREATE INDEX idx_sr_levels_captured_at
 **Response:** `201` with `{ brief_id, inserted_count, superseded_count }`.
 
 **Done criteria:**
+
 - POST with valid payload persists rows and supersedes prior set.
 - POST with invalid auth returns 401.
 - POST with malformed body returns 400 with Zod error details.
@@ -214,6 +242,7 @@ CREATE INDEX idx_sr_levels_captured_at
 `GET /v1/sr-levels/current?symbol=SOL/USDC&source=mco`
 
 Response:
+
 ```typescript
 {
   symbol: 'SOL/USDC',
@@ -242,11 +271,13 @@ No editing. No creation. Read-only display to inform manual position-bound place
 **Environment variable on the PWA:** `REGIME_ENGINE_PUBLIC_URL` — Railway service public URL.
 
 **Done criteria:**
+
 - `curl` to the read endpoint returns current levels JSON.
 - PWA route renders the levels list.
 - Stale-data handling: if the endpoint 404s, the UI shows "No levels available — check OpenClaw ingestion" instead of crashing.
 
 **Explicitly out of scope:**
+
 - Editing, overriding, or manually adding levels via UI.
 - Historical level comparisons.
 - Charting. Don't plot anything.
@@ -266,21 +297,21 @@ export interface ExecutionResultPort {
 }
 
 export interface ExecutionResult {
-  correlation_id: string;                  // stable ID tying this to CLMM's internal record
+  correlation_id: string; // stable ID tying this to CLMM's internal record
   wallet_id: string;
   position_mint: string;
   pool_address: string;
-  breach_direction: 'lower' | 'upper';     // lower = exit to USDC, upper = exit to SOL
+  breach_direction: "lower" | "upper"; // lower = exit to USDC, upper = exit to SOL
   tick_lower: number;
   tick_upper: number;
   tick_at_detection: number;
-  detected_at: string;                     // ISO 8601
-  executed_at: string;                     // ISO 8601
-  tx_signature: string;                    // Solana tx sig
-  token_out: 'SOL' | 'USDC';
-  amount_out: string;                      // string for precision, raw token amount
-  status: 'success' | 'partial' | 'failed';
-  error_message?: string;                  // present if status !== 'success'
+  detected_at: string; // ISO 8601
+  executed_at: string; // ISO 8601
+  tx_signature: string; // Solana tx sig
+  token_out: "SOL" | "USDC";
+  amount_out: string; // string for precision, raw token amount
+  status: "success" | "partial" | "failed";
+  error_message?: string; // present if status !== 'success'
 }
 ```
 
@@ -297,6 +328,7 @@ export interface ExecutionResult {
 **Environment variable:** `REGIME_ENGINE_INTERNAL_URL` — set to `http://regime-engine.railway.internal:PORT` in Railway. Falls back to a no-op adapter if unset (for local dev without regime-engine running).
 
 **Done criteria:**
+
 - Unit test: adapter POSTs correct payload, retries on 5xx, swallows final failure.
 - Unit test: no-op adapter is used when env var is missing.
 - Integration test (deferred to item 6): real POST lands in regime-engine's truth ledger.
@@ -326,6 +358,7 @@ export interface ExecutionResult {
 7. Run the sr-levels migration in production: either via Railway's deploy hook running `npm run db:migrate`, or manually via Railway Postgres console.
 
 **Done criteria:**
+
 - Both health endpoints return 200 from their respective external-facing URLs.
 - CLMM can reach regime-engine internally (verified by curl from within CLMM's container).
 - A test POST to `/v1/sr-levels` from a local machine with the correct token persists a row.
@@ -355,6 +388,7 @@ export interface ExecutionResult {
 **Execution:** Run this test once manually against the deployed environment. Do not invest in automating it to run in CI this sprint. One manual pass is the sprint deliverable.
 
 **Done criteria:**
+
 - All seven steps pass in a single manual run.
 - Any failure results in a fix and a re-run, not a deferral.
 
@@ -362,13 +396,13 @@ export interface ExecutionResult {
 
 ## Verification gates
 
-| Gate | Criteria | Occurs after |
-|---|---|---|
-| Gate 1: Schema + adapter correct | Items 1-3 pass their individual done criteria, locally | End of Weekend 1 Saturday |
-| Gate 2: CLMM integration correct | Item 4 unit tests pass | End of Weekend 1 Sunday |
-| Gate 3: Deploy healthy | Item 5 done criteria pass | Weekend 2 Saturday morning |
-| Gate 4: Integration verified | Item 6 done criteria pass | Weekend 2 Saturday evening |
-| Gate 5: Live ready | $100 funded, position opened, monitor running | Weekend 2 Sunday |
+| Gate                             | Criteria                                               | Occurs after               |
+| -------------------------------- | ------------------------------------------------------ | -------------------------- |
+| Gate 1: Schema + adapter correct | Items 1-3 pass their individual done criteria, locally | End of Weekend 1 Saturday  |
+| Gate 2: CLMM integration correct | Item 4 unit tests pass                                 | End of Weekend 1 Sunday    |
+| Gate 3: Deploy healthy           | Item 5 done criteria pass                              | Weekend 2 Saturday morning |
+| Gate 4: Integration verified     | Item 6 done criteria pass                              | Weekend 2 Saturday evening |
+| Gate 5: Live ready               | $100 funded, position opened, monitor running          | Weekend 2 Sunday           |
 
 If Gate 1 or Gate 2 misses end-of-Sunday Weekend 1: stop the sprint, shelf the project. Do not push into weekday time. Pronghorn starts Monday regardless.
 
@@ -378,14 +412,14 @@ If Gate 3 or Gate 4 miss in Weekend 2: finish Gate 4 if possible, skip Gate 5 (l
 
 ## Risks and mitigations
 
-| Risk | Mitigation |
-|---|---|
+| Risk                                                                                                                    | Mitigation                                                                                                                                                                                                                                                                                                            |
+| ----------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | OpenClaw's actual brief output doesn't match the proposed `/v1/sr-levels` schema, requiring unplanned translation work. | Regime-engine schema is canonical. Translation layer goes on the OpenClaw side as a post-processor before POST. Budget 1h within item 2 for this. If OpenClaw output is a wildly different shape (free-form text, nested thesis narrative), defer the adapter and temporarily POST levels manually until post-sprint. |
-| Regime-engine's `POST /v1/execution-result` existing schema differs from the `ExecutionResult` type proposed in item 4. | Regime-engine is canonical. CLMM adapter conforms. If the existing regime-engine schema is missing critical fields (e.g., breach_direction), add them via a regime-engine migration during item 5 — but flag that as scope creep and keep it minimal. |
-| Railway internal networking doesn't behave as expected on first deploy (DNS resolution, firewall, bind address). | Item 5 step 3 pre-checks the bind address. Item 5 step 6 verifies internal reachability before CLMM wiring depends on it. If internal networking fails, fall back to public URL + shared-secret auth for the CLMM → regime-engine call. Same architectural outcome, slightly higher latency. |
-| Drizzle migrations targeting multiple schemas in one Postgres conflict or clobber each other. | Each service runs its own migrations in its own schema, explicitly set via Drizzle config `schemaFilter` or equivalent. Migrations never run cross-schema. Verify by running CLMM's migration after regime-engine's — CLMM's tables should be unaffected. |
-| Execution-result POSTs fail silently in production and go unnoticed, leaving the truth ledger incomplete. | Item 4 mandates ERROR-level logging on final retry failure. Set up a simple alert on that log pattern post-sprint (not in sprint). For the sprint, manual inspection of regime-engine's ledger after each live breach confirms coverage. |
-| Scope creep: "while I'm in here I should also..." on either repo. | Every such thought goes into `docs/post-shelf-ideas.md` in the respective repo. Does not enter the sprint. Re-read this rule at the start of each work session. |
+| Regime-engine's `POST /v1/execution-result` existing schema differs from the `ExecutionResult` type proposed in item 4. | Regime-engine is canonical. CLMM adapter conforms. If the existing regime-engine schema is missing critical fields (e.g., breach_direction), add them via a regime-engine migration during item 5 — but flag that as scope creep and keep it minimal.                                                                 |
+| Railway internal networking doesn't behave as expected on first deploy (DNS resolution, firewall, bind address).        | Item 5 step 3 pre-checks the bind address. Item 5 step 6 verifies internal reachability before CLMM wiring depends on it. If internal networking fails, fall back to public URL + shared-secret auth for the CLMM → regime-engine call. Same architectural outcome, slightly higher latency.                          |
+| Drizzle migrations targeting multiple schemas in one Postgres conflict or clobber each other.                           | Each service runs its own migrations in its own schema, explicitly set via Drizzle config `schemaFilter` or equivalent. Migrations never run cross-schema. Verify by running CLMM's migration after regime-engine's — CLMM's tables should be unaffected.                                                             |
+| Execution-result POSTs fail silently in production and go unnoticed, leaving the truth ledger incomplete.               | Item 4 mandates ERROR-level logging on final retry failure. Set up a simple alert on that log pattern post-sprint (not in sprint). For the sprint, manual inspection of regime-engine's ledger after each live breach confirms coverage.                                                                              |
+| Scope creep: "while I'm in here I should also..." on either repo.                                                       | Every such thought goes into `docs/post-shelf-ideas.md` in the respective repo. Does not enter the sprint. Re-read this rule at the start of each work session.                                                                                                                                                       |
 
 ---
 

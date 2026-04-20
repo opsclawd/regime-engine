@@ -52,9 +52,13 @@ This architecture is based on the uploaded blueprint’s core principles: determ
   - `GET /v1/openapi.json`
   - `POST /v1/plan`
   - `POST /v1/execution-result`
+  - `POST /v1/clmm-execution-result` — token-guarded (`X-CLMM-Internal-Token`)
   - `GET /v1/report/weekly`
-- Ledger is local SQLite (single file).
+  - `POST /v1/sr-levels` — token-guarded (`X-Ingest-Token`)
+  - `GET /v1/sr-levels/current?symbol&source`
+- Ledger is local SQLite (single file; Railway mounts `/data`).
 - Report generation reads ledger only (no network calls).
+- CLMM execution events accumulate in `clmm_execution_events` for post-shelf analytics; the weekly report does NOT consume them in this sprint.
 
 ---
 
@@ -76,7 +80,10 @@ Target layout (names can vary, responsibilities cannot):
 - `src/http/` (I/O adapter)
   - routes, handlers, error taxonomy, OpenAPI
 - `src/ledger/` (I/O adapter)
-  - schema, store, writer, queries
+  - `schema.sql` — append-only tables: `plan_requests`, `plans`, `execution_results`, `sr_level_briefs`, `sr_levels`, `clmm_execution_events`
+  - `store.ts` — `node:sqlite` connection + canonical-JSON idempotency helpers
+  - `writer.ts` — plan + execution result writes; plan-linked (`PLAN_NOT_FOUND` on missing planId)
+  - `srLevels.ts` — `writeSrLevelBrief`, `getCurrentSrLevels`; `BEGIN IMMEDIATE` for check-then-insert
 - `src/report/` (pure + adapter boundary)
   - baselines (pure), weekly report builder (pure), renderer (md/json)
 - `scripts/`
@@ -115,6 +122,30 @@ Target layout (names can vary, responsibilities cannot):
 2. Verify `(planId, planHash)` exists and matches.
 3. Persist execution result row + costs + `portfolioAfter`.
 4. Return ack.
+
+### S/R brief ingestion (`POST /v1/sr-levels`)
+
+1. `requireSharedSecret(request, "X-Ingest-Token", "OPENCLAW_INGEST_TOKEN")` — 401 on bad/missing token, 500 on unset env.
+2. Validate body (`parseSrLevelBriefRequest`).
+3. `writeSrLevelBrief` under `BEGIN IMMEDIATE`:
+   - `(source, brief_id)` byte-equal → idempotent `200 { status: "already_ingested" }`.
+   - `(source, brief_id)` differs → `409 CONFLICT` (`BRIEF_CONFLICT`).
+   - Absent → insert brief + N level rows, stamp `captured_at_unix_ms` on receipt, `201 { briefId, insertedCount }`.
+
+### Current S/R read (`GET /v1/sr-levels/current?symbol&source`)
+
+1. Validate query (`parseSrLevelsCurrentQuery`).
+2. `getCurrentSrLevels` selects the newest `sr_level_briefs` row for `(symbol, source)` by `captured_at_unix_ms DESC, id DESC` and joins its levels.
+3. `404` when no brief exists; `200` with grouped `supports` / `resistances` sorted by `price ASC` otherwise.
+
+### CLMM execution event ingestion (`POST /v1/clmm-execution-result`)
+
+1. `requireSharedSecret(request, "X-CLMM-Internal-Token", "CLMM_INTERNAL_TOKEN")`.
+2. Validate body (`parseClmmExecutionEventRequest`). `status` is `confirmed | failed` only — transient states are rejected at 400.
+3. `writeClmmExecutionEvent` under `BEGIN IMMEDIATE`:
+   - Byte-equal replay of the same `correlationId` → `200 { idempotent: true }`.
+   - `correlationId` collision with a different canonical payload → `409 CONFLICT` (`CLMM_EXECUTION_EVENT_CONFLICT`, distinct from the plan-linked `EXECUTION_RESULT_CONFLICT`).
+   - Absent → insert, `200 { ok: true, correlationId }`.
 
 ### Weekly reporting (`GET /v1/report/weekly`)
 
@@ -180,11 +211,15 @@ Regime Engine must prefer refusing to emit an ambiguous plan over emitting a pla
 
 ---
 
-## Security and safety posture (local-first)
+## Security and safety posture
 
-- Service is designed to run locally and accept requests from trusted callers (Autopilot on same host).
-- No secrets required in Regime Engine.
-- Ledger is append-only for auditability (deletions/updates avoided; corrections via new rows if needed).
+- Originally designed for local use. For the Railway deploy, two write routes are protected by shared-secret headers:
+  - `POST /v1/sr-levels` — `X-Ingest-Token` compared against `OPENCLAW_INGEST_TOKEN` via `timingSafeEqual`.
+  - `POST /v1/clmm-execution-result` — `X-CLMM-Internal-Token` compared against `CLMM_INTERNAL_TOKEN` via `timingSafeEqual`.
+- A missing/empty token env var is an **ops misconfig** and responds `500`, not `401` — a caller cannot brute-force a service that has no configured token.
+- Token comparison fails closed when caller and configured token differ in length (required by `timingSafeEqual`).
+- Read routes (`GET /v1/sr-levels/current`, `GET /v1/report/weekly`) are unauthenticated. Treat them as public.
+- **Append-only ledger.** No `UPDATE`s, no `DELETE`s on any truth row. "Current S/R set" is a read derived from the newest `(symbol, source)` brief — never a mutated `superseded_at` column. Corrections happen via a new brief with a later `captured_at_unix_ms`.
 
 ---
 

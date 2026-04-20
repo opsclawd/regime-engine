@@ -1,6 +1,11 @@
 import { toCanonicalJson } from "../contract/v1/canonical.js";
 import { sha256Hex } from "../contract/v1/hash.js";
-import type { ClmmExecutionEventRequest, ExecutionResultRequest, PlanRequest, PlanResponse } from "../contract/v1/types.js";
+import type {
+  ClmmExecutionEventRequest,
+  ExecutionResultRequest,
+  PlanRequest,
+  PlanResponse
+} from "../contract/v1/types.js";
 import { findPlanHashByPlanId, runInTransaction, type LedgerStore } from "./store.js";
 
 export const LEDGER_ERROR_CODES = {
@@ -163,9 +168,7 @@ export const writeClmmExecutionEvent = (
   store.db.exec("BEGIN IMMEDIATE");
   try {
     const existing = store.db
-      .prepare(
-        `SELECT event_json FROM clmm_execution_events WHERE correlation_id = ?`
-      )
+      .prepare(`SELECT event_json FROM clmm_execution_events WHERE correlation_id = ?`)
       .get(input.event.correlationId) as { event_json: string } | undefined;
 
     if (existing) {
@@ -190,7 +193,11 @@ export const writeClmmExecutionEvent = (
     store.db.exec("COMMIT");
     return { inserted: true, idempotent: false };
   } catch (error) {
-    try { store.db.exec("ROLLBACK"); } catch (_rollbackError) { void _rollbackError }
+    try {
+      store.db.exec("ROLLBACK");
+    } catch (_rollbackError) {
+      void _rollbackError;
+    }
     throw error;
   }
 };

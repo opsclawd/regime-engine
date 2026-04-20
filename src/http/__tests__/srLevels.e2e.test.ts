@@ -69,8 +69,20 @@ describe("/v1/sr-levels e2e", () => {
       sourceRecordedAtIso: string | null;
       summary: string | null;
       capturedAtIso: string;
-      supports: Array<{ price: number; rank?: string; timeframe?: string; invalidation?: number; notes?: string }>;
-      resistances: Array<{ price: number; rank?: string; timeframe?: string; invalidation?: number; notes?: string }>;
+      supports: Array<{
+        price: number;
+        rank?: string;
+        timeframe?: string;
+        invalidation?: number;
+        notes?: string;
+      }>;
+      resistances: Array<{
+        price: number;
+        rank?: string;
+        timeframe?: string;
+        invalidation?: number;
+        notes?: string;
+      }>;
     };
     expect(current.schemaVersion).toBe("1.0");
     expect(current.symbol).toBe("SOLUSDC");
@@ -264,7 +276,10 @@ describe("/v1/sr-levels e2e", () => {
       headers: { "X-Ingest-Token": "test-token" },
       payload: makePayload({
         brief: { briefId: "brief-002", sourceRecordedAtIso: "2025-04-18T12:00:00Z" },
-        levels: [{ levelType: "support", price: 150 }, { levelType: "resistance", price: 200 }]
+        levels: [
+          { levelType: "support", price: 150 },
+          { levelType: "resistance", price: 200 }
+        ]
       })
     });
 

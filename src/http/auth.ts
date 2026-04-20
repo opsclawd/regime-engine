@@ -31,7 +31,11 @@ export const requireSharedSecret = (
   if (!token) {
     throw new AuthError(500, {
       schemaVersion: SCHEMA_VERSION,
-      error: { code: "SERVER_MISCONFIGURATION", message: `Server misconfiguration: ${envVar} is not set.`, details: [] }
+      error: {
+        code: "SERVER_MISCONFIGURATION",
+        message: `Server misconfiguration: ${envVar} is not set.`,
+        details: []
+      }
     });
   }
   const provided = headers[headerName.toLowerCase()];
@@ -39,7 +43,11 @@ export const requireSharedSecret = (
   if (!providedValue || !safeEqual(providedValue, token)) {
     throw new AuthError(401, {
       schemaVersion: SCHEMA_VERSION,
-      error: { code: "UNAUTHORIZED", message: "Invalid or missing authentication token", details: [] }
+      error: {
+        code: "UNAUTHORIZED",
+        message: "Invalid or missing authentication token",
+        details: []
+      }
     });
   }
 };
