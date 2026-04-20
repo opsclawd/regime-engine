@@ -71,18 +71,55 @@ npm run harness -- --fixture ./fixtures/demo --from 2026-01-01 --to 2026-01-31
 
 4. Set environment variables in the Railway dashboard (or via `.env` file mounted at `/app/.env`):
 
-   | Variable | Default | Description |
-   |---|---|---|
-   | `PORT` | — | Railway sets this automatically |
-   | `HOST` | `0.0.0.0` | Host binding |
-   | `LEDGER_DB_PATH` | `tmp/ledger.sqlite` | **Override to `/data/ledger.sqlite`** to use the persistent volume |
-   | `NODE_ENV` | `production` | Node environment |
-   | `COMMIT_SHA` | — | Optional, shown in `/version` |
-   | `OPENCLAW_INGEST_TOKEN` | — | Required shared secret for `POST /v1/sr-levels` |
-   | `CLMM_INTERNAL_TOKEN` | — | Required shared secret for `POST /v1/clmm-execution-result` |
-   | `RAILWAY_RUN_UID` | `0` | **Required** — allows volume writes for non-root container |
+   | Variable                | Default             | Description                                                                                                    |
+   | ----------------------- | ------------------- | -------------------------------------------------------------------------------------------------------------- |
+   | `PORT`                  | —                   | Railway sets this automatically                                                                                |
+   | `HOST`                  | `0.0.0.0`           | Host binding. **Set to `::` on Railway** so Fastify binds dual-stack and is reachable over private networking. |
+   | `LEDGER_DB_PATH`        | `tmp/ledger.sqlite` | **Override to `/data/ledger.sqlite`** to use the persistent volume                                             |
+   | `NODE_ENV`              | `production`        | Node environment                                                                                               |
+   | `COMMIT_SHA`            | —                   | Optional, shown in `/version`                                                                                  |
+   | `OPENCLAW_INGEST_TOKEN` | —                   | Required shared secret for `POST /v1/sr-levels`                                                                |
+   | `CLMM_INTERNAL_TOKEN`   | —                   | Required shared secret for `POST /v1/clmm-execution-result`                                                    |
+   | `RAILWAY_RUN_UID`       | `0`                 | **Required** — allows volume writes for non-root container                                                     |
 
 5. Railway handles HTTPS termination and SIGTERM — the service shuts down gracefully on deploy.
+
+### Verifying the deploy
+
+Once the service is live, run the curl runbook from a machine with the tokens loaded into env:
+
+```bash
+export RE_URL="https://<public>.up.railway.app"
+export OPENCLAW_INGEST_TOKEN="<the token set in Railway>"
+export CLMM_INTERNAL_TOKEN="<the token set in Railway>"
+
+curl -fsS "$RE_URL/health"
+curl -fsS "$RE_URL/version"
+curl -fsS "$RE_URL/v1/openapi.json" | head -c 200
+
+# S/R ingest — fresh insert
+curl -fsS -X POST "$RE_URL/v1/sr-levels" \
+  -H "Content-Type: application/json" \
+  -H "X-Ingest-Token: $OPENCLAW_INGEST_TOKEN" \
+  -d @fixtures/sr-levels-brief.json
+
+# Current read
+curl -fsS "$RE_URL/v1/sr-levels/current?symbol=SOL/USDC&source=mco"
+
+# CLMM event — fresh
+curl -fsS -X POST "$RE_URL/v1/clmm-execution-result" \
+  -H "Content-Type: application/json" \
+  -H "X-CLMM-Internal-Token: $CLMM_INTERNAL_TOKEN" \
+  -d @fixtures/clmm-execution-event.json
+
+# CLMM event — replay; expect { ok: true, correlationId, idempotent: true }
+curl -fsS -X POST "$RE_URL/v1/clmm-execution-result" \
+  -H "Content-Type: application/json" \
+  -H "X-CLMM-Internal-Token: $CLMM_INTERNAL_TOKEN" \
+  -d @fixtures/clmm-execution-event.json
+```
+
+Full runbook (ordered steps, private-networking fallback, failure triage): see [`docs/runbooks/railway-deploy.md`](docs/runbooks/railway-deploy.md).
 
 ## Determinism strategy
 
