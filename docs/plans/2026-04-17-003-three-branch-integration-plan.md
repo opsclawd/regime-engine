@@ -30,23 +30,23 @@ All three branches implemented Units 1–3 of the merged spec (S/R ledger, S/R H
 
 ## 1. Comparison matrix
 
-| Dimension | GLM | GPT | MMX |
-|---|---|---|---|
-| Routes align with merged spec | ✅ `/v1/sr-levels`, `/v1/sr-levels/current?symbol&source`, `/v1/clmm-execution-result` | ✅ same as GLM | ❌ `/v1/sr-levels/ingest`, `/v1/sr-levels/:symbol/:source/current` |
-| Env var names align | ✅ `OPENCLAW_INGEST_TOKEN`, `CLMM_INTERNAL_TOKEN` | ✅ same | ❌ `SR_LEVELS_INGEST_SECRET` for ingest |
-| `.env.example` updated | ✅ both new vars added | ❌ no update | ❌ no update |
-| Auth: constant-time compare | ✅ `timingSafeEqual` with length pre-check | ❌ plain `!==` | ❌ plain `!==` |
-| Auth: misconfig vs bad token | ✅ 500 on missing env, 401 on bad token | ❌ both 401 | ❌ both 401 (but throws "missing env" text) |
-| Error taxonomy: dedicated CLMM conflict code | ✅ `CLMM_EXECUTION_EVENT_CONFLICT` | ❌ reuses `EXECUTION_RESULT_CONFLICT` | ✅ `CLMM_EXECUTION_EVENT_CONFLICT` |
-| Error taxonomy: unified vs split | ✅ single `LEDGER_ERROR_CODES` + `LedgerWriteError` | ❌ split (separate `SrLevelsWriteError`) | ❌ split (separate `SrLedgerWriteError` for sr-levels) |
-| schema.sql cleanliness | ✅ clean, +bonus `idx_sr_levels_brief_id` | ❌ duplicated `CREATE TABLE sr_level_briefs/sr_levels` and duplicated `idx_sr_level_briefs_current` | ✅ clean |
-| S/R write: check-then-insert in transaction | ✅ `runInTransaction` wraps both | ❌ existence check outside transaction; insert inside | ✅ `runInTransaction` wraps both |
-| CLMM ingest: transaction semantics | 🟡 `runInTransaction` (deferred BEGIN) | ✅ explicit `BEGIN IMMEDIATE` with try/catch around COMMIT/ROLLBACK | ❌ no transaction at all — relies on UNIQUE alone |
-| `SrLevelsCurrentResponse` shape matches spec | ❌ missing `briefId`, `sourceRecordedAtIso`, `summary`; conflates `sourceRecordedAtIso` and `capturedAtIso` | ✅ full shape: `briefId`, `sourceRecordedAtIso`, `summary`, `capturedAtIso`, `supports`, `resistances` | ❌ grouped `{ levels: { support, resistance } }` shape instead of flat `supports`/`resistances` |
-| `ClmmExecutionEventRequest` shape matches spec | ✅ | ✅ | ✅ |
-| Non-regression on plan-linked routes | ✅ existing tests untouched | ✅ existing tests untouched | ✅ existing tests untouched |
-| Bugs | — | schema.sql dupes; wrong conflict code on CLMM handler | `clmmExecutionResult.ts:52` has `error.code === ... ? 409 : 409` — dead 500 path |
-| Diff size | 20 files, ~1359 insertions | 18 files, ~1776 insertions | 16 files, ~1586 insertions |
+| Dimension                                      | GLM                                                                                                         | GPT                                                                                                    | MMX                                                                                             |
+| ---------------------------------------------- | ----------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------- |
+| Routes align with merged spec                  | ✅ `/v1/sr-levels`, `/v1/sr-levels/current?symbol&source`, `/v1/clmm-execution-result`                      | ✅ same as GLM                                                                                         | ❌ `/v1/sr-levels/ingest`, `/v1/sr-levels/:symbol/:source/current`                              |
+| Env var names align                            | ✅ `OPENCLAW_INGEST_TOKEN`, `CLMM_INTERNAL_TOKEN`                                                           | ✅ same                                                                                                | ❌ `SR_LEVELS_INGEST_SECRET` for ingest                                                         |
+| `.env.example` updated                         | ✅ both new vars added                                                                                      | ❌ no update                                                                                           | ❌ no update                                                                                    |
+| Auth: constant-time compare                    | ✅ `timingSafeEqual` with length pre-check                                                                  | ❌ plain `!==`                                                                                         | ❌ plain `!==`                                                                                  |
+| Auth: misconfig vs bad token                   | ✅ 500 on missing env, 401 on bad token                                                                     | ❌ both 401                                                                                            | ❌ both 401 (but throws "missing env" text)                                                     |
+| Error taxonomy: dedicated CLMM conflict code   | ✅ `CLMM_EXECUTION_EVENT_CONFLICT`                                                                          | ❌ reuses `EXECUTION_RESULT_CONFLICT`                                                                  | ✅ `CLMM_EXECUTION_EVENT_CONFLICT`                                                              |
+| Error taxonomy: unified vs split               | ✅ single `LEDGER_ERROR_CODES` + `LedgerWriteError`                                                         | ❌ split (separate `SrLevelsWriteError`)                                                               | ❌ split (separate `SrLedgerWriteError` for sr-levels)                                          |
+| schema.sql cleanliness                         | ✅ clean, +bonus `idx_sr_levels_brief_id`                                                                   | ❌ duplicated `CREATE TABLE sr_level_briefs/sr_levels` and duplicated `idx_sr_level_briefs_current`    | ✅ clean                                                                                        |
+| S/R write: check-then-insert in transaction    | ✅ `runInTransaction` wraps both                                                                            | ❌ existence check outside transaction; insert inside                                                  | ✅ `runInTransaction` wraps both                                                                |
+| CLMM ingest: transaction semantics             | 🟡 `runInTransaction` (deferred BEGIN)                                                                      | ✅ explicit `BEGIN IMMEDIATE` with try/catch around COMMIT/ROLLBACK                                    | ❌ no transaction at all — relies on UNIQUE alone                                               |
+| `SrLevelsCurrentResponse` shape matches spec   | ❌ missing `briefId`, `sourceRecordedAtIso`, `summary`; conflates `sourceRecordedAtIso` and `capturedAtIso` | ✅ full shape: `briefId`, `sourceRecordedAtIso`, `summary`, `capturedAtIso`, `supports`, `resistances` | ❌ grouped `{ levels: { support, resistance } }` shape instead of flat `supports`/`resistances` |
+| `ClmmExecutionEventRequest` shape matches spec | ✅                                                                                                          | ✅                                                                                                     | ✅                                                                                              |
+| Non-regression on plan-linked routes           | ✅ existing tests untouched                                                                                 | ✅ existing tests untouched                                                                            | ✅ existing tests untouched                                                                     |
+| Bugs                                           | —                                                                                                           | schema.sql dupes; wrong conflict code on CLMM handler                                                  | `clmmExecutionResult.ts:52` has `error.code === ... ? 409 : 409` — dead 500 path                |
+| Diff size                                      | 20 files, ~1359 insertions                                                                                  | 18 files, ~1776 insertions                                                                             | 16 files, ~1586 insertions                                                                      |
 
 ---
 
@@ -204,7 +204,7 @@ export interface SrLevelsCurrentResponse {
   briefId: string;
   sourceRecordedAtIso: string | null;
   summary: string | null;
-  capturedAtIso: string;         // derived from captured_at_unix_ms
+  capturedAtIso: string; // derived from captured_at_unix_ms
   supports: SrLevel[];
   resistances: SrLevel[];
 }
@@ -276,22 +276,22 @@ Plus ~5h to build Units 4–6 (CLMM outbound adapter, BFF enrichment, deploy run
 
 ## 5. What to reject and why
 
-| Rejected | Source | Why |
-|---|---|---|
-| `POST /v1/sr-levels/ingest` route | MMX | Diverges from merged spec `/v1/sr-levels` |
-| `GET /v1/sr-levels/:symbol/:source/current` route | MMX | Diverges from merged spec; path-segment URL-encoding is a footgun for `SOL/USDC` |
-| `SR_LEVELS_INGEST_SECRET` env var | MMX | Diverges from merged spec `OPENCLAW_INGEST_TOKEN` |
-| Grouped `{ levels: { support, resistance } }` response shape | MMX | Diverges from merged spec's flat `supports`/`resistances` |
-| Client-provided `capturedAtUnixMs` in ingest payload | MMX | Breaks the regime-engine-authoritative append-only model |
-| `409 : 409` ternary in `clmmExecutionResult.ts` | MMX | Dead 500 path; any non-conflict `LedgerWriteError` returns 409 misleadingly |
-| No-transaction CLMM ingest | MMX | Racy; UNIQUE catches writes but surfaces as 500, not idempotent 200 |
-| Duplicated `CREATE TABLE` / `CREATE INDEX` in schema.sql | GPT | Broken source; future edits clobber one definition silently |
-| Reusing `EXECUTION_RESULT_CONFLICT` for CLMM conflicts | GPT | Taxonomy confusion; operators can't distinguish plan-linked from CLMM conflicts from the code alone |
-| Existence check outside the transaction in `writeSrLevelBrief` | GPT | Race window; UNIQUE catches writes but surfaces as generic insert failure |
-| Plain `!==` secret compare | GPT, MMX | Timing-attack vulnerable |
-| Both-401 auth (missing env = bad token) | GPT, MMX | Ops can't distinguish misconfig from caller error |
-| Split error class hierarchies | GPT, MMX | Multiple catch branches per handler; unified enum is cleaner |
-| Missing response fields in `SrLevelsCurrentResponse` | GLM | Spec requires `briefId`, `sourceRecordedAtIso`, `summary`; timestamp fields must stay distinct |
+| Rejected                                                       | Source   | Why                                                                                                 |
+| -------------------------------------------------------------- | -------- | --------------------------------------------------------------------------------------------------- |
+| `POST /v1/sr-levels/ingest` route                              | MMX      | Diverges from merged spec `/v1/sr-levels`                                                           |
+| `GET /v1/sr-levels/:symbol/:source/current` route              | MMX      | Diverges from merged spec; path-segment URL-encoding is a footgun for `SOL/USDC`                    |
+| `SR_LEVELS_INGEST_SECRET` env var                              | MMX      | Diverges from merged spec `OPENCLAW_INGEST_TOKEN`                                                   |
+| Grouped `{ levels: { support, resistance } }` response shape   | MMX      | Diverges from merged spec's flat `supports`/`resistances`                                           |
+| Client-provided `capturedAtUnixMs` in ingest payload           | MMX      | Breaks the regime-engine-authoritative append-only model                                            |
+| `409 : 409` ternary in `clmmExecutionResult.ts`                | MMX      | Dead 500 path; any non-conflict `LedgerWriteError` returns 409 misleadingly                         |
+| No-transaction CLMM ingest                                     | MMX      | Racy; UNIQUE catches writes but surfaces as 500, not idempotent 200                                 |
+| Duplicated `CREATE TABLE` / `CREATE INDEX` in schema.sql       | GPT      | Broken source; future edits clobber one definition silently                                         |
+| Reusing `EXECUTION_RESULT_CONFLICT` for CLMM conflicts         | GPT      | Taxonomy confusion; operators can't distinguish plan-linked from CLMM conflicts from the code alone |
+| Existence check outside the transaction in `writeSrLevelBrief` | GPT      | Race window; UNIQUE catches writes but surfaces as generic insert failure                           |
+| Plain `!==` secret compare                                     | GPT, MMX | Timing-attack vulnerable                                                                            |
+| Both-401 auth (missing env = bad token)                        | GPT, MMX | Ops can't distinguish misconfig from caller error                                                   |
+| Split error class hierarchies                                  | GPT, MMX | Multiple catch branches per handler; unified enum is cleaner                                        |
+| Missing response fields in `SrLevelsCurrentResponse`           | GLM      | Spec requires `briefId`, `sourceRecordedAtIso`, `summary`; timestamp fields must stay distinct      |
 
 ---
 

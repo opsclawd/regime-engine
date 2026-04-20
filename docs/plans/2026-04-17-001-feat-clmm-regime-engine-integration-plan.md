@@ -81,15 +81,15 @@ Local research changed the technical shape of the plan in two important ways:
 
 ## Key Technical Decisions
 
-| Decision | Choice | Rationale |
-|---|---|---|
-| Persistence backend for `regime-engine` | Keep SQLite and attach a Railway volume | This preserves the current architecture in `README.md` and `architecture.md`, avoids an unnecessary Postgres/Drizzle migration, and still gives durable storage in production. |
-| S/R history model | Use append-only brief metadata plus level rows | Latest-brief reads satisfy “current active set” without mutating historical rows, which fits the repo’s determinism and auditability bias better than a `superseded_at` update model. |
-| CLMM execution ingest strategy | Preserve existing plan-linked `POST /v1/execution-result` and add a CLMM-specific ingest endpoint/table | Reusing the current endpoint would require fake or shadow `planId`/`planHash` linkage and would fight the explicit “do not use `/v1/plan`” boundary from the origin. |
-| Write-endpoint protection | Use explicit shared-secret headers for OpenClaw and CLMM writes | Once `regime-engine` has a public domain for browser and ingest traffic, app-level request guards are more reliable than relying on undocumented network-origin heuristics. |
-| Railway runtime binding | Prefer `HOST=::` in deployment configuration | Railway’s current private-network docs recommend dual-stack binding for compatibility across environment generations. |
-| CLMM levels consumption path | Keep Expo/web clients on the existing BFF (`EXPO_PUBLIC_BFF_BASE_URL`) and have the BFF read `regime-engine` server-side | This preserves repo boundaries, avoids direct client coupling to `regime-engine`, and keeps Railway public/private base URL choices backend-only. |
-| CLMM notification wiring | Post regime-engine execution events from `packages/adapters` at the authoritative HTTP/job seams | `ExecutionController` and `ReconciliationJobHandler` already own the timing of persisted execution-state transitions, so adapter-layer notification is lower-risk than introducing a new cross-service application port for this sprint. |
+| Decision                                | Choice                                                                                                                   | Rationale                                                                                                                                                                                                                                |
+| --------------------------------------- | ------------------------------------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Persistence backend for `regime-engine` | Keep SQLite and attach a Railway volume                                                                                  | This preserves the current architecture in `README.md` and `architecture.md`, avoids an unnecessary Postgres/Drizzle migration, and still gives durable storage in production.                                                           |
+| S/R history model                       | Use append-only brief metadata plus level rows                                                                           | Latest-brief reads satisfy “current active set” without mutating historical rows, which fits the repo’s determinism and auditability bias better than a `superseded_at` update model.                                                    |
+| CLMM execution ingest strategy          | Preserve existing plan-linked `POST /v1/execution-result` and add a CLMM-specific ingest endpoint/table                  | Reusing the current endpoint would require fake or shadow `planId`/`planHash` linkage and would fight the explicit “do not use `/v1/plan`” boundary from the origin.                                                                     |
+| Write-endpoint protection               | Use explicit shared-secret headers for OpenClaw and CLMM writes                                                          | Once `regime-engine` has a public domain for browser and ingest traffic, app-level request guards are more reliable than relying on undocumented network-origin heuristics.                                                              |
+| Railway runtime binding                 | Prefer `HOST=::` in deployment configuration                                                                             | Railway’s current private-network docs recommend dual-stack binding for compatibility across environment generations.                                                                                                                    |
+| CLMM levels consumption path            | Keep Expo/web clients on the existing BFF (`EXPO_PUBLIC_BFF_BASE_URL`) and have the BFF read `regime-engine` server-side | This preserves repo boundaries, avoids direct client coupling to `regime-engine`, and keeps Railway public/private base URL choices backend-only.                                                                                        |
+| CLMM notification wiring                | Post regime-engine execution events from `packages/adapters` at the authoritative HTTP/job seams                         | `ExecutionController` and `ReconciliationJobHandler` already own the timing of persisted execution-state transitions, so adapter-layer notification is lower-risk than introducing a new cross-service application port for this sprint. |
 
 ## Open Questions
 
@@ -119,7 +119,7 @@ Local research changed the technical shape of the plan in two important ways:
 
 ## High-Level Technical Design
 
-> *This illustrates the intended approach and is directional guidance for review, not implementation specification. The implementing agent should treat it as context, not code to reproduce.*
+> _This illustrates the intended approach and is directional guidance for review, not implementation specification. The implementing agent should treat it as context, not code to reproduce._
 
 ```mermaid
 sequenceDiagram
@@ -169,12 +169,14 @@ flowchart TB
 **Target repo:** `regime-engine`
 
 **Files:**
+
 - Modify: `src/ledger/schema.sql`
 - Create: `src/ledger/srLevels.ts`
 - Modify: `src/ledger/store.ts`
 - Test: `src/ledger/__tests__/srLevels.test.ts`
 
 **Approach:**
+
 - Add an append-only `sr_level_briefs` table keyed by `(source, brief_id)` for brief metadata and a child `sr_levels` table keyed to the brief record for individual levels.
 - Keep “current active set” as a query concern by selecting the latest ingested brief per `(symbol, source)` rather than mutating historical rows.
 - Reuse `runInTransaction` from `src/ledger/store.ts` so brief insertion and child-level insertion commit atomically.
@@ -184,11 +186,13 @@ flowchart TB
 **Execution note:** Start with a failing ledger test that inserts two briefs for the same `(symbol, source)` and proves the latest-brief query leaves history intact.
 
 **Patterns to follow:**
+
 - `src/ledger/writer.ts`
 - `src/ledger/store.ts`
 - `src/ledger/__tests__/ledger.test.ts`
 
 **Test scenarios:**
+
 - Happy path: inserting a brief with multiple levels stores one brief row and all level rows in a single transaction.
 - Happy path: querying current levels after two briefs for the same `(symbol, source)` returns only the latest brief’s levels.
 - Edge case: querying current levels for an unknown `(symbol, source)` returns no active brief.
@@ -196,6 +200,7 @@ flowchart TB
 - Integration: if level-row insertion fails after brief insertion begins, the transaction rolls back and no partial brief remains.
 
 **Verification:**
+
 - The schema can store multiple historical briefs for `SOL/USDC` and derive the latest active set without updating prior rows.
 - Existing plan/execution ledger tests continue to model the same table set plus the new S/R tables.
 
@@ -210,6 +215,7 @@ flowchart TB
 **Target repo:** `regime-engine`
 
 **Files:**
+
 - Modify: `src/contract/v1/types.ts`
 - Modify: `src/contract/v1/validation.ts`
 - Create: `src/http/auth.ts`
@@ -221,6 +227,7 @@ flowchart TB
 - Modify: `src/http/__tests__/routes.contract.test.ts`
 
 **Approach:**
+
 - Add a canonical `POST /v1/sr-levels` contract in `src/contract/v1` with strict validation and an idempotent duplicate-brief response.
 - Require an OpenClaw shared-secret header at the handler boundary using a small reusable auth helper rather than inline env checks in each route.
 - Add `GET /v1/sr-levels/current` that reads the latest brief for the requested `(symbol, source)` and returns a read-optimized payload with `capturedAt` and grouped levels.
@@ -230,12 +237,14 @@ flowchart TB
 **Execution note:** Start with a failing route-level e2e test for the happy path and duplicate-ingest behavior before implementing the handlers.
 
 **Patterns to follow:**
+
 - `src/http/handlers/executionResult.ts`
 - `src/http/handlers/report.ts`
 - `src/http/__tests__/executionResult.e2e.test.ts`
 - `src/http/errors.ts`
 
 **Test scenarios:**
+
 - Happy path: valid `POST /v1/sr-levels` with the correct token persists a brief and returns inserted counts.
 - Happy path: `GET /v1/sr-levels/current?symbol=SOL/USDC&source=mco` returns the latest brief metadata and ordered levels.
 - Edge case: omitted `source` defaults to `mco` only if that choice is made explicitly in implementation; otherwise the endpoint rejects missing `source`.
@@ -246,6 +255,7 @@ flowchart TB
 - Integration: posting a newer brief changes the current-read response while preserving the older brief in history.
 
 **Verification:**
+
 - OpenClaw can post a canonical brief payload into `regime-engine`.
 - CLMM’s BFF can read current levels through a configured regime-engine base URL, while public/manual reads remain possible through the service domain when needed.
 
@@ -260,6 +270,7 @@ flowchart TB
 **Target repo:** `regime-engine`
 
 **Files:**
+
 - Modify: `src/ledger/schema.sql`
 - Create: `src/ledger/clmmExecutionEvents.ts`
 - Modify: `src/contract/v1/types.ts`
@@ -274,6 +285,7 @@ flowchart TB
 - Modify: `src/http/__tests__/routes.contract.test.ts`
 
 **Approach:**
+
 - Add a new append-only table for CLMM execution events keyed by a CLMM-provided correlation ID with canonical JSON payload storage and conflict detection for mismatched replays.
 - Introduce `POST /v1/clmm-execution-result` as a separate internal contract that records CLMM execution outcomes and keeps the existing `POST /v1/execution-result` untouched for plan-linked flows.
 - Require a separate shared-secret header for this endpoint because the service will still have a public domain for browser reads and OpenClaw writes.
@@ -283,12 +295,14 @@ flowchart TB
 **Execution note:** Implement new contract behavior test-first and keep the current `/v1/execution-result` tests unchanged to prove backward compatibility.
 
 **Patterns to follow:**
+
 - `src/ledger/writer.ts`
 - `src/http/handlers/executionResult.ts`
 - `src/http/__tests__/executionResult.e2e.test.ts`
 - `src/report/weekly.ts`
 
 **Test scenarios:**
+
 - Happy path: valid CLMM execution event with the correct internal token writes one event row and returns a success acknowledgement.
 - Happy path: weekly report output includes additive CLMM execution counts when such events exist in the selected window.
 - Edge case: replaying the same correlation ID with byte-identical payload returns idempotent success.
@@ -299,6 +313,7 @@ flowchart TB
 - Integration: weekly-report generation still works when there are only legacy plan-linked execution results, only CLMM execution events, or both.
 
 **Verification:**
+
 - `regime-engine` can accept CLMM execution notifications without requiring `planId` or `planHash`.
 - Weekly reports remain deterministic and additive rather than silently changing the meaning of existing fields.
 
@@ -313,6 +328,7 @@ flowchart TB
 **Target repo:** `clmm-superpowers-v2`
 
 **Files:**
+
 - Create: `packages/adapters/src/outbound/regime-engine/RegimeEngineExecutionEventAdapter.ts`
 - Test: `packages/adapters/src/outbound/regime-engine/RegimeEngineExecutionEventAdapter.test.ts`
 - Modify: `packages/adapters/src/composition/AdaptersModule.ts`
@@ -325,6 +341,7 @@ flowchart TB
 - Modify: `packages/adapters/src/inbound/jobs/ReconciliationJobHandler.test.ts`
 
 **Approach:**
+
 - Implement a dedicated outbound adapter under `packages/adapters/src/outbound/regime-engine/` that posts the CLMM-specific execution payload to `POST /v1/clmm-execution-result`, using `attemptId` as the idempotency key/correlation ID.
 - Inject the adapter into the BFF and worker composition roots, but keep the behavior in `packages/adapters`; this sprint does not need a new application-layer port for analytics notification.
 - In `ExecutionController.ts`, invoke the adapter only after CLMM has already persisted the authoritative attempt state and appended the local lifecycle event for immediate terminal outcomes (`confirmed`, `partial`, or `failed`).
@@ -335,6 +352,7 @@ flowchart TB
 **Execution note:** Start with failing controller/job-handler tests that prove notification timing, then add the outbound adapter and DI wiring.
 
 **Patterns to follow:**
+
 - `packages/adapters/src/inbound/http/ExecutionController.ts`
 - `packages/adapters/src/inbound/http/ExecutionController.test.ts`
 - `packages/application/src/use-cases/execution/ReconcileExecutionAttempt.ts`
@@ -342,6 +360,7 @@ flowchart TB
 - `packages/adapters/src/composition/AdaptersModule.ts`
 
 **Test scenarios:**
+
 - Happy path: an immediate terminal submission path posts one regime-engine event after CLMM has saved the updated attempt and appended the local lifecycle event.
 - Happy path: the outbound payload includes `attemptId`, position/trigger context, breach direction, terminal result, transaction references, and post-exit posture.
 - Happy path: a later worker reconciliation posts one regime-engine event when a previously `submitted` attempt reaches a terminal state.
@@ -353,6 +372,7 @@ flowchart TB
 - Integration: replaying the same `attemptId` is safe because `regime-engine` treats the CLMM event endpoint as idempotent.
 
 **Verification:**
+
 - CLMM can notify `regime-engine` without blocking execution success or introducing direct client coupling.
 - The application layer remains unchanged for this integration; only the adapter/runtime layer knows how to call `regime-engine`.
 
@@ -367,6 +387,7 @@ flowchart TB
 **Target repo:** `clmm-superpowers-v2`
 
 **Files:**
+
 - Modify: `packages/application/src/dto/index.ts`
 - Create: `packages/adapters/src/outbound/regime-engine/CurrentSrLevelsAdapter.ts`
 - Test: `packages/adapters/src/outbound/regime-engine/CurrentSrLevelsAdapter.test.ts`
@@ -381,6 +402,7 @@ flowchart TB
 - Modify: `packages/ui/src/screens/PositionDetailScreen.test.tsx`
 
 **Approach:**
+
 - Extend `PositionDetailDto` with an optional S/R block that carries grouped support/resistance levels plus freshness metadata, keeping the DTO additive and compatible with existing consumers.
 - Implement a server-side `CurrentSrLevelsAdapter` in `packages/adapters` and have `PositionController.ts` enrich the existing position-detail response rather than introducing a parallel client API path.
 - Keep the CLMM client contract unchanged at the transport layer: `apps/app/src/api/positions.ts` continues to call the BFF via `EXPO_PUBLIC_BFF_BASE_URL`, then validates the additive DTO shape.
@@ -391,6 +413,7 @@ flowchart TB
 **Execution note:** Start with failing controller and API-parser tests for populated vs omitted S/R data, then update the UI rendering once the DTO contract is fixed.
 
 **Patterns to follow:**
+
 - `packages/adapters/src/inbound/http/PositionController.ts`
 - `apps/app/src/api/positions.ts`
 - `packages/application/src/dto/index.ts`
@@ -398,6 +421,7 @@ flowchart TB
 - `packages/ui/src/screens/PositionDetailScreen.tsx`
 
 **Test scenarios:**
+
 - Happy path: `PositionController.ts` returns the existing position detail plus populated S/R data when `regime-engine` has current `SOL/USDC` levels.
 - Happy path: the app API parser accepts the enriched DTO and the UI renders grouped support/resistance levels plus freshness.
 - Edge case: a `404` or empty current-level response from `regime-engine` produces a position detail response with no S/R block and a stable empty state in the UI.
@@ -406,6 +430,7 @@ flowchart TB
 - Integration: position-detail tests continue to pass for both pre-existing trigger data and additive S/R data.
 
 **Verification:**
+
 - CLMM exposes regime-engine levels through the BFF it already owns rather than through a new direct client integration.
 - The existing position-detail UI can show freshness and a non-crashing empty state without changing the Expo route structure.
 
@@ -420,6 +445,7 @@ flowchart TB
 **Target repos:** `regime-engine`, `clmm-superpowers-v2`
 
 **Files:**
+
 - `regime-engine`
   - Modify: `.env.example`
   - Modify: `src/server.ts`
@@ -434,6 +460,7 @@ flowchart TB
   - Modify: `apps/app/.env.example`
 
 **Approach:**
+
 - Document the new env vars explicitly:
   - `OPENCLAW_INGEST_TOKEN`
   - `CLMM_INTERNAL_TOKEN`
@@ -449,18 +476,21 @@ flowchart TB
 **Execution note:** Test expectation: none -- this unit is primarily deployment wiring and documentation, but smoke coverage should be updated anywhere defaults or route bootstrapping changed.
 
 **Patterns to follow:**
+
 - `.env.example`
 - `README.md`
 - `Dockerfile`
 - `src/server.ts`
 
 **Test scenarios:**
+
 - Happy path: local and container runtime defaults still boot the service with the new environment variables documented.
 - Edge case: volume-backed `LEDGER_DB_PATH` remains a valid relative path when the volume is mounted at `/app/tmp`.
 - Error path: missing shared-secret env vars fail closed for write endpoints rather than silently disabling auth.
 - Integration: a Railway deployment can keep Expo/web clients on the public BFF domain while backend runtimes use server-side regime-engine base URLs.
 
 **Verification:**
+
 - The deployment story matches Railway’s current volume and private-network behavior rather than the original draft’s Postgres assumptions.
 - Both repos document the same contract names, env vars, and route expectations.
 
@@ -492,13 +522,13 @@ flowchart TB
 
 ## Risks & Dependencies
 
-| Risk | Mitigation |
-|------|------------|
-| The sprint draft’s Postgres/Drizzle assumptions leak back into implementation. | Keep SQLite as an explicit planning decision, update the draft doc in Unit 6, and anchor persistence work to `src/ledger/schema.sql` and `src/ledger/store.ts`. |
-| CLMM lacks enough authoritative execution context at notification time to build the outbound payload cleanly. | Build the adapter payload from stored attempt, preview, and history context at the authoritative HTTP/job seams instead of re-deriving business logic in the adapter. |
-| Railway private networking works, but the public domain still exposes internal write routes. | Require app-level shared-secret headers for all write routes instead of assuming network-origin filtering. |
-| The CLMM repo’s existing boundary split could be violated by direct client fetches or by moving screen logic into `apps/app`. | Keep transport in the BFF/API layer, shared shape in `packages/application` DTOs, and rendering in `packages/ui`, leaving Expo routes thin. |
-| Weekly-report consumers rely on current fields. | Make CLMM execution reporting additive rather than reinterpreting the existing `execution` summary shape. |
+| Risk                                                                                                                          | Mitigation                                                                                                                                                            |
+| ----------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| The sprint draft’s Postgres/Drizzle assumptions leak back into implementation.                                                | Keep SQLite as an explicit planning decision, update the draft doc in Unit 6, and anchor persistence work to `src/ledger/schema.sql` and `src/ledger/store.ts`.       |
+| CLMM lacks enough authoritative execution context at notification time to build the outbound payload cleanly.                 | Build the adapter payload from stored attempt, preview, and history context at the authoritative HTTP/job seams instead of re-deriving business logic in the adapter. |
+| Railway private networking works, but the public domain still exposes internal write routes.                                  | Require app-level shared-secret headers for all write routes instead of assuming network-origin filtering.                                                            |
+| The CLMM repo’s existing boundary split could be violated by direct client fetches or by moving screen logic into `apps/app`. | Keep transport in the BFF/API layer, shared shape in `packages/application` DTOs, and rendering in `packages/ui`, leaving Expo routes thin.                           |
+| Weekly-report consumers rely on current fields.                                                                               | Make CLMM execution reporting additive rather than reinterpreting the existing `execution` summary shape.                                                             |
 
 ## Documentation / Operational Notes
 

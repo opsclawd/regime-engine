@@ -61,7 +61,7 @@ The original sprint doc made assumptions that do not match code reality. This de
 - **Terminal-state reconciliation happens at two seams**, not one:
   - `packages/adapters/src/inbound/http/ExecutionController.ts` — `submitExecution` performs `submissionPort.submitExecution(...)` immediately followed by `submissionPort.reconcileExecution(references)`. If `reconciliation.finalState` exists, the controller persists it and appends the lifecycle event inline before returning.
   - `packages/adapters/src/inbound/jobs/ReconciliationJobHandler.ts` → `packages/application/src/use-cases/execution/ReconcileExecutionAttempt.ts` — handles attempts that stayed `submitted` (the chain did not confirm inside the HTTP request window).
-  A single seam in `ReconcileExecutionAttempt` would miss every terminal state reached inline in the controller. Notification must hook both.
+    A single seam in `ReconcileExecutionAttempt` would miss every terminal state reached inline in the controller. Notification must hook both.
 
 ## 5. Architecture
 
@@ -80,6 +80,7 @@ Regime-engine does **not** share the CLMM Postgres. Its SQLite file lives on a R
 ### Endpoint surface
 
 Public (regime-engine):
+
 - `GET /health`, `GET /version`, `GET /v1/openapi.json` (existing)
 - `POST /v1/plan` (existing — not called by CLMM this sprint)
 - `POST /v1/execution-result` (existing — plan-linked, unchanged)
@@ -88,14 +89,17 @@ Public (regime-engine):
 - `GET /v1/sr-levels/current?symbol&source` (NEW, read — called server-to-server by CLMM BFF, also reachable publicly for operator inspection)
 
 Internal + shared-secret (regime-engine):
+
 - `POST /v1/clmm-execution-result` (NEW, shared-secret via `X-CLMM-Internal-Token`)
 
 CLMM BFF additions:
+
 - `GET /positions/:walletId/:positionId` — existing route; response DTO extended with optional `srLevels` block populated from regime-engine server-side.
 
 ### Data flows
 
 **S/R ingestion:**
+
 ```
 OpenClaw daily cron
   → POST /v1/sr-levels + X-Ingest-Token
@@ -104,6 +108,7 @@ OpenClaw daily cron
 ```
 
 **S/R read (client-facing):**
+
 ```
 Expo/web client
   → GET $EXPO_PUBLIC_BFF_BASE_URL/positions/:walletId/:positionId
@@ -164,6 +169,7 @@ U1+U2+U3+U4 ──> U5
 **Target repo:** `regime-engine`
 
 **Files:**
+
 - Modify: `src/ledger/schema.sql`
 - Create: `src/ledger/srLevelsWriter.ts`
 - Modify: `src/contract/v1/types.ts`
@@ -213,6 +219,7 @@ CREATE INDEX IF NOT EXISTS idx_sr_level_briefs_current
 - Auth: `src/http/auth.ts` exports `requireSharedSecret(request, headerName, envVar): void | throws 401`. Used by both new write routes (this one and CLMM-ingest in Unit 2). Missing env var fails closed.
 
 **Test scenarios:**
+
 - Happy: POST valid → 201 with `{ briefId, insertedCount }`; GET current returns latest levels grouped by `level_type`, sorted by `price`.
 - Idempotency: re-POST byte-identical brief → 200 `already_ingested`; does not duplicate rows.
 - Conflict: re-POST same `(source, brief_id)` with different levels → 409.
@@ -226,6 +233,7 @@ CREATE INDEX IF NOT EXISTS idx_sr_level_briefs_current
 **Target repo:** `regime-engine`
 
 **Files:**
+
 - Modify: `src/ledger/schema.sql`
 - Modify: `src/ledger/writer.ts` (add `writeClmmExecutionEvent`)
 - Modify: `src/contract/v1/types.ts` (add `ClmmExecutionEventRequest`, `ClmmExecutionEventResponse`)
@@ -280,16 +288,19 @@ CREATE INDEX IF NOT EXISTS idx_clmm_execution_events_correlation
 Derive `tokenOut` from `breachDirection` per sprint policy (lower → USDC, upper → SOL).
 
 **`writeClmmExecutionEvent`** mirrors `writeExecutionResultLedgerEntry`:
+
 - Canonical-JSON of `input.event`.
 - If existing row with same `correlation_id`: byte-equal → `{ inserted: false, idempotent: true }`; differing → throw `LedgerWriteError(EXECUTION_RESULT_CONFLICT, ...)` (reuse existing code).
 - Else: insert. Return `{ inserted: true, idempotent: false }`.
 
 **Handler `POST /v1/clmm-execution-result`:**
+
 - Shared-secret via `requireSharedSecret(request, 'X-CLMM-Internal-Token', 'CLMM_INTERNAL_TOKEN')`.
 - Zod validation → 400.
 - `writeClmmExecutionEvent` → 200 with `{ ok: true, correlationId, idempotent?: boolean }` on success; 409 on conflict.
 
 **Test scenarios:**
+
 - Happy: valid POST → 200, row persisted.
 - Idempotent replay: byte-equal → 200 `idempotent: true`, no new row.
 - Conflict: same `correlationId`, different payload → 409.
@@ -302,6 +313,7 @@ Derive `tokenOut` from `breachDirection` per sprint policy (lower → USDC, uppe
 **Target repo:** `clmm-superpowers-v2`
 
 **Files:**
+
 - Create: `packages/adapters/src/outbound/regime-engine/RegimeEngineExecutionEventAdapter.ts`
 - Create: `packages/adapters/src/outbound/regime-engine/RegimeEngineExecutionEventAdapter.test.ts`
 - Create: `packages/adapters/src/outbound/regime-engine/RegimeEngineExecutionEventNoOp.ts`
@@ -322,20 +334,20 @@ Analytics notification to an external sink is adapter concerns. Introducing a ne
 
 ```typescript
 export interface RegimeEngineExecutionEventInput {
-  correlationId: string;          // CLMM attemptId
+  correlationId: string; // CLMM attemptId
   walletId: string;
   positionMint: string;
   poolAddress: string;
-  breachDirection: 'LowerBoundBreach' | 'UpperBoundBreach';
+  breachDirection: "LowerBoundBreach" | "UpperBoundBreach";
   tickLower: number;
   tickUpper: number;
   tickAtDetection: number;
   detectedAtIso: string;
   reconciledAtIso: string;
   txSignature: string;
-  tokenOut: 'SOL' | 'USDC';
+  tokenOut: "SOL" | "USDC";
   amountOutRaw: string;
-  status: 'confirmed' | 'failed';
+  status: "confirmed" | "failed";
   txFeesUsd?: number;
   priorityFeesUsd?: number;
   slippageUsd?: number;
@@ -353,8 +365,10 @@ Both the controller and the job handler depend on `RegimeEngineExecutionEventAda
 After inline reconciliation, at the existing point where the terminal `lifecycleState` has been saved via `executionRepo.saveAttempt(...)` and the lifecycle event appended, call:
 
 ```typescript
-if (reconciliation.finalState?.kind === 'confirmed' ||
-    reconciliation.finalState?.kind === 'failed') {
+if (
+  reconciliation.finalState?.kind === "confirmed" ||
+  reconciliation.finalState?.kind === "failed"
+) {
   try {
     await this.regimeEngineExecutionEventAdapter.notify(
       buildExecutionEventInput(attempt, trigger, reconciliation.finalState)
@@ -374,6 +388,7 @@ After the existing `historyRepo.appendEvent(...)` completes, apply the same `con
 Read enrichment context (walletId, positionMint, poolAddress, ticks, detectedAtIso) from the attempt record + trigger repository — **no domain DTO changes**.
 
 **`RegimeEngineExecutionEventAdapter` behavior (HTTP impl):**
+
 - POST to `${REGIME_ENGINE_BASE_URL}/v1/clmm-execution-result` with header `X-CLMM-Internal-Token: ${REGIME_ENGINE_INTERNAL_TOKEN}`.
 - 5s timeout (AbortController).
 - 3 retry attempts, exponential backoff starting 500ms (500/1000/2000).
@@ -383,6 +398,7 @@ Read enrichment context (walletId, positionMint, poolAddress, ticks, detectedAtI
 **`RegimeEngineExecutionEventNoOp`:** logs a single debug line per call. Selected in `AdaptersModule` when `REGIME_ENGINE_BASE_URL` or `REGIME_ENGINE_INTERNAL_TOKEN` is unset. Preserves local dev ergonomics.
 
 **Test scenarios:**
+
 - Adapter unit: happy 200; 5xx triggers retry then success; 3× 5xx → logs + resolves (no throw); timeout → retry then eventual swallow.
 - Adapter unit: no-op selected when env missing.
 - Controller: notification called after `saveAttempt` and `appendLifecycleEvent` when inline `finalState.kind` is `confirmed` or `failed` (call-order assertion).
@@ -400,6 +416,7 @@ Read enrichment context (walletId, positionMint, poolAddress, ticks, detectedAtI
 **Goal:** Surface current regime-engine levels in CLMM's existing position-detail view through the BFF. No direct client fetch to regime-engine.
 
 **Files:**
+
 - Modify: `packages/application/src/dto/index.ts` (additive optional `srLevels` block on `PositionDetailDto`)
 - Create: `packages/adapters/src/outbound/regime-engine/CurrentSrLevelsAdapter.ts`
 - Create: `packages/adapters/src/outbound/regime-engine/CurrentSrLevelsAdapter.test.ts`
@@ -441,6 +458,7 @@ PositionDetailDto {
 **Client env:** the app uses `EXPO_PUBLIC_BFF_BASE_URL` only. No `EXPO_PUBLIC_REGIME_ENGINE_URL`. The regime-engine URL is backend-only.
 
 **Test scenarios:**
+
 - Controller: regime-engine returns levels → response includes `srLevels` with correct grouping.
 - Controller: regime-engine returns 404 → response omits `srLevels`, other fields intact.
 - Controller: regime-engine times out → response omits `srLevels`, logs warn, does not throw.
@@ -454,6 +472,7 @@ PositionDetailDto {
 **Target repos:** both
 
 **Files — regime-engine:**
+
 - Modify: `.env.example` (add `OPENCLAW_INGEST_TOKEN`, `CLMM_INTERNAL_TOKEN`; document `LEDGER_DB_PATH`, `HOST`)
 - Modify: `src/server.ts` (default `HOST=::`, preserve `0.0.0.0` compatibility)
 - Create: `docs/deploy-railway.md` (ordered runbook)
@@ -463,6 +482,7 @@ PositionDetailDto {
 - Modify: `Dockerfile` if needed to guarantee `/app/tmp` exists and is writable by the `app` user.
 
 **Files — clmm-superpowers-v2:**
+
 - Modify: `packages/adapters/.env.sample` (add `REGIME_ENGINE_BASE_URL`, `REGIME_ENGINE_INTERNAL_TOKEN`)
 - Modify: `apps/app/.env.example` (confirm **only** `EXPO_PUBLIC_BFF_BASE_URL` is app-public)
 - Modify: `README.md` (note backend-only regime-engine env vars and client-read path through the BFF)
@@ -485,7 +505,7 @@ PositionDetailDto {
    - `REGIME_ENGINE_INTERNAL_TOKEN=<same value as CLMM_INTERNAL_TOKEN on regime-engine>`
 5. Confirm client env in `clmm-api` / Expo build remains limited to:
    - `EXPO_PUBLIC_BFF_BASE_URL=<existing public BFF URL>`
-   (no `EXPO_PUBLIC_REGIME_ENGINE_URL`)
+     (no `EXPO_PUBLIC_REGIME_ENGINE_URL`)
 6. Redeploy CLMM. Verify from a `clmm-api` container:
    - `curl $REGIME_ENGINE_BASE_URL/health` → 200
    - `curl $REGIME_ENGINE_BASE_URL/v1/sr-levels/current?symbol=SOL/USDC&source=mco` → 404 (pre-seed)
@@ -532,17 +552,17 @@ curl -X POST https://$REGIME/v1/clmm-execution-result \
 
 ## 7. Risks and mitigations
 
-| Risk | Mitigation |
-|---|---|
-| Deploying regime-engine without mounting the Railway volume first → ledger silently ephemeral. | Unit 5 step 0 is "provision volume before first deploy" with explicit checkbox. |
-| Posting to regime-engine before chain confirmation. | Hooks are the controller's inline-reconciliation tail and `ReconcileExecutionAttempt` — both gated on `finalState.kind ∈ {confirmed, failed}`. No hook on `submitExecution`'s pre-reconciliation path. |
-| Missing one of the two terminal seams → lost events. | Both seams are wired in Unit 3 and each has a dedicated call-order test. |
-| Outbound adapter failure blocking CLMM execution. | Adapter swallows on final failure; controller and job handler both wrap call in try/catch. On-chain state is authoritative. |
-| OpenClaw brief format diverges from proposed `POST /v1/sr-levels` shape. | Translation lives on OpenClaw side; regime-engine canonical schema is fixed. Until OpenClaw emits, use the curl runbook to seed manually. |
-| Railway reference variables for private hostname get mis-wired. | Step 6 of deploy runbook verifies `curl $REGIME_ENGINE_BASE_URL/health` from CLMM container before declaring deploy healthy. |
-| BFF-enriched read couples position-detail latency to regime-engine. | 3s timeout + one retry; on failure `srLevels` is omitted and the rest of position-detail returns normally. |
-| Expo `EXPO_PUBLIC_*` var leaks regime-engine as a client-visible URL. | Unit 4 keeps `EXPO_PUBLIC_BFF_BASE_URL` as the only app-public URL; regime-engine envs are backend-only in `packages/adapters/.env.sample`. |
-| Scope creep ("while I'm in here..."). | Every such thought goes in the respective repo's `docs/post-shelf-ideas.md`. Do not enter sprint. |
+| Risk                                                                                           | Mitigation                                                                                                                                                                                             |
+| ---------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Deploying regime-engine without mounting the Railway volume first → ledger silently ephemeral. | Unit 5 step 0 is "provision volume before first deploy" with explicit checkbox.                                                                                                                        |
+| Posting to regime-engine before chain confirmation.                                            | Hooks are the controller's inline-reconciliation tail and `ReconcileExecutionAttempt` — both gated on `finalState.kind ∈ {confirmed, failed}`. No hook on `submitExecution`'s pre-reconciliation path. |
+| Missing one of the two terminal seams → lost events.                                           | Both seams are wired in Unit 3 and each has a dedicated call-order test.                                                                                                                               |
+| Outbound adapter failure blocking CLMM execution.                                              | Adapter swallows on final failure; controller and job handler both wrap call in try/catch. On-chain state is authoritative.                                                                            |
+| OpenClaw brief format diverges from proposed `POST /v1/sr-levels` shape.                       | Translation lives on OpenClaw side; regime-engine canonical schema is fixed. Until OpenClaw emits, use the curl runbook to seed manually.                                                              |
+| Railway reference variables for private hostname get mis-wired.                                | Step 6 of deploy runbook verifies `curl $REGIME_ENGINE_BASE_URL/health` from CLMM container before declaring deploy healthy.                                                                           |
+| BFF-enriched read couples position-detail latency to regime-engine.                            | 3s timeout + one retry; on failure `srLevels` is omitted and the rest of position-detail returns normally.                                                                                             |
+| Expo `EXPO_PUBLIC_*` var leaks regime-engine as a client-visible URL.                          | Unit 4 keeps `EXPO_PUBLIC_BFF_BASE_URL` as the only app-public URL; regime-engine envs are backend-only in `packages/adapters/.env.sample`.                                                            |
+| Scope creep ("while I'm in here...").                                                          | Every such thought goes in the respective repo's `docs/post-shelf-ideas.md`. Do not enter sprint.                                                                                                      |
 
 ## 8. Explicit forbidden list
 
@@ -561,19 +581,20 @@ curl -X POST https://$REGIME/v1/clmm-execution-result \
 
 ## 9. Budget and gates
 
-| Phase | Units | Gate |
-|---|---|---|
-| Weekend 1 Saturday | U1, U2 (regime-engine) | Both unit test suites green against `:memory:` SQLite; `/v1/execution-result` non-regression tests pass |
-| Weekend 1 Sunday | U3 (CLMM dual-seam adapter) | Adapter unit tests + both `ExecutionController.test.ts` and `ReconciliationJobHandler.test.ts` green; call-order asserts pass |
-| Weekend 2 Saturday AM | U4 (BFF enrichment + UI) | `PositionController` + API parser + UI tests green; empty-state rendering verified |
-| Weekend 2 Saturday PM | U5 deploy + E2E | Both services healthy on Railway; internal curl works; runbook steps 1–9 pass |
-| Weekend 2 Sunday | Live $100 | Funded, position opened, monitor running |
+| Phase                 | Units                       | Gate                                                                                                                          |
+| --------------------- | --------------------------- | ----------------------------------------------------------------------------------------------------------------------------- |
+| Weekend 1 Saturday    | U1, U2 (regime-engine)      | Both unit test suites green against `:memory:` SQLite; `/v1/execution-result` non-regression tests pass                       |
+| Weekend 1 Sunday      | U3 (CLMM dual-seam adapter) | Adapter unit tests + both `ExecutionController.test.ts` and `ReconciliationJobHandler.test.ts` green; call-order asserts pass |
+| Weekend 2 Saturday AM | U4 (BFF enrichment + UI)    | `PositionController` + API parser + UI tests green; empty-state rendering verified                                            |
+| Weekend 2 Saturday PM | U5 deploy + E2E             | Both services healthy on Railway; internal curl works; runbook steps 1–9 pass                                                 |
+| Weekend 2 Sunday      | Live $100                   | Funded, position opened, monitor running                                                                                      |
 
 **Hard stop:** if Weekend 1 ends without U1+U2+U3 green, shelf the sprint. Pronghorn starts Monday regardless.
 
 ## 10. After the sprint
 
 The sprint ends Sunday. Monday is Pronghorn. Shelf state:
+
 - Live $100 position running on Railway
 - Truth ledger accumulating CLMM execution events
 - S/R levels refreshing daily from OpenClaw (or manually-seeded until OpenClaw emits)
@@ -585,19 +606,19 @@ Revisit at end of month 1. Decisions about graduating capital, adding whipsaw fi
 
 This section documents the deltas after reviewing GPT's plan 2026-04-17-001.
 
-| Topic | Prior draft | Merged | Why |
-|---|---|---|---|
-| S/R read surface | Direct Expo fetch to regime-engine via `EXPO_PUBLIC_REGIME_ENGINE_URL` | BFF-enriched `PositionDetailDto.srLevels` via server-side fetch | Respects existing repo boundaries (`apps/app` talks only to BFF), keeps a single public client URL, makes the integration honest about who owns the contract, fits how CLMM already surfaces position context. |
-| Terminal-state seam | Single seam in `ReconcileExecutionAttempt` only | Dual seam: `ExecutionController.submitExecution` (inline reconciliation) + `ReconciliationJobHandler` (worker reconciliation) | `ExecutionController.submitExecution` performs inline `reconcileExecution(...)` and persists terminal state before returning. A single seam in the use case would miss every inline-reconciled outcome. |
-| Notification port | New `RegimeEngineNotificationPort` in application layer | Adapter-layer wiring, no new application port | Analytics transport is an adapter concern. Introducing a cross-cutting port for a sprint-scoped integration adds architectural surface area without domain value. Both seams already live in `packages/adapters`. |
-| CLMM env vars | `EXPO_PUBLIC_REGIME_ENGINE_URL` (app-public) + `REGIME_ENGINE_INTERNAL_URL` (backend) | `REGIME_ENGINE_BASE_URL` + `REGIME_ENGINE_INTERNAL_TOKEN` backend-only; `EXPO_PUBLIC_BFF_BASE_URL` stays the only app-public URL | Follows from the BFF-mediated read path. Clients never need the regime-engine URL. |
-| `partial` state handling | Marked transient, not notified (same) | Kept | Correct and preserved. |
-| Weekly-report CLMM section | Dropped | Dropped | Sprint non-goal is explicit. GPT's "minimal additive rollup" still constitutes scope expansion for a 15h sprint. The ledger accumulates events; report work is post-shelf. |
-| Concrete SQL DDL | Included full `CREATE TABLE` / index DDL | Kept | Removes implementer ambiguity. |
-| Volume-first deploy step 0 | Explicit step 0 | Kept | The single highest-cost footgun if missed. |
-| Copy-paste curl E2E runbook | 8 concrete commands | Kept; expanded to 9 (added BFF enrichment check) | Manual validation with zero cognitive load. |
-| Repo reality check | Present | Kept; corrected the "single seam" mistake regarding `ReconcileExecutionAttempt`. | Spec reflects verified code reality. |
-| Units | 5 units | 5 units with U4 redefined (direct fetch → BFF enrichment) | Unit count unchanged; scope per unit shifts per above. |
+| Topic                       | Prior draft                                                                           | Merged                                                                                                                           | Why                                                                                                                                                                                                               |
+| --------------------------- | ------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| S/R read surface            | Direct Expo fetch to regime-engine via `EXPO_PUBLIC_REGIME_ENGINE_URL`                | BFF-enriched `PositionDetailDto.srLevels` via server-side fetch                                                                  | Respects existing repo boundaries (`apps/app` talks only to BFF), keeps a single public client URL, makes the integration honest about who owns the contract, fits how CLMM already surfaces position context.    |
+| Terminal-state seam         | Single seam in `ReconcileExecutionAttempt` only                                       | Dual seam: `ExecutionController.submitExecution` (inline reconciliation) + `ReconciliationJobHandler` (worker reconciliation)    | `ExecutionController.submitExecution` performs inline `reconcileExecution(...)` and persists terminal state before returning. A single seam in the use case would miss every inline-reconciled outcome.           |
+| Notification port           | New `RegimeEngineNotificationPort` in application layer                               | Adapter-layer wiring, no new application port                                                                                    | Analytics transport is an adapter concern. Introducing a cross-cutting port for a sprint-scoped integration adds architectural surface area without domain value. Both seams already live in `packages/adapters`. |
+| CLMM env vars               | `EXPO_PUBLIC_REGIME_ENGINE_URL` (app-public) + `REGIME_ENGINE_INTERNAL_URL` (backend) | `REGIME_ENGINE_BASE_URL` + `REGIME_ENGINE_INTERNAL_TOKEN` backend-only; `EXPO_PUBLIC_BFF_BASE_URL` stays the only app-public URL | Follows from the BFF-mediated read path. Clients never need the regime-engine URL.                                                                                                                                |
+| `partial` state handling    | Marked transient, not notified (same)                                                 | Kept                                                                                                                             | Correct and preserved.                                                                                                                                                                                            |
+| Weekly-report CLMM section  | Dropped                                                                               | Dropped                                                                                                                          | Sprint non-goal is explicit. GPT's "minimal additive rollup" still constitutes scope expansion for a 15h sprint. The ledger accumulates events; report work is post-shelf.                                        |
+| Concrete SQL DDL            | Included full `CREATE TABLE` / index DDL                                              | Kept                                                                                                                             | Removes implementer ambiguity.                                                                                                                                                                                    |
+| Volume-first deploy step 0  | Explicit step 0                                                                       | Kept                                                                                                                             | The single highest-cost footgun if missed.                                                                                                                                                                        |
+| Copy-paste curl E2E runbook | 8 concrete commands                                                                   | Kept; expanded to 9 (added BFF enrichment check)                                                                                 | Manual validation with zero cognitive load.                                                                                                                                                                       |
+| Repo reality check          | Present                                                                               | Kept; corrected the "single seam" mistake regarding `ReconcileExecutionAttempt`.                                                 | Spec reflects verified code reality.                                                                                                                                                                              |
+| Units                       | 5 units                                                                               | 5 units with U4 redefined (direct fetch → BFF enrichment)                                                                        | Unit count unchanged; scope per unit shifts per above.                                                                                                                                                            |
 
 ## 12. Sources
 

@@ -14,23 +14,27 @@ This sprint is intended to close those integration gaps and make a single live $
 ## Requirements
 
 **S/R Ingestion And Availability**
+
 - R1. The system must persist daily support/resistance levels derived from OpenClaw briefs in the regime engine so they remain queryable over time by symbol and source.
 - R2. The persisted level set for a symbol/source pair must expose one current active set while preserving prior sets as historical records rather than overwriting history in place.
 - R3. The system must provide a read path for the current active level set for `SOL/USDC` from source `mco` so CLMM can display it to the operator.
 - R4. The levels read experience in CLMM must be read-only, show freshness information, and fail safely with a clear empty-state message when no current levels exist.
 
 **Execution Feedback Loop**
+
 - R5. CLMM must send an execution-result event to the regime engine after an exit has completed and CLMM has recorded its own execution record.
 - R6. Execution-result delivery must be best-effort analytics plumbing: a failure to notify the regime engine must never block, fail, or roll back CLMM's execution path.
 - R7. The execution-result data sent from CLMM must be sufficient for the regime engine to build a truthful ledger record of what happened, including breach direction, execution timing, position context, and transaction reference.
 - R8. Replaying the same execution-result event must not create duplicate truth-ledger records.
 
 **Deployment And Operability**
+
 - R9. CLMM and the regime engine must be deployed into the same Railway project with working service-to-service connectivity suitable for CLMM to reach the regime engine at runtime.
 - R10. The regime engine must expose only the minimum externally reachable capabilities needed for this sprint: health, S/R ingestion, current S/R reads, and weekly report reads.
 - R11. Any externally writable ingestion path introduced by this sprint must be protected by a shared-secret mechanism appropriate for a low-scale internal tool deployment.
 
 **Validation And Live Readiness**
+
 - R12. The integrated system must support a manual end-to-end verification flow covering S/R ingestion, current-level retrieval, breach handling, execution-result delivery, and duplicate-event behavior.
 - R13. Sprint success must be judged against a live-readiness outcome: one $100 SOL/USDC position can run on mainnet with one wallet once the integration flow is verified healthy.
 

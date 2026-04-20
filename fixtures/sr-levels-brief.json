@@ -10,10 +10,10 @@
   "levels": [
     {
       "levelType": "support",
-      "price": 135.50,
+      "price": 135.5,
       "timeframe": "4h",
       "rank": "primary",
-      "invalidation": 132.00,
+      "invalidation": 132.0,
       "notes": "runbook fixture"
     },
     {
@@ -27,11 +27,11 @@
       "price": 152.25,
       "timeframe": "4h",
       "rank": "primary",
-      "invalidation": 155.00
+      "invalidation": 155.0
     },
     {
       "levelType": "resistance",
-      "price": 161.00,
+      "price": 161.0,
       "timeframe": "1d",
       "rank": "secondary"
     }

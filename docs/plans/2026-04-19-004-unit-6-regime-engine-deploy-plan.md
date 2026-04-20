@@ -308,10 +308,10 @@ These fixtures are what the runbook curl commands post. Keep them byte-stable so
   "levels": [
     {
       "levelType": "support",
-      "price": 135.50,
+      "price": 135.5,
       "timeframe": "4h",
       "rank": "primary",
-      "invalidation": 132.00,
+      "invalidation": 132.0,
       "notes": "runbook fixture"
     },
     {
@@ -325,11 +325,11 @@ These fixtures are what the runbook curl commands post. Keep them byte-stable so
       "price": 152.25,
       "timeframe": "4h",
       "rank": "primary",
-      "invalidation": 155.00
+      "invalidation": 155.0
     },
     {
       "levelType": "resistance",
-      "price": 161.00,
+      "price": 161.0,
       "timeframe": "1d",
       "rank": "secondary"
     }
@@ -530,20 +530,20 @@ The existing `Deploying to Railway` section already documents the volume, `RAILW
 Find the row:
 
 ```markdown
-   | `HOST` | `0.0.0.0` | Host binding |
+| `HOST` | `0.0.0.0` | Host binding |
 ```
 
 Replace with:
 
 ```markdown
-   | `HOST` | `0.0.0.0` | Host binding. **Set to `::` on Railway** so Fastify binds dual-stack and is reachable over private networking. |
+| `HOST` | `0.0.0.0` | Host binding. **Set to `::` on Railway** so Fastify binds dual-stack and is reachable over private networking. |
 ```
 
 - [ ] **Step 2: Add a "Verifying the deploy" subsection directly after the Railway env var table.**
 
 Insert after the existing step 5 (`Railway handles HTTPS termination…`):
 
-```markdown
+````markdown
 ### Verifying the deploy
 
 Once the service is live, run the curl runbook from a machine with the tokens loaded into env:
@@ -578,9 +578,11 @@ curl -fsS -X POST "$RE_URL/v1/clmm-execution-result" \
   -H "X-CLMM-Internal-Token: $CLMM_INTERNAL_TOKEN" \
   -d @fixtures/clmm-execution-event.json
 ```
+````
 
 Full runbook (ordered steps, private-networking fallback, failure triage): see [`docs/runbooks/railway-deploy.md`](docs/runbooks/railway-deploy.md).
-```
+
+````
 
 - [ ] **Step 3: Run `npm run format` to make sure prettier is happy with the README changes.**
 
@@ -593,7 +595,7 @@ Expected: no changes required (prettier doesn't rewrite Markdown by default — 
 ```bash
 git add README.md
 git commit -m "docs(readme): link railway runbook, document HOST=::, add curl verification"
-```
+````
 
 ---
 
@@ -611,7 +613,7 @@ Run: `mkdir -p docs/runbooks`
 
 - [ ] **Step 2: Write `docs/runbooks/railway-deploy.md`.**
 
-```markdown
+````markdown
 ---
 title: "Runbook: Deploy regime-engine to Railway"
 status: active
@@ -653,16 +655,16 @@ The service "works" until the next restart, at which point the ledger is gone. T
 
 On the regime-engine service, set:
 
-| Variable | Value | Notes |
-|---|---|---|
-| `HOST` | `::` | Dual-stack bind for Railway private networking. |
-| `PORT` | _(leave unset — Railway injects)_ | Fastify reads `process.env.PORT`. |
-| `LEDGER_DB_PATH` | `/data/ledger.sqlite` | Must be on the mounted volume. |
-| `NODE_ENV` | `production` | |
-| `OPENCLAW_INGEST_TOKEN` | strong random string | Share with OpenClaw operator. |
-| `CLMM_INTERNAL_TOKEN` | strong random string | Referenced from CLMM service (see Step 5). |
-| `RAILWAY_RUN_UID` | `0` | Required — volume is root-owned; container user is `app`. |
-| `COMMIT_SHA` | `${{RAILWAY_GIT_COMMIT_SHA}}` | Optional; surfaces in `/version`. |
+| Variable                | Value                             | Notes                                                     |
+| ----------------------- | --------------------------------- | --------------------------------------------------------- |
+| `HOST`                  | `::`                              | Dual-stack bind for Railway private networking.           |
+| `PORT`                  | _(leave unset — Railway injects)_ | Fastify reads `process.env.PORT`.                         |
+| `LEDGER_DB_PATH`        | `/data/ledger.sqlite`             | Must be on the mounted volume.                            |
+| `NODE_ENV`              | `production`                      |                                                           |
+| `OPENCLAW_INGEST_TOKEN` | strong random string              | Share with OpenClaw operator.                             |
+| `CLMM_INTERNAL_TOKEN`   | strong random string              | Referenced from CLMM service (see Step 5).                |
+| `RAILWAY_RUN_UID`       | `0`                               | Required — volume is root-owned; container user is `app`. |
+| `COMMIT_SHA`            | `${{RAILWAY_GIT_COMMIT_SHA}}`     | Optional; surfaces in `/version`.                         |
 
 Do NOT set `DATABASE_URL` or any Postgres variable. regime-engine is SQLite-only.
 
@@ -693,6 +695,7 @@ On the CLMM backend service (same Railway project), add:
 REGIME_ENGINE_BASE_URL = http://${{regime-engine.RAILWAY_PRIVATE_DOMAIN}}:${{regime-engine.PORT}}
 REGIME_ENGINE_INTERNAL_TOKEN = ${{regime-engine.CLMM_INTERNAL_TOKEN}}
 ```
+````
 
 Reference variables (`${{service.VAR}}`) keep the token from being copied manually and
 automatically update when the regime-engine service rotates its value. The private domain
@@ -806,7 +809,8 @@ from Railway's deploy history. The ledger survives rollbacks because it's on the
 If a deploy introduces a bad migration (no migrations exist today; adding one would mean adding
 DDL to `src/ledger/schema.sql`), the fix is forward — ship a new deploy that adds the missing
 columns. Do NOT delete the volume.
-```
+
+````
 
 - [ ] **Step 3: Verify the runbook file is well-formed Markdown.**
 
@@ -819,7 +823,7 @@ Expected: no errors.
 ```bash
 git add docs/runbooks/railway-deploy.md
 git commit -m "docs(runbook): add step-by-step Railway deploy runbook with curl verification"
-```
+````
 
 ---
 
@@ -836,7 +840,6 @@ The original sprint doc predates the repo-reality check. The parent plan §2 cal
 Insert after line 6 (`**Budget:** 18-26 hours…`) and before `---`:
 
 ```markdown
-
 ## Resolved assumptions (Unit 6 addendum, 2026-04-19)
 
 The implementation plan at `docs/plans/2026-04-17-002-opus-clmm-regime-engine-integration-plan.md`
@@ -853,7 +856,7 @@ sprint doc's assumptions diverge from what was actually built, the implementatio
   (`partial`, `pending`, `submitted`) are NOT notified — they would 409-churn when the final
   state arrives later.
 - **"Current S/R" model:** append-only ledger + latest-brief query (`ORDER BY
-  captured_at_unix_ms DESC, id DESC LIMIT 1`). There is no `superseded_at` column. Corrections
+captured_at_unix_ms DESC, id DESC LIMIT 1`). There is no `superseded_at` column. Corrections
   flow via a new brief, not a mutation.
 - **Volume mount path:** `/data` (declared by `railway.toml`, documented in the Railway deploy
   runbook at `docs/runbooks/railway-deploy.md`). Local/dev default is still `tmp/ledger.sqlite`.
@@ -962,13 +965,13 @@ Step 2 either ran clean or was skipped with reason.
 
 ## Requirements trace (parent plan §3, Unit 6 rows only)
 
-| Parent req | Covered by |
-|---|---|
-| R9 — both services deployed in one Railway project | Tasks 6, 7 (documentation + runbook); Tasks 1-3 make the service healthy at boot |
-| R10 — minimum public surface; internal routes guarded | Task 5 (architecture), Task 7 (runbook §6.3 auth rejection check) |
-| R11 — shared-secret protection for write routes | Task 5 (architecture posture), Task 7 (Step 2 env table + Step 6 verification) |
-| R12 — one manual end-to-end validation | Task 7 Steps 6-9 |
-| R13 — live $100 position after validation | Task 7 Step 9 (explicit gate to funding) |
+| Parent req                                            | Covered by                                                                       |
+| ----------------------------------------------------- | -------------------------------------------------------------------------------- |
+| R9 — both services deployed in one Railway project    | Tasks 6, 7 (documentation + runbook); Tasks 1-3 make the service healthy at boot |
+| R10 — minimum public surface; internal routes guarded | Task 5 (architecture), Task 7 (runbook §6.3 auth rejection check)                |
+| R11 — shared-secret protection for write routes       | Task 5 (architecture posture), Task 7 (Step 2 env table + Step 6 verification)   |
+| R12 — one manual end-to-end validation                | Task 7 Steps 6-9                                                                 |
+| R13 — live $100 position after validation             | Task 7 Step 9 (explicit gate to funding)                                         |
 
 ## Gates (parent plan §8, Unit 6 slice only)
 
@@ -981,7 +984,7 @@ doc + runbook changes in this plan are small enough that the cost of shelving is
 
 ## Budget
 
-Task 1 0.5h · Task 2 0.25h · Task 3 0.1h · Task 4 0.25h · Task 5 0.5h · Task 6 0.3h · Task 7 0.5h · Task 8 0.15h · Task 9 0.45h  = **3.0h** (parent plan budgeted 2.5h; 0.5h over to absorb first-time Railway fumbles during Task 7 step 7 private networking verification).
+Task 1 0.5h · Task 2 0.25h · Task 3 0.1h · Task 4 0.25h · Task 5 0.5h · Task 6 0.3h · Task 7 0.5h · Task 8 0.15h · Task 9 0.45h = **3.0h** (parent plan budgeted 2.5h; 0.5h over to absorb first-time Railway fumbles during Task 7 step 7 private networking verification).
 
 ## Self-review checklist
 

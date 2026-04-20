@@ -1,6 +1,6 @@
 ---
 title: "Fastify + SQLite Ingestion Endpoint Patterns: Auth, Idempotency, Transactions"
-date: '2026-04-18'
+date: "2026-04-18"
 category: best-practices
 module: regime-engine
 problem_type: best_practice
@@ -57,14 +57,22 @@ export const requireSharedSecret = (
   if (!token) {
     throw new AuthError(500, {
       schemaVersion: SCHEMA_VERSION,
-      error: { code: "SERVER_MISCONFIGURATION", message: `Server misconfiguration: ${envVar} is not set.`, details: [] }
+      error: {
+        code: "SERVER_MISCONFIGURATION",
+        message: `Server misconfiguration: ${envVar} is not set.`,
+        details: []
+      }
     });
   }
   const providedValue = headers[headerName.toLowerCase()];
   if (!providedValue || !safeEqual(providedValue, token)) {
     throw new AuthError(401, {
       schemaVersion: SCHEMA_VERSION,
-      error: { code: "UNAUTHORIZED", message: "Invalid or missing authentication token", details: [] }
+      error: {
+        code: "UNAUTHORIZED",
+        message: "Invalid or missing authentication token",
+        details: []
+      }
     });
   }
 };
@@ -106,12 +114,18 @@ try {
   const existing = store.db
     .prepare(`SELECT brief_json FROM sr_level_briefs WHERE source = ? AND brief_id = ?`)
     .get(input.source, input.brief.briefId);
-  if (existing) { /* idempotent or conflict */ }
+  if (existing) {
+    /* idempotent or conflict */
+  }
   // ... inserts ...
   store.db.exec("COMMIT");
   return result;
 } catch (error) {
-  try { store.db.exec("ROLLBACK"); } catch (_e) { void _e }
+  try {
+    store.db.exec("ROLLBACK");
+  } catch (_e) {
+    void _e;
+  }
   throw error;
 }
 ```
@@ -147,11 +161,13 @@ try {
   // ... success response
 } catch (error) {
   if (error instanceof AuthError) return reply.code(error.statusCode).send(error.response);
-  if (error instanceof ContractValidationError) return reply.code(error.statusCode).send(error.response);
-  if (error instanceof LedgerWriteError) return reply.code(409).send({
-    schemaVersion: SCHEMA_VERSION,
-    error: { code: error.code, message: error.message, details: [] }
-  });
+  if (error instanceof ContractValidationError)
+    return reply.code(error.statusCode).send(error.response);
+  if (error instanceof LedgerWriteError)
+    return reply.code(409).send({
+      schemaVersion: SCHEMA_VERSION,
+      error: { code: error.code, message: error.message, details: [] }
+    });
   throw error;
 }
 ```
@@ -211,7 +227,11 @@ it("missing X-Ingest-Token returns 401 without writing", async () => {
   process.env.OPENCLAW_INGEST_TOKEN = "test-token";
 
   const app = buildApp();
-  const response = await app.inject({ method: "POST", url: "/v1/sr-levels", payload: makePayload() });
+  const response = await app.inject({
+    method: "POST",
+    url: "/v1/sr-levels",
+    payload: makePayload()
+  });
   expect(response.statusCode).toBe(401);
   await app.close();
 
@@ -234,10 +254,12 @@ it("rolls back brief insertion when level insertion fails mid-transaction", () =
     ]
   };
   expect(() => writeSrLevelBrief(store, levelsWithInvalidType as SrLevelBriefRequest)).toThrow();
-  expect(getLedgerCounts(store)).toEqual(expect.objectContaining({
-    srLevelBriefs: 0,
-    srLevels: 0
-  }));
+  expect(getLedgerCounts(store)).toEqual(
+    expect.objectContaining({
+      srLevelBriefs: 0,
+      srLevels: 0
+    })
+  );
 });
 ```
 

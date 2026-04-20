@@ -1,6 +1,10 @@
 import { toCanonicalJson } from "../contract/v1/canonical.js";
 import { SCHEMA_VERSION } from "../contract/v1/types.js";
-import type { SrLevelBriefRequest, SrLevelsCurrentResponse, SrLevelResponse } from "../contract/v1/types.js";
+import type {
+  SrLevelBriefRequest,
+  SrLevelsCurrentResponse,
+  SrLevelResponse
+} from "../contract/v1/types.js";
 import type { LedgerStore } from "./store.js";
 import { LEDGER_ERROR_CODES, LedgerWriteError } from "./writer.js";
 
@@ -15,15 +19,17 @@ export const writeSrLevelBrief = (
   store.db.exec("BEGIN IMMEDIATE");
   try {
     const existing = store.db
-      .prepare(
-        `SELECT brief_json FROM sr_level_briefs WHERE source = ? AND brief_id = ?`
-      )
+      .prepare(`SELECT brief_json FROM sr_level_briefs WHERE source = ? AND brief_id = ?`)
       .get(input.source, input.brief.briefId) as { brief_json: string } | undefined;
 
     if (existing) {
       if (existing.brief_json === canonicalBrief) {
         store.db.exec("COMMIT");
-        return { briefId: input.brief.briefId, insertedCount: 0, status: "already_ingested" as const };
+        return {
+          briefId: input.brief.briefId,
+          insertedCount: 0,
+          status: "already_ingested" as const
+        };
       }
       store.db.exec("ROLLBACK");
       throw new LedgerWriteError(
@@ -73,7 +79,11 @@ export const writeSrLevelBrief = (
     store.db.exec("COMMIT");
     return { briefId: input.brief.briefId, insertedCount };
   } catch (error) {
-    try { store.db.exec("ROLLBACK"); } catch (_rollbackError) { void _rollbackError }
+    try {
+      store.db.exec("ROLLBACK");
+    } catch (_rollbackError) {
+      void _rollbackError;
+    }
     throw error;
   }
 };
@@ -106,29 +116,33 @@ export const getCurrentSrLevels = (
        ORDER BY captured_at_unix_ms DESC, id DESC
        LIMIT 1`
     )
-    .get(symbol, source) as {
-      id: number;
-      brief_id: string;
-      source_recorded_at_iso: string | null;
-      summary: string | null;
-      captured_at_unix_ms: number;
-    } | undefined;
+    .get(symbol, source) as
+    | {
+        id: number;
+        brief_id: string;
+        source_recorded_at_iso: string | null;
+        summary: string | null;
+        captured_at_unix_ms: number;
+      }
+    | undefined;
 
   if (!briefRow) {
     return null;
   }
 
   const levels = store.db
-    .prepare(`SELECT id, level_type, price, timeframe, rank, invalidation, notes FROM sr_levels WHERE brief_id = ? ORDER BY id`)
+    .prepare(
+      `SELECT id, level_type, price, timeframe, rank, invalidation, notes FROM sr_levels WHERE brief_id = ? ORDER BY id`
+    )
     .all(briefRow.id) as Array<{
-      id: number;
-      level_type: string;
-      price: number;
-      timeframe: string | null;
-      rank: string | null;
-      invalidation: number | null;
-      notes: string | null;
-    }>;
+    id: number;
+    level_type: string;
+    price: number;
+    timeframe: string | null;
+    rank: string | null;
+    invalidation: number | null;
+    notes: string | null;
+  }>;
 
   const supports = levels
     .filter((l) => l.level_type === "support")

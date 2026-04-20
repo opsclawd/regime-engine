@@ -4,7 +4,13 @@ import {
   unsupportedSchemaVersionError,
   validationErrorFromZod
 } from "../../http/errors.js";
-import { SCHEMA_VERSION, type ClmmExecutionEventRequest, type ExecutionResultRequest, type PlanRequest, type SrLevelBriefRequest } from "./types.js";
+import {
+  SCHEMA_VERSION,
+  type ClmmExecutionEventRequest,
+  type ExecutionResultRequest,
+  type PlanRequest,
+  type SrLevelBriefRequest
+} from "./types.js";
 
 const unixMsSchema = z.number().int().nonnegative();
 const nonNegativeNumberSchema = z.number().nonnegative();
@@ -252,11 +258,18 @@ const clmmExecutionEventRequestSchema = z
       if (data.breachDirection === "UpperBoundBreach" && data.tokenOut !== "SOL") return false;
       return true;
     },
-    { message: "breachDirection/tokenOut mismatch: LowerBoundBreach requires tokenOut USDC, UpperBoundBreach requires tokenOut SOL" }
+    {
+      message:
+        "breachDirection/tokenOut mismatch: LowerBoundBreach requires tokenOut USDC, UpperBoundBreach requires tokenOut SOL"
+    }
   );
 
 export const parseClmmExecutionEventRequest = (raw: unknown): ClmmExecutionEventRequest => {
-  return parseWithSchema(raw, clmmExecutionEventRequestSchema, "Invalid /v1/clmm-execution-result request body");
+  return parseWithSchema(
+    raw,
+    clmmExecutionEventRequestSchema,
+    "Invalid /v1/clmm-execution-result request body"
+  );
 };
 
 export const schemas = {

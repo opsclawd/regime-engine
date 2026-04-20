@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 import { ContractValidationError, ERROR_CODES } from "../../../http/errors.js";
-import { parseExecutionResultRequest, parsePlanRequest, parseSrLevelBriefRequest } from "../validation.js";
+import {
+  parseExecutionResultRequest,
+  parsePlanRequest,
+  parseSrLevelBriefRequest
+} from "../validation.js";
 import { SCHEMA_VERSION, type PlanRequest } from "../types.js";
 
 const validPlanRequestFixture: PlanRequest = {
