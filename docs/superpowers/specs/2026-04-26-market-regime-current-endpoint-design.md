@@ -105,13 +105,15 @@ type CandleIngestResponse = {
   revisedCount: number;      // existing slots, newer revision appended
   idempotentCount: number;   // existing slots, byte-identical canonical OHLCV
   rejectedCount: number;     // existing slots, older sourceRecordedAtIso w/ different OHLCV
-  rejections?: Array<{
+  rejections: Array<{        // always present; empty array when rejectedCount === 0
     unixMs: number;
     reason: "STALE_REVISION";
     existingSourceRecordedAtIso: string;
   }>;
 };
 ```
+
+`rejections` is always serialized — empty array when `rejectedCount === 0`, populated array otherwise. Tests, logs, and collectors can rely on the field being present without an existence check.
 
 Stale-revision rejections are **per-slot** within an otherwise-valid batch: 200 with rejection details; accepted slots still commit. Whole-batch errors remain HTTP 4xx.
 
@@ -240,9 +242,14 @@ CREATE INDEX IF NOT EXISTS idx_candle_revisions_feed_window
   ON candle_revisions(
     symbol, source, network, pool_address, timeframe, unix_ms DESC
   );
+
+CREATE UNIQUE INDEX IF NOT EXISTS ux_candle_revisions_slot_hash
+  ON candle_revisions(
+    symbol, source, network, pool_address, timeframe, unix_ms, ohlcv_hash
+  );
 ```
 
-Both indexes ship with the table. Schema rollout is purely additive — `CREATE ... IF NOT EXISTS` is idempotent against the existing boot-time `schema.sql` exec. No migration script.
+`ux_candle_revisions_slot_hash` makes byte-equal idempotency a database-enforced invariant: the same logical slot + identical content hash cannot be inserted twice even under racing writers. The application's idempotency check still runs first (returning `idempotentCount++` without an INSERT), but the unique index is the floor against application bugs or concurrent collectors. All three indexes ship with the table. Schema rollout is purely additive — `CREATE ... IF NOT EXISTS` is idempotent against the existing boot-time `schema.sql` exec. No migration script.
 
 `received_at_unix_ms` is audit-only; it never breaks ordering ties, since that would let stale collector runs win on receive-clock skew.
 
@@ -253,15 +260,21 @@ Both indexes ship with the table. Schema rollout is purely additive — `CREATE 
 For each candle in the batch:
 
 ```
-read latest revision for (symbol, source, network, pool_address, timeframe, unix_ms)
-  none                                                          -> INSERT, insertedCount++
-  exists with same ohlcv_hash                                   -> no-op, idempotentCount++
-  exists, sourceRecordedAtIso < incoming                        -> INSERT, revisedCount++
-  exists, sourceRecordedAtIso >= incoming AND ohlcv_hash differs
-                                                                -> reject, rejectedCount++,
+let incomingUnixMs   = parsed sourceRecordedAtIso (UTC) -> unix ms
+let existing         = latest revision for
+                       (symbol, source, network, pool_address, timeframe, unix_ms)
+                       (selected via idx_candle_revisions_slot_latest)
+
+  existing is null                                              -> INSERT, insertedCount++
+  existing.ohlcv_hash == incoming.ohlcv_hash                    -> no-op, idempotentCount++
+  existing.source_recorded_at_unix_ms < incomingUnixMs          -> INSERT, revisedCount++
+  existing.source_recorded_at_unix_ms >= incomingUnixMs
+    AND existing.ohlcv_hash != incoming.ohlcv_hash              -> reject, rejectedCount++,
                                                                    emit { unixMs, reason: STALE_REVISION,
                                                                           existingSourceRecordedAtIso }
 ```
+
+Ordering is **always numeric** against the parsed `source_recorded_at_unix_ms` column. ISO strings are stored for audit and response serialization; they are never compared lexicographically in the writer.
 
 The whole batch executes under one `BEGIN IMMEDIATE` transaction. Structural validation failures (e.g., constraint violation) roll back the entire batch. Per-slot stale-revision rejections do **not** roll back accepted slots; they commit alongside accepted writes with `rejections[]` in the response.
 
@@ -329,7 +342,7 @@ export interface MarketTimeframeConfig {
   };
 
   suitability: {
-    cautionVolRatioMax: number;
+    allowedVolRatioMax: number;
     extremeVolRatio: number;
     extremeCompression: number;
     minCandles: number;
@@ -367,7 +380,7 @@ export const MARKET_REGIME_CONFIG: Record<"1h", MarketTimeframeConfig> = {
     },
 
     suitability: {
-      cautionVolRatioMax: 1.30,       // placeholder, calibrated later
+      allowedVolRatioMax: 1.30,       // placeholder, calibrated later
       extremeVolRatio: 1.60,          // placeholder, calibrated later
       extremeCompression: 0.18,       // placeholder, calibrated later
       minCandles: 30
@@ -423,12 +436,39 @@ type MarketClmmSuitability = {
 3. CAUTION gate (status starts ALLOWED, demoted to CAUTION on any of these;
    all matching reasons appended):
    - freshness.softStale                   -> CLMM_CAUTION_SOFT_STALE_DATA            (WARN)
-   - volRatio > config.chopVolRatioMax     -> CLMM_CAUTION_ELEVATED_VOLATILITY        (WARN)
+   - volRatio > config.allowedVolRatioMax  -> CLMM_CAUTION_ELEVATED_VOLATILITY        (WARN)
 
 4. ALLOWED:
    - regime == "CHOP" and none of the above
                                            -> CLMM_ALLOWED_CHOP_FRESH                 (INFO)
 ```
+
+**Status precedence and reason accumulation:**
+
+```
+Status precedence: UNKNOWN > BLOCKED > CAUTION > ALLOWED.
+Within the winning band, append every matching reason for that band.
+Do not append reasons from a lower band once a higher band has won.
+```
+
+Example: regime is `UP` AND `volRatio >= extremeVolRatio` AND `freshness.softStale === true`. The winning status is BLOCKED. The response carries:
+
+```
+clmmSuitability.reasons = [
+  { code: CLMM_BLOCKED_TRENDING_UP,        severity: WARN, ... },
+  { code: CLMM_BLOCKED_EXTREME_VOLATILITY, severity: WARN, ... }
+]
+```
+
+`CLMM_CAUTION_SOFT_STALE_DATA` is **not** appended — soft-stale is a CAUTION-band reason and BLOCKED has already won. The freshness fact still surfaces in `marketReasons` as `DATA_SOFT_STALE`; the suitability array is scoped to "why this suitability decision."
+
+Notes on `volRatio` thresholds:
+
+- `regime.chopVolRatioMax` (1.4) — input to **regime classification**. Decides whether the market is CHOP at all.
+- `suitability.allowedVolRatioMax` (1.30) — input to **suitability**. Once classified CHOP, decides whether vol is calm enough for ALLOWED or merits CAUTION.
+- `suitability.extremeVolRatio` (1.60) — input to **suitability**. Vol so high that CLMM is BLOCKED even if regime is technically CHOP.
+
+The two knobs are deliberately distinct: regime classification and CLMM suitability answer different questions and may diverge in calibration.
 
 ### 8.2 Reason code allowlist
 
@@ -449,12 +489,23 @@ CLMM_ALLOWED_CHOP_FRESH
 **`marketReasons` (separate scope, regime + data):**
 
 ```
-REGIME_STABLE | REGIME_SWITCH_CONFIRMED | REGIME_CONFIRM_PENDING | REGIME_MIN_HOLD_ACTIVE
+REGIME_STABLE | REGIME_SWITCH_CONFIRMED
 DATA_FRESH | DATA_SOFT_STALE | DATA_HARD_STALE
 DATA_SUFFICIENT_SAMPLES | DATA_INSUFFICIENT_SAMPLES
 ```
 
-`REGIME_*` codes are passed through from `classifyRegime`. Duplication between the two arrays (e.g., insufficient samples surfaced in both) is acceptable: they render in different sections of the page and answer different questions.
+`REGIME_CONFIRM_PENDING` and `REGIME_MIN_HOLD_ACTIVE` are intentionally excluded from the market-read allowlist. They are emitted by `classifyRegime` only when hysteresis state is being carried forward (`confirmBars > 1` or `minHoldBars > 0`). The market-only wrapper calls `classifyRegime` with `confirmBars: 1, minHoldBars: 0` and `state: undefined`, so these codes are unreachable. Tests must not assert them on `GET /v1/regime/current`. They remain valid in `POST /v1/plan` responses where hysteresis applies.
+
+The market-only wrapper rephrases the surviving regime codes into market-read language before returning them in `marketReasons`. The user-facing Regime page should not see policy-classifier phrasing like "Switched CHOP -> UP after 1 confirmation bars." The wrapper produces:
+
+```
+REGIME_STABLE             -> "Current telemetry holds <regime> regime."
+REGIME_SWITCH_CONFIRMED   -> "Current telemetry supports <regime> regime."
+```
+
+Only the message field is rewritten. The `code` and `severity` fields are preserved verbatim from `classifyRegime` so downstream code paths that key on `code` continue to work.
+
+`REGIME_*` codes are passed through (with rewritten messages) from `classifyRegime`. Duplication between `marketReasons` and `clmmSuitability.reasons` (e.g., insufficient samples surfaced in both) is acceptable: they render in different sections of the page and answer different questions.
 
 ## 9. Module layout
 
@@ -512,8 +563,8 @@ src/http/
 handler reads now once
   -> read latest revisions from candlesWriter (closed-candle cutoff applied in SQL)
   -> if zero rows: 404 CANDLES_NOT_FOUND
-  -> indicators.computeIndicators(candles)
-  -> classifyMarketRegime(telemetry) -> { regime, reasons }
+  -> indicators.computeIndicators(candles, config.indicators)
+  -> classifyMarketRegime(telemetry, config.regime) -> { regime, reasons }
   -> freshness.computeFreshness(now, lastCandleUnixMs, config)
   -> evaluateMarketClmmSuitability({ regime, telemetry, freshness, candleCount, config.suitability })
   -> assemble RegimeCurrentResponse (deterministic object construction)
@@ -585,7 +636,7 @@ Following AGENTS.md "required coverage" — contract validation, determinism sna
 
 `candlesIngest.route.test.ts`:
 - 401 missing/bad token; 500 missing env; 200 happy path; 400 each validation code.
-- Stale subset → 200 with `rejectedCount > 0` (not the presence of `rejections[]`, since that field is optional).
+- Stale subset → 200 with `rejectedCount > 0` and `rejections.length === rejectedCount`. Empty-rejections case → 200 with `rejectedCount === 0` and `rejections === []`.
 
 `regimeCurrent.route.test.ts`:
 - 200 fresh CHOP → ALLOWED.
