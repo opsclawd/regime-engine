@@ -260,19 +260,24 @@ CREATE UNIQUE INDEX IF NOT EXISTS ux_candle_revisions_slot_hash
 For each candle in the batch:
 
 ```
-let incomingUnixMs   = parsed sourceRecordedAtIso (UTC) -> unix ms
-let existing         = latest revision for
-                       (symbol, source, network, pool_address, timeframe, unix_ms)
-                       (selected via idx_candle_revisions_slot_latest)
+let incomingSourceRecordedAtUnixMs = parsed sourceRecordedAtIso (UTC) -> unix ms
+let existing                       = latest revision for
+                                     (symbol, source, network, pool_address, timeframe, unix_ms)
+                                     (selected via idx_candle_revisions_slot_latest)
 
-  existing is null                                              -> INSERT, insertedCount++
-  existing.ohlcv_hash == incoming.ohlcv_hash                    -> no-op, idempotentCount++
-  existing.source_recorded_at_unix_ms < incomingUnixMs          -> INSERT, revisedCount++
-  existing.source_recorded_at_unix_ms >= incomingUnixMs
-    AND existing.ohlcv_hash != incoming.ohlcv_hash              -> reject, rejectedCount++,
-                                                                   emit { unixMs, reason: STALE_REVISION,
-                                                                          existingSourceRecordedAtIso }
+  existing is null
+    -> INSERT, insertedCount++
+  existing.ohlcv_hash == incoming.ohlcv_hash
+    -> no-op, idempotentCount++
+  existing.source_recorded_at_unix_ms < incomingSourceRecordedAtUnixMs
+    -> INSERT, revisedCount++
+  existing.source_recorded_at_unix_ms >= incomingSourceRecordedAtUnixMs
+    AND existing.ohlcv_hash != incoming.ohlcv_hash
+    -> reject, rejectedCount++,
+       emit { unixMs, reason: STALE_REVISION, existingSourceRecordedAtIso }
 ```
+
+`unixMs` (the candle slot timestamp) and `incomingSourceRecordedAtUnixMs` (the collector recording instant) are deliberately spelled in full — they are different timestamps and conflating them is a likely implementation bug.
 
 Ordering is **always numeric** against the parsed `source_recorded_at_unix_ms` column. ISO strings are stored for audit and response serialization; they are never compared lexicographically in the writer.
 
@@ -428,10 +433,10 @@ type MarketClmmSuitability = {
    - freshness.hardStale                   -> UNKNOWN, CLMM_UNKNOWN_HARD_STALE_DATA   (ERROR)
 
 2. BLOCKED gate:
-   - regime == "UP"                        -> BLOCKED, CLMM_BLOCKED_TRENDING_UP        (WARN)
-   - regime == "DOWN"                      -> BLOCKED, CLMM_BLOCKED_TRENDING_DOWN      (WARN)
-   - volRatio >= extremeVolRatio           -> BLOCKED, CLMM_BLOCKED_EXTREME_VOLATILITY (WARN)
-   - compression >= extremeCompression     -> BLOCKED, CLMM_BLOCKED_EXTREME_COMPRESSION(WARN)
+   - regime == "UP"                            -> BLOCKED, CLMM_BLOCKED_TRENDING_UP        (WARN)
+   - regime == "DOWN"                          -> BLOCKED, CLMM_BLOCKED_TRENDING_DOWN      (WARN)
+   - volRatio >= config.extremeVolRatio        -> BLOCKED, CLMM_BLOCKED_EXTREME_VOLATILITY (WARN)
+   - compression >= config.extremeCompression  -> BLOCKED, CLMM_BLOCKED_EXTREME_COMPRESSION(WARN)
 
 3. CAUTION gate (status starts ALLOWED, demoted to CAUTION on any of these;
    all matching reasons appended):
@@ -620,7 +625,7 @@ Following AGENTS.md "required coverage" — contract validation, determinism sna
   - CHOP + fresh + sufficient + low vol → ALLOWED (`CLMM_ALLOWED_CHOP_FRESH`).
 - `freshness.test.ts` — boundary cases on `softStaleMs` / `hardStaleMs` exactly at the threshold.
 - `buildRegimeCurrent.test.ts` — given candles + `nowUnixMs`, returns expected regime/telemetry/suitability/freshness/metadata.
-- `buildRegimeCurrent.snapshot.test.ts` — golden fixture inputs produce byte-identical response objects across runs (Vitest object snapshot, not canonical-JSON byte snapshot).
+- `buildRegimeCurrent.snapshot.test.ts` — golden fixture inputs produce snapshot-identical response objects across runs (Vitest object snapshot, not canonical-JSON byte snapshot).
 
 ### 10.3 Ledger (`src/ledger/__tests__/candlesWriter.test.ts`)
 
@@ -680,7 +685,7 @@ SERVER_MISCONFIGURATION     // already exists
 
 ## 12. Migration / rollout
 
-Schema change is purely additive (`CREATE TABLE IF NOT EXISTS candle_revisions` + two `CREATE INDEX IF NOT EXISTS`). No migration script needed for the existing SQLite store — boot-time `schema.sql` exec is idempotent.
+Schema change is purely additive (`CREATE TABLE IF NOT EXISTS candle_revisions` + three `CREATE INDEX IF NOT EXISTS` statements: two read indexes and one unique idempotency index). No migration script needed for the existing SQLite store — boot-time `schema.sql` exec is idempotent.
 
 New env var `CANDLES_INGEST_TOKEN` must be set on Railway before deploy. Missing env returns 500 only on `POST /v1/candles` (route-level check); it does not block service boot or read routes. `requireSharedSecret` fails closed before any write is attempted.
 
