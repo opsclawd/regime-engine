@@ -120,7 +120,7 @@ Stale-revision rejections are **per-slot** within an otherwise-valid batch: 200 
 | HTTP | Code | When |
 |---|---|---|
 | 400 | `SCHEMA_VERSION_UNSUPPORTED` | `schemaVersion` ≠ `"1.0"` |
-| 400 | `VALIDATION_ERROR` | Missing/wrong-typed fields, unsupported timeframe, malformed `sourceRecordedAtIso`, unknown source pattern |
+| 400 | `VALIDATION_ERROR` | Missing/wrong-typed fields, unsupported timeframe, malformed `sourceRecordedAtIso` |
 | 400 | `BATCH_TOO_LARGE` | `candles.length > 1000` |
 | 400 | `MALFORMED_CANDLE` | OHLCV invariant violation; payload identifies offending index |
 | 400 | `DUPLICATE_CANDLE_IN_BATCH` | Two entries share `unixMs` within the same request |
@@ -134,6 +134,8 @@ OHLCV invariants enforced at validation:
 - `low <= min(open, close, high)`.
 - `unixMs` is an integer and `unixMs % timeframeMs === 0`.
 - `sourceRecordedAtIso` is a valid ISO-8601 string.
+
+`source` is a free-form string in MVP (no allowlist, no regex). Future hardening can introduce a pattern check; not in scope here.
 
 `CANDLE_STALE_REVISION` is **not** an HTTP error code. It lives in `rejections[].reason`. Adding it to the error registry would imply HTTP semantics it doesn't have.
 
@@ -244,6 +246,8 @@ Both indexes ship with the table. Schema rollout is purely additive — `CREATE 
 
 `received_at_unix_ms` is audit-only; it never breaks ordering ties, since that would let stale collector runs win on receive-clock skew.
 
+`ohlcv_canonical` is the canonical-JSON serialization of `{open, high, low, close, volume}` produced via the existing `src/contract/v1/canonical.ts` `toCanonicalJson` helper (lexicographic key sort, stable number formatting). `ohlcv_hash` is `sha256Hex(ohlcv_canonical)` from the existing `src/contract/v1/hash.ts`. Idempotency lookups compare on `ohlcv_hash`, never on raw OHLCV equality.
+
 ### 6.1 Per-slot write decision tree
 
 For each candle in the batch:
@@ -294,7 +298,7 @@ The closed-candle cutoff `unix_ms <= ?` is computed by the handler:
 closedCandleCutoffUnixMs = floor((now - closedCandleDelayMs) / timeframeMs) * timeframeMs - timeframeMs
 ```
 
-This excludes the latest in-flight bar.
+The `floor(...) * timeframeMs` snaps to a bar boundary; subtracting one additional `timeframeMs` is intentional — it excludes the bar that *just* closed within `closedCandleDelayMs`, leaving a grace window for late revisions before the slot becomes eligible for classification. So "closed" here means "closed for at least `closedCandleDelayMs`," not "closed at all."
 
 ## 7. Configuration
 
@@ -586,8 +590,8 @@ Following AGENTS.md "required coverage" — contract validation, determinism sna
 `regimeCurrent.route.test.ts`:
 - 200 fresh CHOP → ALLOWED.
 - 200 trending UP → BLOCKED.
-- 200 hard-stale (≥1 closed candle) → UNKNOWN.
-- 200 insufficient samples → UNKNOWN.
+- 200 hard-stale, `candleCount >= minCandles` → UNKNOWN (covers UNKNOWN-by-staleness path independently of insufficient-samples).
+- 200 insufficient samples, `freshness.hardStale === false` → UNKNOWN (covers UNKNOWN-by-samples path independently of staleness).
 - 200 soft-stale CHOP → CAUTION.
 - 404 zero closed candles → `CANDLES_NOT_FOUND` (404 check happens before suitability evaluation; hard-stale + zero candles is 404).
 - 400 missing selector.
