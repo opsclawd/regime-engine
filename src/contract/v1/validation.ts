@@ -1,11 +1,15 @@
 import { z } from "zod";
 import {
   ContractValidationError,
+  batchTooLargeError,
+  duplicateCandleInBatchError,
+  malformedCandleError,
   unsupportedSchemaVersionError,
   validationErrorFromZod
 } from "../../http/errors.js";
 import {
   SCHEMA_VERSION,
+  type CandleIngestRequest,
   type ClmmExecutionEventRequest,
   type ExecutionResultRequest,
   type PlanRequest,
@@ -272,9 +276,156 @@ export const parseClmmExecutionEventRequest = (raw: unknown): ClmmExecutionEvent
   );
 };
 
+const SUPPORTED_TIMEFRAMES = ["1h"] as const;
+const TIMEFRAME_TO_MS: Record<(typeof SUPPORTED_TIMEFRAMES)[number], number> = {
+  "1h": 60 * 60 * 1000
+};
+
+const candleIngestCandleSchema = z
+  .object({
+    unixMs: z.number().int().nonnegative(),
+    open: z.number(),
+    high: z.number(),
+    low: z.number(),
+    close: z.number(),
+    volume: z.number()
+  })
+  .strict();
+
+const candleIngestRequestSchema = z
+  .object({
+    schemaVersion: z.literal(SCHEMA_VERSION),
+    source: z.string().min(1),
+    network: z.string().min(1),
+    poolAddress: z.string().min(1),
+    symbol: z.string().min(1),
+    timeframe: z.enum(SUPPORTED_TIMEFRAMES),
+    sourceRecordedAtIso: z.string().datetime(),
+    candles: z.array(candleIngestCandleSchema).min(1)
+  })
+  .strict();
+
+const validateOhlcvInvariants = (
+  candles: CandleIngestRequest["candles"],
+  timeframeMs: number
+): void => {
+  for (let index = 0; index < candles.length; index += 1) {
+    const c = candles[index];
+    const path = `$.candles[${index}]`;
+
+    for (const field of ["open", "high", "low", "close"] as const) {
+      const value = c[field];
+      if (!Number.isFinite(value) || value <= 0) {
+        throw malformedCandleError(`Candle ${index}: ${field} must be a finite positive number`, [
+          { path: `${path}.${field}`, code: "INVALID_VALUE", message: `${field} must be finite positive` }
+        ]);
+      }
+    }
+
+    if (!Number.isFinite(c.volume) || c.volume < 0) {
+      throw malformedCandleError(`Candle ${index}: volume must be finite and non-negative`, [
+        { path: `${path}.volume`, code: "INVALID_VALUE", message: "volume must be finite non-negative" }
+      ]);
+    }
+
+    if (c.high < Math.max(c.open, c.close, c.low)) {
+      throw malformedCandleError(`Candle ${index}: high must be >= max(open, close, low)`, [
+        { path: `${path}.high`, code: "INVALID_VALUE", message: "high < max(open, close, low)" }
+      ]);
+    }
+
+    if (c.low > Math.min(c.open, c.close, c.high)) {
+      throw malformedCandleError(`Candle ${index}: low must be <= min(open, close, high)`, [
+        { path: `${path}.low`, code: "INVALID_VALUE", message: "low > min(open, close, high)" }
+      ]);
+    }
+
+    if (!Number.isInteger(c.unixMs)) {
+      throw malformedCandleError(`Candle ${index}: unixMs must be an integer`, [
+        { path: `${path}.unixMs`, code: "INVALID_VALUE", message: "unixMs is not an integer" }
+      ]);
+    }
+
+    if (c.unixMs % timeframeMs !== 0) {
+      throw malformedCandleError(
+        `Candle ${index}: unixMs must be aligned to timeframeMs (${timeframeMs})`,
+        [{ path: `${path}.unixMs`, code: "INVALID_VALUE", message: "unixMs misaligned" }]
+      );
+    }
+  }
+};
+
+const checkBatchSize = (count: number): void => {
+  if (count > 1000) {
+    throw batchTooLargeError(
+      `candles.length must not exceed 1000; received ${count}`,
+      [{ path: "$.candles", code: "OUT_OF_RANGE", message: `length=${count} exceeds 1000` }]
+    );
+  }
+};
+
+const checkDuplicateUnixMs = (candles: CandleIngestRequest["candles"]): void => {
+  const seen = new Map<number, number>();
+  for (let index = 0; index < candles.length; index += 1) {
+    const previous = seen.get(candles[index].unixMs);
+    if (previous !== undefined) {
+      throw duplicateCandleInBatchError(
+        `Duplicate unixMs ${candles[index].unixMs} at indexes ${previous} and ${index}`,
+        [
+          { path: `$.candles[${previous}].unixMs`, code: "INVALID_VALUE", message: "duplicate" },
+          { path: `$.candles[${index}].unixMs`, code: "INVALID_VALUE", message: "duplicate" }
+        ]
+      );
+    }
+    seen.set(candles[index].unixMs, index);
+  }
+};
+
+export const parseCandleIngestRequest = (raw: unknown): CandleIngestRequest => {
+  const parsed = parseWithSchema(
+    raw,
+    candleIngestRequestSchema,
+    "Invalid /v1/candles request body"
+  );
+
+  checkBatchSize(parsed.candles.length);
+  checkDuplicateUnixMs(parsed.candles);
+  validateOhlcvInvariants(parsed.candles, TIMEFRAME_TO_MS[parsed.timeframe]);
+
+  return parsed;
+};
+
+const regimeCurrentQuerySchema = z
+  .object({
+    symbol: z.string().min(1),
+    source: z.string().min(1),
+    network: z.string().min(1),
+    poolAddress: z.string().min(1),
+    timeframe: z.enum(SUPPORTED_TIMEFRAMES)
+  })
+  .strict();
+
+export const parseRegimeCurrentQuery = (raw: unknown): {
+  symbol: string;
+  source: string;
+  network: string;
+  poolAddress: string;
+  timeframe: "1h";
+} => {
+  const parsed = regimeCurrentQuerySchema.safeParse(raw);
+  if (!parsed.success) {
+    throw validationErrorFromZod(
+      "Invalid /v1/regime/current query parameters",
+      parsed.error.issues
+    );
+  }
+  return parsed.data;
+};
+
 export const schemas = {
   planRequest: planRequestSchema,
   executionResultRequest: executionResultRequestSchema,
   srLevelBriefRequest: srLevelBriefRequestSchema,
-  clmmExecutionEventRequest: clmmExecutionEventRequestSchema
+  clmmExecutionEventRequest: clmmExecutionEventRequestSchema,
+  candleIngestRequest: candleIngestRequestSchema
 } as const;
