@@ -1,0 +1,62 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`buildRegimeCurrent snapshot > produces identical response objects for fixed inputs 1`] = `
+{
+  "clmmSuitability": {
+    "reasons": [
+      {
+        "code": "CLMM_UNKNOWN_HARD_STALE_DATA",
+        "message": "Latest candle exceeds hard-stale window; classification is not trustworthy.",
+        "severity": "ERROR",
+      },
+    ],
+    "status": "UNKNOWN",
+  },
+  "freshness": {
+    "ageSeconds": 216000,
+    "generatedAtIso": "1970-01-05T04:00:00.000Z",
+    "hardStale": true,
+    "hardStaleSeconds": 5400,
+    "lastCandleIso": "1970-01-02T16:00:00.000Z",
+    "lastCandleUnixMs": 144000000,
+    "softStale": true,
+    "softStaleSeconds": 4500,
+  },
+  "marketReasons": [
+    {
+      "code": "REGIME_STABLE",
+      "message": "Current telemetry holds CHOP regime.",
+      "severity": "INFO",
+    },
+    {
+      "code": "DATA_HARD_STALE",
+      "message": "Latest candle is older than the hard-stale window.",
+      "severity": "ERROR",
+    },
+    {
+      "code": "DATA_SUFFICIENT_SAMPLES",
+      "message": "Have 40 closed candles (>= 30).",
+      "severity": "INFO",
+    },
+  ],
+  "metadata": {
+    "candleCount": 40,
+    "configVersion": "market-regime-1.0.0",
+    "engineVersion": "0.1.0",
+  },
+  "network": "solana-mainnet",
+  "poolAddress": "Pool111",
+  "regime": "CHOP",
+  "schemaVersion": "1.0",
+  "source": "birdeye",
+  "symbol": "SOL/USDC",
+  "telemetry": {
+    "compression": 0.022393325427,
+    "realizedVolLong": 0.000026208833,
+    "realizedVolShort": 0.000006044065,
+    "trendStrength": 0.000968054211,
+    "volRatio": 0.373633725332,
+  },
+  "timeframe": "1h",
+}
+`;
