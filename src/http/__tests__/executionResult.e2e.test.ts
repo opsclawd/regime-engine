@@ -209,7 +209,8 @@ describe("/v1/execution-result e2e", () => {
       executionResults: 1,
       srLevelBriefs: 0,
       srLevels: 0,
-      clmmExecutionEvents: 0
+      clmmExecutionEvents: 0,
+      candleRevisions: 0
     });
     verificationStore.close();
   });

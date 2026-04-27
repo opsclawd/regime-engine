@@ -148,7 +148,8 @@ describe("ledger writer", () => {
       executionResults: 0,
       srLevelBriefs: 0,
       srLevels: 0,
-      clmmExecutionEvents: 0
+      clmmExecutionEvents: 0,
+      candleRevisions: 0
     });
     store.close();
   });
@@ -195,7 +196,8 @@ describe("ledger writer", () => {
       executionResults: 1,
       srLevelBriefs: 0,
       srLevels: 0,
-      clmmExecutionEvents: 0
+      clmmExecutionEvents: 0,
+      candleRevisions: 0
     });
     store.close();
   });
@@ -321,7 +323,8 @@ describe.sequential("ledger wiring via HTTP stubs", () => {
       executionResults: 1,
       srLevelBriefs: 0,
       srLevels: 0,
-      clmmExecutionEvents: 0
+      clmmExecutionEvents: 0,
+      candleRevisions: 0
     });
     verificationStore.close();
   });

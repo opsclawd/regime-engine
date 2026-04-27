@@ -115,7 +115,8 @@ describe("/v1/plan e2e", () => {
       executionResults: 0,
       srLevelBriefs: 0,
       srLevels: 0,
-      clmmExecutionEvents: 0
+      clmmExecutionEvents: 0,
+      candleRevisions: 0
     });
     verificationStore.close();
   });
