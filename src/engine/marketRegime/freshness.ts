@@ -1,7 +1,6 @@
 export interface FreshnessConfig {
   softStaleMs: number;
   hardStaleMs: number;
-  closedCandleDelayMs: number;
 }
 
 export interface FreshnessResult {

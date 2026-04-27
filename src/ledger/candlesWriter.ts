@@ -73,6 +73,9 @@ export const writeCandles = (
   receivedAtUnixMs: number
 ): Omit<CandleIngestResponse, "schemaVersion"> => {
   const incomingSourceRecordedAtUnixMs = Date.parse(input.sourceRecordedAtIso);
+  if (!Number.isFinite(incomingSourceRecordedAtUnixMs)) {
+    throw new Error(`Invalid sourceRecordedAtIso: ${input.sourceRecordedAtIso}`);
+  }
 
   const feed = {
     symbol: input.symbol,
@@ -136,8 +139,8 @@ export const writeCandles = (
   } catch (error) {
     try {
       store.db.exec("ROLLBACK");
-    } catch (_rollbackError) {
-      void _rollbackError;
+    } catch (rollbackError) {
+      console.error("ROLLBACK failed after writeCandles error:", rollbackError);
     }
     throw error;
   }

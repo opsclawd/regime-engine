@@ -68,7 +68,11 @@ export const createRegimeCurrentHandler = (store: LedgerStore) => {
       if (error instanceof ContractValidationError) {
         return reply.code(error.statusCode).send(error.response);
       }
-      throw error;
+      request.log.error(error, "Unhandled error in GET /v1/regime/current");
+      return reply.code(500).send({
+        schemaVersion: "1.0",
+        error: { code: "INTERNAL_ERROR", message: "Internal server error", details: [] }
+      });
     }
   };
 };

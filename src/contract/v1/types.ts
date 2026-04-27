@@ -231,14 +231,7 @@ export interface CandleIngestRequest {
   symbol: string;
   timeframe: SupportedTimeframe;
   sourceRecordedAtIso: string;
-  candles: Array<{
-    unixMs: number;
-    open: number;
-    high: number;
-    low: number;
-    close: number;
-    volume: number;
-  }>;
+  candles: Candle[];
 }
 
 export interface CandleIngestRejection {

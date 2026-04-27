@@ -67,6 +67,9 @@ const buildMarketReasons = (
 };
 
 export const buildRegimeCurrent = (input: BuildRegimeCurrentInput): RegimeCurrentResponse => {
+  if (input.candles.length === 0) {
+    throw new Error("buildRegimeCurrent requires at least one candle");
+  }
   const { feed, candles, nowUnixMs, config, configVersion, engineVersion } = input;
 
   const telemetry = computeIndicators(candles, config.indicators);
@@ -75,8 +78,7 @@ export const buildRegimeCurrent = (input: BuildRegimeCurrentInput): RegimeCurren
   const lastCandleUnixMs = candles[candles.length - 1].unixMs;
   const freshness = computeFreshness(nowUnixMs, lastCandleUnixMs, {
     softStaleMs: config.freshness.softStaleMs,
-    hardStaleMs: config.freshness.hardStaleMs,
-    closedCandleDelayMs: config.freshness.closedCandleDelayMs
+    hardStaleMs: config.freshness.hardStaleMs
   });
 
   const suitability = evaluateMarketClmmSuitability({

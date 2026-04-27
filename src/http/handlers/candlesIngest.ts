@@ -27,7 +27,11 @@ export const createCandlesIngestHandler = (store: LedgerStore) => {
       if (error instanceof ContractValidationError) {
         return reply.code(error.statusCode).send(error.response);
       }
-      throw error;
+      request.log.error(error, "Unhandled error in POST /v1/candles");
+      return reply.code(500).send({
+        schemaVersion: "1.0",
+        error: { code: "INTERNAL_ERROR", message: "Internal server error", details: [] }
+      });
     }
   };
 };
