@@ -3,7 +3,11 @@ import { SCHEMA_VERSION, type SchemaVersion } from "../contract/v1/types.js";
 
 export const ERROR_CODES = {
   VALIDATION_ERROR: "VALIDATION_ERROR",
-  UNSUPPORTED_SCHEMA_VERSION: "UNSUPPORTED_SCHEMA_VERSION"
+  UNSUPPORTED_SCHEMA_VERSION: "UNSUPPORTED_SCHEMA_VERSION",
+  BATCH_TOO_LARGE: "BATCH_TOO_LARGE",
+  MALFORMED_CANDLE: "MALFORMED_CANDLE",
+  DUPLICATE_CANDLE_IN_BATCH: "DUPLICATE_CANDLE_IN_BATCH",
+  CANDLES_NOT_FOUND: "CANDLES_NOT_FOUND"
 } as const;
 
 export type ErrorCode = (typeof ERROR_CODES)[keyof typeof ERROR_CODES];
@@ -166,5 +170,42 @@ export const validationErrorFromZod = (
       message,
       details
     }
+  });
+};
+
+export const batchTooLargeError = (
+  message: string,
+  details: ErrorDetail[] = []
+): ContractValidationError => {
+  return new ContractValidationError(400, {
+    schemaVersion: SCHEMA_VERSION,
+    error: { code: ERROR_CODES.BATCH_TOO_LARGE, message, details }
+  });
+};
+
+export const malformedCandleError = (
+  message: string,
+  details: ErrorDetail[]
+): ContractValidationError => {
+  return new ContractValidationError(400, {
+    schemaVersion: SCHEMA_VERSION,
+    error: { code: ERROR_CODES.MALFORMED_CANDLE, message, details }
+  });
+};
+
+export const duplicateCandleInBatchError = (
+  message: string,
+  details: ErrorDetail[]
+): ContractValidationError => {
+  return new ContractValidationError(400, {
+    schemaVersion: SCHEMA_VERSION,
+    error: { code: ERROR_CODES.DUPLICATE_CANDLE_IN_BATCH, message, details }
+  });
+};
+
+export const candlesNotFoundError = (message: string): ContractValidationError => {
+  return new ContractValidationError(404, {
+    schemaVersion: SCHEMA_VERSION,
+    error: { code: ERROR_CODES.CANDLES_NOT_FOUND, message, details: [] }
   });
 };
