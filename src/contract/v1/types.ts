@@ -218,3 +218,103 @@ export interface SrLevelsCurrentResponse {
   supports: SrLevelResponse[];
   resistances: SrLevelResponse[];
 }
+
+export type SupportedTimeframe = "1h";
+
+export type ClmmSuitabilityStatus = "ALLOWED" | "CAUTION" | "BLOCKED" | "UNKNOWN";
+
+export interface CandleIngestRequest {
+  schemaVersion: SchemaVersion;
+  source: string;
+  network: string;
+  poolAddress: string;
+  symbol: string;
+  timeframe: SupportedTimeframe;
+  sourceRecordedAtIso: string;
+  candles: Array<{
+    unixMs: number;
+    open: number;
+    high: number;
+    low: number;
+    close: number;
+    volume: number;
+  }>;
+}
+
+export interface CandleIngestRejection {
+  unixMs: number;
+  reason: "STALE_REVISION";
+  existingSourceRecordedAtIso: string;
+}
+
+export interface CandleIngestResponse {
+  schemaVersion: SchemaVersion;
+  insertedCount: number;
+  revisedCount: number;
+  idempotentCount: number;
+  rejectedCount: number;
+  rejections: CandleIngestRejection[];
+}
+
+export interface MarketReason {
+  code: string;
+  severity: ReasonSeverity;
+  message: string;
+}
+
+export interface ClmmSuitabilityReason {
+  code: string;
+  severity: ReasonSeverity;
+  message: string;
+}
+
+export interface RegimeCurrentTelemetry {
+  realizedVolShort: number;
+  realizedVolLong: number;
+  volRatio: number;
+  trendStrength: number;
+  compression: number;
+}
+
+export interface RegimeCurrentFreshness {
+  generatedAtIso: string;
+  lastCandleUnixMs: number;
+  lastCandleIso: string;
+  ageSeconds: number;
+  softStale: boolean;
+  hardStale: boolean;
+  softStaleSeconds: number;
+  hardStaleSeconds: number;
+}
+
+export interface RegimeCurrentMetadata {
+  engineVersion: string;
+  configVersion: string;
+  candleCount: number;
+}
+
+export interface RegimeCurrentResponse {
+  schemaVersion: SchemaVersion;
+  symbol: string;
+  source: string;
+  network: string;
+  poolAddress: string;
+  timeframe: SupportedTimeframe;
+  regime: Regime;
+  telemetry: RegimeCurrentTelemetry;
+  clmmSuitability: {
+    status: ClmmSuitabilityStatus;
+    reasons: ClmmSuitabilityReason[];
+  };
+  marketReasons: MarketReason[];
+  freshness: RegimeCurrentFreshness;
+  metadata: RegimeCurrentMetadata;
+}
+
+export interface RegimeCurrentQuery {
+  symbol: string;
+  source: string;
+  network: string;
+  poolAddress: string;
+  timeframe: SupportedTimeframe;
+}
