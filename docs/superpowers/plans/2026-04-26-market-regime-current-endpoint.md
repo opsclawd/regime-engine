@@ -587,7 +587,7 @@ export const parseCandleIngestRequest = (raw: unknown): CandleIngestRequest => {
 };
 ```
 
-Add `candleIngestRequest: candleIngestRequestSchema` to the `schemas` export.
+Add `candleIngestRequest: candleIngestRequestSchema` to the `schemas` const at the bottom of `src/contract/v1/validation.ts` (the existing `export const schemas = { ... } as const;` block, around line 275).
 
 - [ ] **Step 4: Run tests to verify they pass**
 
@@ -745,7 +745,7 @@ git commit -m "feat(validation): parseRegimeCurrentQuery for the five required s
 
 - [ ] **Step 1: Append the table and three indexes**
 
-Add to the bottom of `src/ledger/schema.sql` (above the trailing comment block):
+Append to the end of `src/ledger/schema.sql` (after the existing `clmm_execution_events` table; if the file has a trailing comment block, append above it):
 
 ```sql
 CREATE TABLE IF NOT EXISTS candle_revisions (
@@ -2546,7 +2546,7 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { afterEach, describe, expect, it } from "vitest";
 import { buildApp } from "../../app.js";
-import { getLedgerCounts } from "../../ledger/store.js";
+import { createLedgerStore, getLedgerCounts } from "../../ledger/store.js";
 
 const ONE_HOUR_MS = 60 * 60 * 1000;
 const createdDbPaths: string[] = [];
@@ -2560,6 +2560,16 @@ const tempDb = (): string => {
   return path;
 };
 
+// Anchor candles to "just before now" so freshness windows behave like prod.
+// 40 hourly candles ending at the most recently aligned hour boundary.
+const buildRecentCandles = (count: number) => {
+  const lastClose = Math.floor(Date.now() / ONE_HOUR_MS) * ONE_HOUR_MS - ONE_HOUR_MS;
+  return Array.from({ length: count }, (_, i) => ({
+    unixMs: lastClose - (count - 1 - i) * ONE_HOUR_MS,
+    open: 100, high: 100.5, low: 99.5, close: 100, volume: 1
+  }));
+};
+
 const ingestPayload = (count: number, recordedIso: string) => ({
   schemaVersion: "1.0",
   source: "birdeye",
@@ -2568,10 +2578,7 @@ const ingestPayload = (count: number, recordedIso: string) => ({
   symbol: "SOL/USDC",
   timeframe: "1h",
   sourceRecordedAtIso: recordedIso,
-  candles: Array.from({ length: count }, (_, i) => ({
-    unixMs: (i + 1) * ONE_HOUR_MS,
-    open: 100, high: 100.5, low: 99.5, close: 100, volume: 1
-  }))
+  candles: buildRecentCandles(count)
 });
 
 afterEach(() => {
@@ -2620,27 +2627,27 @@ describe("GET /v1/regime/current", () => {
     process.env.CANDLES_INGEST_TOKEN = "test-token";
     const app = buildApp();
 
-    const recordedIso = "2026-04-26T12:00:00.000Z";
+    const recordedIso = new Date().toISOString();
     await app.inject({
       method: "POST", url: "/v1/candles",
       headers: { "X-Candles-Ingest-Token": "test-token" },
       payload: ingestPayload(40, recordedIso)
     });
 
-    // No way to inject `now` into the GET handler, so this test only asserts
-    // the structural shape (status may be CAUTION/UNKNOWN if real time is far from
-    // the synthetic candle stream). For deterministic regime/suitability checks,
-    // the engine snapshot test (Task 3.6) is authoritative.
+    // Candles are anchored to the just-closed hour boundary so the GET handler's
+    // `Date.now()` falls inside the freshness window. The success path (CHOP +
+    // fresh + sufficient -> ALLOWED) should be reachable for the flat fixture.
     const res = await app.inject({ method: "GET", url: `/v1/regime/current${queryString}` });
     expect(res.statusCode).toBe(200);
     const body = res.json();
     expect(body.schemaVersion).toBe("1.0");
     expect(body.symbol).toBe("SOL/USDC");
     expect(body.timeframe).toBe("1h");
+    expect(body.regime).toBe("CHOP");
     expect(body.metadata.candleCount).toBeGreaterThan(0);
-    expect(["ALLOWED", "CAUTION", "BLOCKED", "UNKNOWN"]).toContain(body.clmmSuitability.status);
-    expect(Array.isArray(body.marketReasons)).toBe(true);
-    expect(Array.isArray(body.clmmSuitability.reasons)).toBe(true);
+    expect(body.clmmSuitability.status).toBe("ALLOWED");
+    expect(body.clmmSuitability.reasons.map((r: { code: string }) => r.code))
+      .toEqual(["CLMM_ALLOWED_CHOP_FRESH"]);
   });
 
   it("does not write to the plan ledger when called repeatedly", async () => {
@@ -2651,28 +2658,25 @@ describe("GET /v1/regime/current", () => {
     await app.inject({
       method: "POST", url: "/v1/candles",
       headers: { "X-Candles-Ingest-Token": "test-token" },
-      payload: ingestPayload(40, "2026-04-26T12:00:00.000Z")
+      payload: ingestPayload(40, new Date().toISOString())
     });
 
-    const baseCounts = getLedgerCounts(
-      // open a temporary read-only handle to the same db
-      // Note: buildApp owns its own LedgerStore instance; we read from a
-      // separate handle to avoid double-close. This is fine because SQLite
-      // supports concurrent read connections.
-      // eslint-disable-next-line @typescript-eslint/no-var-requires
-      (require("../../ledger/store.js") as typeof import("../../ledger/store.js"))
-        .createLedgerStore(process.env.LEDGER_DB_PATH!)
-    );
+    // Open a separate read-only handle to the same SQLite file. SQLite
+    // supports multiple concurrent connections; this avoids double-close on the
+    // store buildApp() owns internally.
+    const dbPath = process.env.LEDGER_DB_PATH!;
+    const readStore = createLedgerStore(dbPath);
+    const baseCounts = getLedgerCounts(readStore);
+    readStore.close();
 
     for (let i = 0; i < 5; i += 1) {
       const res = await app.inject({ method: "GET", url: `/v1/regime/current${queryString}` });
       expect(res.statusCode).toBe(200);
     }
 
-    const afterCounts = getLedgerCounts(
-      (require("../../ledger/store.js") as typeof import("../../ledger/store.js"))
-        .createLedgerStore(process.env.LEDGER_DB_PATH!)
-    );
+    const readStoreAfter = createLedgerStore(dbPath);
+    const afterCounts = getLedgerCounts(readStoreAfter);
+    readStoreAfter.close();
 
     expect(afterCounts.plans).toBe(baseCounts.plans);
     expect(afterCounts.planRequests).toBe(baseCounts.planRequests);
@@ -2680,8 +2684,6 @@ describe("GET /v1/regime/current", () => {
   });
 });
 ```
-
-> **Note for the implementer:** The require/import dance in the last test is awkward because the test file is ESM but the existing pattern uses dynamic store creation. If your harness or a `vitest` plugin objects, replace with a direct `import { createLedgerStore }` at the top of the file and use it instead — the assertion is what matters.
 
 - [ ] **Step 2: Run tests to verify they fail**
 
@@ -2847,6 +2849,8 @@ Edit `src/http/openapi.ts`. Inside the `paths` object, after the existing entrie
   }
 }
 ```
+
+> **OpenAPI schema-ref consistency check:** Before writing this, run `grep -n "components" src/http/openapi.ts` and `grep -n "requestBody\|content" src/http/openapi.ts`. If the existing OpenAPI document already inlines schemas under `components.schemas` and references them via `$ref`, mirror that pattern for `CandleIngestRequest`, `CandleIngestResponse`, and `RegimeCurrentResponse`. If the existing document is description-only prose (as the spec excerpts suggest), the prose-only entries above are consistent. **Do not unilaterally introduce a new schema-ref pattern** — match what is already there.
 
 - [ ] **Step 2: Update existing routes contract test**
 
