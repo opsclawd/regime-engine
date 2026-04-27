@@ -103,10 +103,5 @@ CREATE INDEX IF NOT EXISTS idx_candle_revisions_feed_window
     symbol, source, network, pool_address, timeframe, unix_ms DESC
   );
 
-CREATE UNIQUE INDEX IF NOT EXISTS ux_candle_revisions_slot_hash
-  ON candle_revisions(
-    symbol, source, network, pool_address, timeframe, unix_ms, ohlcv_hash
-  );
-
 -- End of schema. Do NOT re-declare tables or indexes below this line.
 -- Every CREATE statement must appear exactly once.
