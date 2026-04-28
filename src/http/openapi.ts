@@ -8,10 +8,22 @@ export const buildOpenApiDocument = () => {
     paths: {
       "/health": {
         get: {
-          summary: "Service health check",
+          summary: "Service health check (includes Postgres and SQLite status)",
           responses: {
             "200": {
-              description: "Healthy response"
+              description: "Health status",
+              content: {
+                "application/json": {
+                  schema: {
+                    type: "object",
+                    properties: {
+                      ok: { type: "boolean" },
+                      postgres: { type: "string", enum: ["ok", "unavailable", "not_configured"] },
+                      sqlite: { type: "string", enum: ["ok", "unavailable"] }
+                    }
+                  }
+                }
+              }
             }
           }
         }
