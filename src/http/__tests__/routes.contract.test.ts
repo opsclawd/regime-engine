@@ -137,6 +137,24 @@ describe("HTTP route contract stubs", () => {
     );
   });
 
+  it("OpenAPI document advertises POST /v1/candles", async () => {
+    const app = buildApp();
+    const res = await app.inject({ method: "GET", url: "/v1/openapi.json" });
+    expect(res.statusCode).toBe(200);
+    const doc = res.json();
+    expect(doc.paths["/v1/candles"]).toBeDefined();
+    expect(doc.paths["/v1/candles"].post).toBeDefined();
+  });
+
+  it("OpenAPI document advertises GET /v1/regime/current", async () => {
+    const app = buildApp();
+    const res = await app.inject({ method: "GET", url: "/v1/openapi.json" });
+    expect(res.statusCode).toBe(200);
+    const doc = res.json();
+    expect(doc.paths["/v1/regime/current"]).toBeDefined();
+    expect(doc.paths["/v1/regime/current"].get.parameters.length).toBe(5);
+  });
+
   it("returns plan response for /v1/plan", async () => {
     const response = await app.inject({
       method: "POST",

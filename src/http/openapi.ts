@@ -137,6 +137,78 @@ export const buildOpenApiDocument = () => {
             }
           }
         }
+      },
+      "/v1/candles": {
+        post: {
+          summary: "Ingest candle revisions for a logical feed",
+          responses: {
+            "200": {
+              description: "Per-slot insert/revise/idempotent/reject counts"
+            },
+            "400": {
+              description:
+                "Validation error (BATCH_TOO_LARGE, MALFORMED_CANDLE, DUPLICATE_CANDLE_IN_BATCH, VALIDATION_ERROR, UNSUPPORTED_SCHEMA_VERSION)"
+            },
+            "401": {
+              description: "Missing or invalid X-Candles-Ingest-Token"
+            },
+            "500": {
+              description:
+                "CANDLES_INGEST_TOKEN environment variable not set"
+            }
+          }
+        }
+      },
+      "/v1/regime/current": {
+        get: {
+          summary:
+            "Market-only regime classification + CLMM suitability for a feed",
+          parameters: [
+            {
+              name: "symbol",
+              in: "query",
+              required: true,
+              schema: { type: "string" }
+            },
+            {
+              name: "source",
+              in: "query",
+              required: true,
+              schema: { type: "string" }
+            },
+            {
+              name: "network",
+              in: "query",
+              required: true,
+              schema: { type: "string" }
+            },
+            {
+              name: "poolAddress",
+              in: "query",
+              required: true,
+              schema: { type: "string" }
+            },
+            {
+              name: "timeframe",
+              in: "query",
+              required: true,
+              schema: { type: "string", enum: ["1h"] }
+            }
+          ],
+          responses: {
+            "200": {
+              description:
+                "RegimeCurrentResponse with regime, telemetry, suitability, freshness, metadata"
+            },
+            "400": {
+              description: "VALIDATION_ERROR for missing/invalid selectors"
+            },
+            "404": {
+              description:
+                "CANDLES_NOT_FOUND when no closed candles exist for the feed"
+            }
+          }
+        }
       }
     }
   } as const;

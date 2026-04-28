@@ -63,6 +63,9 @@ export const getLedgerCounts = (store: LedgerStore) => {
         count: number;
       }
     ).count ?? 0;
+  const candleRevisions =
+    (store.db.prepare("SELECT COUNT(*) AS count FROM candle_revisions").get() as { count: number })
+      .count ?? 0;
 
   return {
     planRequests,
@@ -70,7 +73,8 @@ export const getLedgerCounts = (store: LedgerStore) => {
     executionResults,
     srLevelBriefs,
     srLevels,
-    clmmExecutionEvents
+    clmmExecutionEvents,
+    candleRevisions
   };
 };
 

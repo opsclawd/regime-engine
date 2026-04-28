@@ -26,6 +26,13 @@ Server endpoints:
 - `GET /v1/report/weekly?from=YYYY-MM-DD&to=YYYY-MM-DD`
 - `POST /v1/sr-levels`
 - `GET /v1/sr-levels/current?symbol=SYMBOL&source=SOURCE`
+- `POST /v1/candles` — ingest candle revisions for a logical feed
+  (`source + network + poolAddress + symbol + timeframe`). Append-only,
+  per-slot decision tree (insert / idempotent / revise / reject). Token-guarded
+  by `X-Candles-Ingest-Token` / `CANDLES_INGEST_TOKEN`.
+- `GET /v1/regime/current?symbol=&source=&network=&poolAddress=&timeframe=1h` —
+  market-only regime classification + CLMM suitability. Stateless: no
+  `RegimeState`, no portfolio/autopilot inputs, no plan-ledger writes.
 
 ## Commands
 
@@ -80,6 +87,7 @@ npm run harness -- --fixture ./fixtures/demo --from 2026-01-01 --to 2026-01-31
    | `COMMIT_SHA`            | —                   | Optional, shown in `/version`                                                                                  |
    | `OPENCLAW_INGEST_TOKEN` | —                   | Required shared secret for `POST /v1/sr-levels`                                                                |
    | `CLMM_INTERNAL_TOKEN`   | —                   | Required shared secret for `POST /v1/clmm-execution-result`                                                    |
+   | `CANDLES_INGEST_TOKEN`  | —                   | Required for `POST /v1/candles`. Sent via `X-Candles-Ingest-Token`, compared with `timingSafeEqual`. Missing env returns 500 only on the candle ingest route — service boot and read routes are unaffected. |
    | `RAILWAY_RUN_UID`       | `0`                 | **Required** — allows volume writes for non-root container                                                     |
 
 5. Railway handles HTTPS termination and SIGTERM — the service shuts down gracefully on deploy.

@@ -72,5 +72,36 @@ CREATE TABLE IF NOT EXISTS clmm_execution_events (
   received_at_unix_ms INTEGER NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS candle_revisions (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  symbol TEXT NOT NULL,
+  source TEXT NOT NULL,
+  network TEXT NOT NULL,
+  pool_address TEXT NOT NULL,
+  timeframe TEXT NOT NULL,
+  unix_ms INTEGER NOT NULL,
+  source_recorded_at_iso TEXT NOT NULL,
+  source_recorded_at_unix_ms INTEGER NOT NULL,
+  open REAL NOT NULL,
+  high REAL NOT NULL,
+  low REAL NOT NULL,
+  close REAL NOT NULL,
+  volume REAL NOT NULL,
+  ohlcv_canonical TEXT NOT NULL,
+  ohlcv_hash TEXT NOT NULL,
+  received_at_unix_ms INTEGER NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_candle_revisions_slot_latest
+  ON candle_revisions(
+    symbol, source, network, pool_address, timeframe, unix_ms,
+    source_recorded_at_unix_ms DESC, id DESC
+  );
+
+CREATE INDEX IF NOT EXISTS idx_candle_revisions_feed_window
+  ON candle_revisions(
+    symbol, source, network, pool_address, timeframe, unix_ms DESC
+  );
+
 -- End of schema. Do NOT re-declare tables or indexes below this line.
 -- Every CREATE statement must appear exactly once.

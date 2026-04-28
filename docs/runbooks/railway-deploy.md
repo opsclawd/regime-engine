@@ -18,8 +18,9 @@ disk and disappear on every deploy, silently).
 - Railway project hosting `clmm-superpowers-v2` already exists.
 - You have push access to the regime-engine GitHub repo and admin access to the Railway project.
 - Two shared secrets generated out-of-band (keep them in a password manager):
-  - `OPENCLAW_INGEST_TOKEN` — shared with whoever operates the OpenClaw ingest.
-  - `CLMM_INTERNAL_TOKEN` — shared with the CLMM backend service (reference variable, not copied by hand).
+   - `OPENCLAW_INGEST_TOKEN` — shared with whoever operates the OpenClaw ingest.
+   - `CLMM_INTERNAL_TOKEN` — shared with the CLMM backend service (reference variable, not copied by hand).
+   - `CANDLES_INGEST_TOKEN` — shared with the candle collector service, sent via `X-Candles-Ingest-Token`.
 
 ## Step 1 — Create the persistent volume FIRST
 
@@ -47,6 +48,7 @@ On the regime-engine service, set:
 | `NODE_ENV`              | `production`                      |                                                           |
 | `OPENCLAW_INGEST_TOKEN` | strong random string              | Share with OpenClaw operator.                             |
 | `CLMM_INTERNAL_TOKEN`   | strong random string              | Referenced from CLMM service (see Step 5).                |
+| `CANDLES_INGEST_TOKEN`  | strong random string              | Required for `POST /v1/candles`. Sent via `X-Candles-Ingest-Token`. |
 | `RAILWAY_RUN_UID`       | `0`                               | Required — volume is root-owned; container user is `app`. |
 | `COMMIT_SHA`            | `${{RAILWAY_GIT_COMMIT_SHA}}`     | Optional; surfaces in `/version`.                         |
 
