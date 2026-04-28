@@ -7,12 +7,13 @@ export function createDb(connectionString: string): {
   client: ReturnType<typeof postgres>;
 } {
   const max = process.env.PG_MAX_CONNECTIONS ? parseInt(process.env.PG_MAX_CONNECTIONS, 10) : 10;
+  const ssl = process.env.PG_SSL === "false" ? false : { rejectUnauthorized: false };
 
   const client = postgres(connectionString, {
     connection: {
       search_path: "regime_engine"
     },
-    ssl: { rejectUnauthorized: false },
+    ssl,
     idle_timeout: 30,
     max_lifetime: 1800,
     connect_timeout: 10,

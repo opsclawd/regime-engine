@@ -11,7 +11,23 @@ export const buildOpenApiDocument = () => {
           summary: "Service health check (includes Postgres and SQLite status)",
           responses: {
             "200": {
-              description: "Health status",
+              description: "All data stores healthy",
+              content: {
+                "application/json": {
+                  schema: {
+                    type: "object",
+                    required: ["ok", "postgres", "sqlite"],
+                    properties: {
+                      ok: { type: "boolean" },
+                      postgres: { type: "string", enum: ["ok", "unavailable", "not_configured"] },
+                      sqlite: { type: "string", enum: ["ok", "unavailable"] }
+                    }
+                  }
+                }
+              }
+            },
+            "503": {
+              description: "One or more data stores unhealthy",
               content: {
                 "application/json": {
                   schema: {
