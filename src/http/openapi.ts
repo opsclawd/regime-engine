@@ -16,6 +16,7 @@ export const buildOpenApiDocument = () => {
                 "application/json": {
                   schema: {
                     type: "object",
+                    required: ["ok", "postgres", "sqlite"],
                     properties: {
                       ok: { type: "boolean" },
                       postgres: { type: "string", enum: ["ok", "unavailable", "not_configured"] },

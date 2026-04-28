@@ -3,6 +3,9 @@ dist
 coverage
 tmp
 *.log
+.env
+.env.*
+!.env.example
 .codex
 .worktrees/
 .context/

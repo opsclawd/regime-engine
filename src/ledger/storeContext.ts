@@ -14,12 +14,19 @@ export const createStoreContext = (
   pgConnectionString: string
 ): StoreContext => {
   const ledger = createLedgerStore(ledgerPath);
-  const { db: pg, client: pgClient } = createDb(pgConnectionString);
-
-  return { ledger, pg, pgClient };
+  try {
+    const { db: pg, client: pgClient } = createDb(pgConnectionString);
+    return { ledger, pg, pgClient };
+  } catch (err) {
+    ledger.close();
+    throw err;
+  }
 };
 
 export const closeStoreContext = async (ctx: StoreContext): Promise<void> => {
-  ctx.ledger.close();
-  await ctx.pgClient.end();
+  try {
+    ctx.ledger.close();
+  } finally {
+    await ctx.pgClient.end();
+  }
 };

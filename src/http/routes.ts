@@ -1,4 +1,4 @@
-import type { FastifyInstance } from "fastify";
+import type { FastifyInstance, FastifyReply } from "fastify";
 import { sql } from "drizzle-orm/sql";
 import { buildOpenApiDocument } from "./openapi.js";
 import { closeStoreContext, createStoreContext, type StoreContext } from "../ledger/storeContext.js";
@@ -39,7 +39,7 @@ export const registerRoutes = (app: FastifyInstance): StoreContext | null => {
   const ledger = storeContext?.ledger ?? standaloneLedger!;
   const pg = storeContext?.pg ?? null;
 
-  app.get("/health", async () => {
+  app.get("/health", async (_req, reply: FastifyReply) => {
     let sqliteOk = true;
     try {
       ledger.db.prepare("SELECT 1").get();
@@ -58,8 +58,13 @@ export const registerRoutes = (app: FastifyInstance): StoreContext | null => {
       }
     }
 
+    const ok = sqliteOk && postgresStatus !== "unavailable";
+    if (!ok) {
+      reply.code(503);
+    }
+
     return {
-      ok: sqliteOk && postgresStatus !== "unavailable",
+      ok,
       postgres: postgresStatus,
       sqlite: sqliteOk ? "ok" : "unavailable"
     };

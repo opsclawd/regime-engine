@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { verifyPgConnection } from "../app.js";
+import { verifyPgConnection } from "../ledger/pg/db.js";
 
 describe("verifyPgConnection", () => {
   it("resolves without error when pg is reachable", async () => {
