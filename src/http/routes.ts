@@ -40,7 +40,13 @@ export const registerRoutes = (app: FastifyInstance): StoreContext | null => {
   const pg = storeContext?.pg ?? null;
 
   app.get("/health", async () => {
-    const sqliteOk = true;
+    let sqliteOk = true;
+    try {
+      ledger.db.prepare("SELECT 1").get();
+    } catch {
+      sqliteOk = false;
+    }
+
     let postgresStatus: string = pg ? "ok" : "not_configured";
 
     if (pg) {

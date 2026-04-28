@@ -7,5 +7,9 @@ export default defineConfig({
   dbCredentials: {
     url: process.env.DATABASE_URL!,
     ssl: { rejectUnauthorized: false }
+  },
+  migrations: {
+    schema: "regime_engine",
+    table: "regime_engine_migrations"
   }
 });
