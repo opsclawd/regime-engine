@@ -17,7 +17,7 @@
     "test:pg": "DATABASE_URL=postgres://test:test@localhost:5432/regime_engine_test vitest run",
     "format": "prettier --check .",
     "harness": "tsx scripts/harness.ts",
-    "db:migrate": "test -n \"$DATABASE_URL\" && drizzle-kit migrate || echo 'Skipping db:migrate — DATABASE_URL not set'",
+    "db:migrate": "drizzle-kit migrate",
     "db:generate": "drizzle-kit generate",
     "db:push": "drizzle-kit push"
   },
