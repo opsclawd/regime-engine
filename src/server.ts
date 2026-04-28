@@ -1,4 +1,5 @@
-import { buildApp } from "./app.js";
+import { buildApp, verifyPgConnection } from "./app.js";
+import { createDb } from "./ledger/pg/db.js";
 
 const port = Number(process.env.PORT ?? 8787);
 // Default to 0.0.0.0 for local dev. Production deploys (Railway) must set HOST=::
@@ -7,6 +8,19 @@ const host = process.env.HOST ?? "0.0.0.0";
 const SHUTDOWN_TIMEOUT_MS = 10_000;
 
 const start = async (): Promise<void> => {
+  const pgConnectionString = process.env.DATABASE_URL ?? "";
+
+  if (pgConnectionString) {
+    try {
+      const { db: pg, client } = createDb(pgConnectionString);
+      await verifyPgConnection(pg);
+      await client.end();
+    } catch (error) {
+      console.error("FATAL: Postgres connection failed at startup. Exiting.", error);
+      process.exit(1);
+    }
+  }
+
   const app = buildApp();
   try {
     await app.listen({ port, host });
