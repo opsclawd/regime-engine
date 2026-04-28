@@ -9,6 +9,8 @@ RUN npm ci --ignore-scripts
 COPY tsconfig.json tsconfig.build.json ./
 COPY src/ src/
 COPY scripts/ scripts/
+COPY drizzle/ drizzle/
+COPY drizzle.config.ts drizzle.config.ts
 
 RUN npm run build
 
@@ -23,6 +25,8 @@ COPY package.json package-lock.json ./
 RUN npm ci --omit=dev --ignore-scripts && npm cache clean --force
 
 COPY --from=builder /app/dist ./dist
+COPY --from=builder /app/drizzle ./drizzle
+COPY --from=builder /app/drizzle.config.ts ./drizzle.config.ts
 
 # Pre-create data directory writable by non-root user
 RUN mkdir -p /app/tmp && chown app:app /app/tmp
@@ -31,9 +35,6 @@ USER app
 
 ENV NODE_ENV=production
 ENV PORT=8787
-# Local/dev default. Production deploys MUST override LEDGER_DB_PATH to a path
-# backed by a persistent volume (Railway: /data/ledger.sqlite with the volume
-# mounted at /data — see railway.toml and docs/runbooks/railway-deploy.md).
 ENV LEDGER_DB_PATH=tmp/ledger.sqlite
 EXPOSE 8787
 
