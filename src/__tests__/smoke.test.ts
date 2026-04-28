@@ -18,7 +18,11 @@ describe("GET /health", () => {
   it("returns ok", async () => {
     const response = await app.inject({ method: "GET", url: "/health" });
     expect(response.statusCode).toBe(200);
-    expect(response.json()).toEqual({ ok: true });
+    expect(response.json()).toEqual({
+      ok: true,
+      postgres: "not_configured",
+      sqlite: "ok"
+    });
   });
 });
 

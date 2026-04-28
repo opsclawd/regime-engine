@@ -48,7 +48,8 @@ This architecture is based on the uploaded blueprint’s core principles: determ
 ## Runtime overview
 
 - HTTP server exposes:
-  - `GET /health`, `GET /version`
+  - `GET /health` — probes both SQLite and Postgres; returns `{ ok, postgres, sqlite }`
+  - `GET /version`
   - `GET /v1/openapi.json`
   - `POST /v1/plan`
   - `POST /v1/execution-result`
@@ -56,7 +57,10 @@ This architecture is based on the uploaded blueprint’s core principles: determ
   - `GET /v1/report/weekly`
   - `POST /v1/sr-levels` — token-guarded (`X-Ingest-Token`)
   - `GET /v1/sr-levels/current?symbol&source`
-- Ledger is local SQLite (single file; Railway mounts `/data`).
+- Data stores:
+  - **SQLite ledger** (single file; Railway mounts `/data`) — append-only receipts, plans, execution results.
+  - **Postgres** (shared Railway instance, `regime_engine` schema) — feature tables needing JSONB, arrays, concurrent reads. Migrated via Drizzle Kit (`npm run db:migrate`).
+- `DATABASE_URL` is mandatory in production; startup hard-fails if Postgres is unreachable.
 - Report generation reads ledger only (no network calls).
 - CLMM execution events accumulate in `clmm_execution_events` for post-shelf analytics; the weekly report does NOT consume them in this sprint.
 

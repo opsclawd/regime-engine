@@ -49,17 +49,21 @@ On the regime-engine service, set:
 | `OPENCLAW_INGEST_TOKEN` | strong random string              | Share with OpenClaw operator.                             |
 | `CLMM_INTERNAL_TOKEN`   | strong random string              | Referenced from CLMM service (see Step 5).                |
 | `CANDLES_INGEST_TOKEN`  | strong random string              | Required for `POST /v1/candles`. Sent via `X-Candles-Ingest-Token`. |
+| `DATABASE_URL`           | `${{Postgres.DATABASE_URL}}`        | Postgres connection string. Reference the shared Postgres service. Mandatory in production. |
 | `RAILWAY_RUN_UID`       | `0`                               | Required — volume is root-owned; container user is `app`. |
 | `COMMIT_SHA`            | `${{RAILWAY_GIT_COMMIT_SHA}}`     | Optional; surfaces in `/version`.                         |
 
-Do NOT set `DATABASE_URL` or any Postgres variable. regime-engine is SQLite-only.
+`DATABASE_URL` is mandatory in production. The service hard-fails at startup if Postgres is unreachable.
+Do NOT omit `DATABASE_URL` — the `preDeployCommand` runs `npm run db:migrate` and will fail without it.
 
 ## Step 3 — Trigger the first deploy
 
 Click "Deploy" (or wait for the GitHub push to trigger). Watch the build log:
 
 - Build stage runs `npm ci --ignore-scripts` then `npm run build`.
+- `preDeployCommand` runs `npm run db:migrate` against Postgres (requires `DATABASE_URL`).
 - Production stage runs as user `app`, starts `node --env-file-if-exists=.env dist/src/server.js`.
+- Startup verifies Postgres connectivity — if `DATABASE_URL` is set but Postgres is unreachable, the process exits with code 1.
 - Healthcheck at `/health` with 30s timeout (from `railway.toml`).
 
 If the healthcheck fails:
@@ -67,6 +71,7 @@ If the healthcheck fails:
 - **Most common cause:** `HOST` was not set to `::`. Fastify binds only IPv4, Railway's private DNS serves AAAA, healthcheck misses.
 - **Second most common:** `LEDGER_DB_PATH` points outside `/data` and the process lacks write permission — check logs for `SQLITE_CANTOPEN`.
 - **Third:** `RAILWAY_RUN_UID=0` is missing and the non-root container can't write to the volume.
+- **Fourth:** `DATABASE_URL` is unset or Postgres is unreachable — logs show `FATAL: Postgres connection failed at startup`.
 
 ## Step 4 — Enable a public domain
 
@@ -95,7 +100,7 @@ export CLMM_INTERNAL_TOKEN="<value from Step 2>"
 
 # 6.1 Health + version + openapi
 curl -fsS "$RE_URL/health"
-# → {"ok":true}
+# → {"ok":true,"postgres":"ok","sqlite":"ok"}
 
 curl -fsS "$RE_URL/version"
 # → {"name":"regime-engine","version":"0.1.0","commit":"<sha>"}
@@ -156,7 +161,7 @@ Open a Railway shell on the CLMM backend service:
 
 ```bash
 curl -fsS "http://regime-engine.railway.internal:${REGIME_ENGINE_PORT:-8787}/health"
-# → {"ok":true}
+# → {"ok":true,"postgres":"ok","sqlite":"ok"}
 ```
 
 If this fails but Step 6 passed, Railway private networking isn't resolving. **Fallback
@@ -190,7 +195,8 @@ Only after steps 1-9 pass: fund the live wallet with $100 and open the first rea
 ## Rollback
 
 Regime-engine is append-only. There is no destructive rollback — redeploy the previous commit
-from Railway's deploy history. The ledger survives rollbacks because it's on the persistent volume.
-If a deploy introduces a bad migration (no migrations exist today; adding one would mean adding
-DDL to `src/ledger/schema.sql`), the fix is forward — ship a new deploy that adds the missing
-columns. Do NOT delete the volume.
+from Railway's deploy history. The SQLite ledger survives rollbacks because it's on the persistent volume.
+Postgres migrations are managed by Drizzle Kit via `npm run db:migrate` (the `preDeployCommand`).
+If a deploy introduces a bad migration, the fix is forward — ship a new deploy that adds a
+compensating migration. Do NOT delete the volume. Do NOT manually modify the
+`regime_engine.regime_engine_migrations` table.

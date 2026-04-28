@@ -81,7 +81,11 @@ describe("HTTP route contract stubs", () => {
     });
 
     expect(response.statusCode).toBe(200);
-    expect(response.json()).toEqual({ ok: true });
+    expect(response.json()).toEqual({
+      ok: true,
+      postgres: "not_configured",
+      sqlite: "ok"
+    });
   });
 
   it("serves /version", async () => {
