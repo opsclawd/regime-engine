@@ -14,7 +14,7 @@
     "lint": "eslint . --max-warnings 0",
     "test": "vitest run",
     "test:watch": "vitest",
-    "test:pg": "vitest run --config vitest.config.pg.ts",
+    "test:pg": "DATABASE_URL=postgres://test:test@localhost:5432/regime_engine_test vitest run",
     "format": "prettier --check .",
     "harness": "tsx scripts/harness.ts",
     "db:migrate": "drizzle-kit migrate",
