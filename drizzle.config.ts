@@ -8,7 +8,7 @@ export default defineConfig({
   dialect: "postgresql",
   dbCredentials: {
     url: process.env.DATABASE_URL!,
-    ssl: { rejectUnauthorized: false }
+    ssl: process.env.PG_SSL === "false" ? false : { rejectUnauthorized: false }
   },
   migrations: {
     schema: "regime_engine",
