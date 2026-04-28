@@ -11,14 +11,15 @@ applies_when:
   - verifying service surface after adding new HTTP endpoints or database tables
   - onboarding operators to the deployment and verification workflow
   - closing a code milestone that added routes without updating operational docs
-symptoms:
+  symptoms:
   - smoke test covers only /health, not the full advertised surface
   - no documented HOST=:: intent for dual-stack binding on Railway
   - no curl-verifiable fixtures for runbook endpoint verification
   - architecture.md out of date with shipped surface (missing endpoints, tables, security posture)
   - no Railway deploy runbook or step-by-step operator guide
   - sprint doc contains assumptions that diverge from implemented reality
-root_cause: inadequate_documentation
+  - /health response shape stale — now reports postgres + sqlite status, not just { ok: true }
+  root_cause: inadequate_documentation
 resolution_type: documentation_update
 tags:
   [
@@ -161,6 +162,16 @@ Rather than rewriting a completed sprint doc, append a "Resolved assumptions" bl
 - Write model: Append-only ledger + latest-brief rule (not upsert).
 - Volume mount: /data on Railway.
 - Report integration: Deferred (not in this sprint scope).
+
+## Resolved assumptions (Postgres integration addendum, 2026-04-28)
+
+- Storage engine: SQLite + Postgres (not SQLite-only). `DATABASE_URL` is now mandatory in production.
+- Postgres uses `regime_engine` schema on shared Railway instance (not a separate database).
+- Driver: postgres.js + Drizzle ORM (not node-postgres/pg).
+- `/health` now probes both stores and returns `{ ok, postgres, sqlite }` (not `{ ok: true }`).
+- Startup hard-fails if `DATABASE_URL` is set but Postgres is unreachable.
+- `drizzle-kit` is a production dependency (not a devDependency) because Railway runs `npm run db:migrate` as `preDeployCommand`.
+- Health checks must actually probe stores, not hardcode success.
 ```
 
 ## Why This Matters
@@ -185,10 +196,15 @@ Rather than rewriting a completed sprint doc, append a "Resolved assumptions" bl
 
 ```typescript
 describe("GET /health", () => {
-  it("returns ok", async () => {
+  it("returns ok with both store statuses", async () => {
     const response = await app.inject({ method: "GET", url: "/health" });
     expect(response.statusCode).toBe(200);
-    expect(response.json()).toEqual({ ok: true });
+    const body = response.json();
+    expect(body).toEqual({
+      ok: true,
+      postgres: expect.stringMatching(/^(ok|not_configured|unavailable)$/),
+      sqlite: expect.stringMatching(/^(ok|unavailable)$/)
+    });
   });
 });
 ```
