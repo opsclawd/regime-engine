@@ -6,6 +6,8 @@ export function createDb(connectionString: string): {
   db: ReturnType<typeof drizzle>;
   client: ReturnType<typeof postgres>;
 } {
+  const max = process.env.PG_MAX_CONNECTIONS ? parseInt(process.env.PG_MAX_CONNECTIONS, 10) : 10;
+
   const client = postgres(connectionString, {
     connection: {
       search_path: "regime_engine"
@@ -14,7 +16,7 @@ export function createDb(connectionString: string): {
     idle_timeout: 30,
     max_lifetime: 1800,
     connect_timeout: 10,
-    max: 10
+    max
   });
 
   const db = drizzle(client);
