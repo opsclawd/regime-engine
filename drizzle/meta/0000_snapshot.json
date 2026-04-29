@@ -1,12 +1,22 @@
 {
-  "version": "6",
-  "dialect": "postgresql",
   "id": "0000_create_regime_engine_schema",
   "prevId": "00000000-0000-0000-0000-000000000000",
+  "version": "7",
+  "dialect": "postgresql",
   "tables": {},
   "enums": {},
   "schemas": {
     "regime_engine": "regime_engine"
   },
-  "sequences": {}
+  "sequences": {},
+  "roles": {},
+  "policies": {},
+  "views": {},
+  "_meta": {
+    "columns": {},
+    "schemas": {
+      "regime_engine": "regime_engine"
+    },
+    "tables": {}
+  }
 }
