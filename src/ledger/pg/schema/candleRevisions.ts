@@ -1,4 +1,4 @@
-import { pgSchema, serial, varchar, bigint, doublePrecision, text, index, uniqueIndex } from "drizzle-orm/pg-core";
+import { pgSchema, serial, varchar, bigint, doublePrecision, text, index } from "drizzle-orm/pg-core";
 
 export const regimeEngine = pgSchema("regime_engine");
 
@@ -24,7 +24,7 @@ export const candleRevisions = regimeEngine.table(
     receivedAtUnixMs: bigint("received_at_unix_ms", { mode: "number" }).notNull(),
   },
   (table) => [
-    uniqueIndex("ux_candle_revisions_slot_hash").on(
+    index("idx_candle_revisions_slot_hash").on(
       table.symbol, table.source, table.network,
       table.poolAddress, table.timeframe, table.unixMs,
       table.ohlcvHash
