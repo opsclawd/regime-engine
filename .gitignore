@@ -9,4 +9,3 @@ tmp
 .codex
 .worktrees/
 .context/
-package-lock.json
