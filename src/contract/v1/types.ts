@@ -234,6 +234,25 @@ export interface CandleIngestRequest {
   candles: Candle[];
 }
 
+export interface GetLatestCandlesParams {
+  symbol: string;
+  source: string;
+  network: string;
+  poolAddress: string;
+  timeframe: string;
+  closedCandleCutoffUnixMs: number;
+  limit: number;
+}
+
+export interface CandleRow {
+  unixMs: number;
+  open: number;
+  high: number;
+  low: number;
+  close: number;
+  volume: number;
+}
+
 export interface CandleIngestRejection {
   unixMs: number;
   reason: "STALE_REVISION";

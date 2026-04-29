@@ -6,6 +6,7 @@ import {
 } from "../errors.js";
 import type { LedgerStore } from "../../ledger/store.js";
 import { getLatestCandlesForFeed } from "../../ledger/candlesWriter.js";
+import type { CandleStore } from "../../ledger/candleStore.js";
 import {
   MARKET_REGIME_CONFIG,
   MARKET_REGIME_CONFIG_VERSION
@@ -15,7 +16,10 @@ import { buildRegimeCurrent } from "../../engine/marketRegime/buildRegimeCurrent
 
 const READ_BUFFER = 50;
 
-export const createRegimeCurrentHandler = (store: LedgerStore) => {
+export const createRegimeCurrentHandler = (
+  store: LedgerStore,
+  candleStore?: CandleStore
+) => {
   return async (request: FastifyRequest, reply: FastifyReply) => {
     try {
       const query = parseRegimeCurrentQuery(request.query);
@@ -30,15 +34,25 @@ export const createRegimeCurrentHandler = (store: LedgerStore) => {
       const limit = Math.max(config.indicators.volLongWindow, config.suitability.minCandles)
         + READ_BUFFER;
 
-      const candles = getLatestCandlesForFeed(store, {
-        symbol: query.symbol,
-        source: query.source,
-        network: query.network,
-        poolAddress: query.poolAddress,
-        timeframe: query.timeframe,
-        closedCandleCutoffUnixMs: cutoff,
-        limit
-      });
+      const candles = candleStore
+        ? await candleStore.getLatestCandlesForFeed({
+            symbol: query.symbol,
+            source: query.source,
+            network: query.network,
+            poolAddress: query.poolAddress,
+            timeframe: query.timeframe,
+            closedCandleCutoffUnixMs: cutoff,
+            limit
+          })
+        : await Promise.resolve(getLatestCandlesForFeed(store, {
+            symbol: query.symbol,
+            source: query.source,
+            network: query.network,
+            poolAddress: query.poolAddress,
+            timeframe: query.timeframe,
+            closedCandleCutoffUnixMs: cutoff,
+            limit
+          }));
 
       if (candles.length === 0) {
         throw candlesNotFoundError(

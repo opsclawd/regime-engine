@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { createDb, verifyPgSchema, type Db } from "../db.js";
+import { createDb, verifyPgSchema, verifyCandleRevisionsTable, type Db } from "../db.js";
 
 describe("createDb", () => {
   it("exports Db type and createDb function", () => {
@@ -26,5 +26,25 @@ describe("verifyPgSchema", () => {
     } as never;
 
     await expect(verifyPgSchema(mockDb)).resolves.toBeUndefined();
+  });
+});
+
+describe("verifyCandleRevisionsTable", () => {
+  it("throws with descriptive error when table not found", async () => {
+    const mockDb = {
+      execute: async () => []
+    } as never;
+
+    await expect(verifyCandleRevisionsTable(mockDb)).rejects.toThrow(
+      "candle_revisions table not found in regime_engine schema"
+    );
+  });
+
+  it("resolves without error when table exists", async () => {
+    const mockDb = {
+      execute: async () => [{ tablename: "candle_revisions" }]
+    } as never;
+
+    await expect(verifyCandleRevisionsTable(mockDb)).resolves.toBeUndefined();
   });
 });

@@ -1,11 +1,12 @@
-import { toCanonicalJson } from "../contract/v1/canonical.js";
-import { sha256Hex } from "../contract/v1/hash.js";
-import type {
+import {
   CandleIngestRequest,
   CandleIngestRejection,
-  CandleIngestResponse
+  CandleIngestResponse,
+  GetLatestCandlesParams,
+  CandleRow
 } from "../contract/v1/types.js";
 import type { LedgerStore } from "./store.js";
+import { computeOhlcv, classifyCandle } from "./candleRevisionLogic.js";
 
 interface ExistingLatest {
   source_recorded_at_unix_ms: number;
@@ -94,45 +95,37 @@ export const writeCandles = (
   store.db.exec("BEGIN IMMEDIATE");
   try {
     for (const candle of input.candles) {
-      const ohlcvCanonical = toCanonicalJson({
-        open: candle.open, high: candle.high, low: candle.low,
-        close: candle.close, volume: candle.volume
-      });
-      const ohlcvHash = sha256Hex(ohlcvCanonical);
+      const { ohlcvCanonical, ohlcvHash } = computeOhlcv(candle);
 
       const existing = selectLatest(store, feed, candle.unixMs);
 
-      if (!existing) {
-        insertRevision(
-          store, feed, candle,
-          input.sourceRecordedAtIso, incomingSourceRecordedAtUnixMs,
-          ohlcvCanonical, ohlcvHash, receivedAtUnixMs
-        );
-        insertedCount += 1;
-        continue;
-      }
+      const decision = classifyCandle(
+        existing ? { sourceRecordedAtUnixMs: existing.source_recorded_at_unix_ms, sourceRecordedAtIso: existing.source_recorded_at_iso, ohlcvHash: existing.ohlcv_hash } : undefined,
+        ohlcvHash,
+        incomingSourceRecordedAtUnixMs
+      );
 
-      if (existing.ohlcv_hash === ohlcvHash) {
-        idempotentCount += 1;
-        continue;
+      switch (decision.kind) {
+        case "insert":
+          insertRevision(store, feed, candle, input.sourceRecordedAtIso, incomingSourceRecordedAtUnixMs, ohlcvCanonical, ohlcvHash, receivedAtUnixMs);
+          insertedCount += 1;
+          break;
+        case "revise":
+          insertRevision(store, feed, candle, input.sourceRecordedAtIso, incomingSourceRecordedAtUnixMs, ohlcvCanonical, ohlcvHash, receivedAtUnixMs);
+          revisedCount += 1;
+          break;
+        case "idempotent":
+          idempotentCount += 1;
+          break;
+        case "stale":
+          rejectedCount += 1;
+          rejections.push({
+            unixMs: candle.unixMs,
+            reason: "STALE_REVISION",
+            existingSourceRecordedAtIso: decision.existingSourceRecordedAtIso,
+          });
+          break;
       }
-
-      if (existing.source_recorded_at_unix_ms < incomingSourceRecordedAtUnixMs) {
-        insertRevision(
-          store, feed, candle,
-          input.sourceRecordedAtIso, incomingSourceRecordedAtUnixMs,
-          ohlcvCanonical, ohlcvHash, receivedAtUnixMs
-        );
-        revisedCount += 1;
-        continue;
-      }
-
-      rejectedCount += 1;
-      rejections.push({
-        unixMs: candle.unixMs,
-        reason: "STALE_REVISION",
-        existingSourceRecordedAtIso: existing.source_recorded_at_iso
-      });
     }
 
     store.db.exec("COMMIT");
@@ -150,24 +143,7 @@ export const writeCandles = (
   return { insertedCount, revisedCount, idempotentCount, rejectedCount, rejections };
 };
 
-export interface GetLatestCandlesParams {
-  symbol: string;
-  source: string;
-  network: string;
-  poolAddress: string;
-  timeframe: string;
-  closedCandleCutoffUnixMs: number;
-  limit: number;
-}
-
-export interface CandleRow {
-  unixMs: number;
-  open: number;
-  high: number;
-  low: number;
-  close: number;
-  volume: number;
-}
+export type { GetLatestCandlesParams, CandleRow };
 
 export const getLatestCandlesForFeed = (
   store: LedgerStore,

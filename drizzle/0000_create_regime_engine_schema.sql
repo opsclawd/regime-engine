@@ -1,1 +1,1 @@
-CREATE SCHEMA IF NOT EXISTS regime_engine;
+CREATE SCHEMA IF NOT EXISTS "regime_engine";
