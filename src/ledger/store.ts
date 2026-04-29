@@ -19,6 +19,7 @@ export const createLedgerStore = (databasePath: string): LedgerStore => {
   }
 
   const db = new DatabaseSync(databasePath);
+  db.exec("PRAGMA busy_timeout = 2000");
   db.exec(resolveSchemaSql());
 
   return {
