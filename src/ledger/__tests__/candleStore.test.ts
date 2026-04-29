@@ -207,4 +207,35 @@ describe.skipIf(!process.env.DATABASE_URL)("CandleStore (PG)", () => {
 
     expect(result.length).toBe(5);
   });
+
+  it("dedup works without unique index — latest revision wins", async () => {
+    await store.writeCandles(
+      makeRequest({
+        sourceRecordedAtIso: "2026-04-26T12:00:00.000Z",
+        candles: [
+          { unixMs: 1 * ONE_HOUR_MS, open: 100, high: 110, low: 90, close: 105, volume: 1 }
+        ]
+      }),
+      1_700_000_000_000
+    );
+
+    await store.writeCandles(
+      makeRequest({
+        sourceRecordedAtIso: "2026-04-26T13:00:00.000Z",
+        candles: [
+          { unixMs: 1 * ONE_HOUR_MS, open: 101, high: 111, low: 91, close: 106, volume: 2 }
+        ]
+      }),
+      1_700_000_001_000
+    );
+
+    const latest = await store.getLatestCandlesForFeed({
+      symbol: "SOL/USDC", source: "birdeye", network: "solana-mainnet",
+      poolAddress: "Pool111", timeframe: "1h",
+      closedCandleCutoffUnixMs: 10 * ONE_HOUR_MS, limit: 100
+    });
+
+    expect(latest.length).toBe(1);
+    expect(latest[0].close).toBe(106);
+  });
 });

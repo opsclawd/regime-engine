@@ -112,8 +112,8 @@
         }
       },
       "indexes": {
-        "ux_candle_revisions_slot_hash": {
-          "name": "ux_candle_revisions_slot_hash",
+        "idx_candle_revisions_slot_hash": {
+          "name": "idx_candle_revisions_slot_hash",
           "columns": [
             {
               "expression": "symbol",
@@ -158,7 +158,7 @@
               "nulls": "last"
             }
           ],
-          "isUnique": true,
+          "isUnique": false,
           "concurrently": false,
           "method": "btree",
           "with": {}

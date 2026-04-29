@@ -1,6 +1,8 @@
 import { pgSchema, serial, varchar, bigint, doublePrecision, text, index } from "drizzle-orm/pg-core";
 
-export const regimeEngine = pgSchema("regime_engine");
+export const PG_SCHEMA_NAME = "regime_engine";
+
+export const regimeEngine = pgSchema(PG_SCHEMA_NAME);
 
 export const candleRevisions = regimeEngine.table(
   "candle_revisions",

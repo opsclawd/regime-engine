@@ -70,14 +70,15 @@ high: doublePrecision("high").notNull(),
 
 This applies to any financial or scientific data where precision matters. The storage cost difference (4 vs 8 bytes per column) is negligible.
 
-### 3. Pair advisory locks with unique indexes for write concurrency
+### 3. Use regular indexes (not unique) for revision tables with advisory locks
 
-PostgreSQL has no direct equivalent of SQLite's `BEGIN IMMEDIATE`. Use `pg_advisory_xact_lock` inside a transaction for per-feed serialization, **and** add a unique index as defense-in-depth:
+PostgreSQL has no direct equivalent of SQLite's `BEGIN IMMEDIATE`. Use `pg_advisory_xact_lock` inside a transaction for per-feed serialization, and use a **regular btree index** (not unique) for query performance:
 
 ```typescript
-// Unique index prevents duplicates even from codepaths that skip the advisory lock
-// (direct SQL, migration scripts, admin endpoints, application bugs)
-CREATE UNIQUE INDEX ux_candle_revisions_slot_hash
+// Regular index supports lookups but allows the H1→H2→H1 revision pattern
+// where a slot's OHLCV returns to a previously-seen value with a newer timestamp.
+// The advisory lock serializes concurrent writes per-feed.
+CREATE INDEX idx_candle_revisions_slot_hash
   ON regime_engine.candle_revisions (symbol, source, network, pool_address, timeframe, unix_ms, ohlcv_hash);
 ```
 
@@ -89,7 +90,7 @@ await this.db.transaction(async (tx) => {
 });
 ```
 
-Advisory locks alone don't prevent duplicate inserts from non-CandleStore codepaths. The unique index is the hard constraint; advisory locks reduce contention and retry waste.
+Advisory locks serialize writes per-feed within the application. The regular index provides query performance for lookups. A unique index was considered but rejected because it prevents the legitimate revision pattern where a slot's OHLCV data returns to a previously-seen hash value with a newer timestamp (H1→H2→H1).
 
 ### 4. Derive advisory lock keys from SHA-256, not polynomial hashing
 

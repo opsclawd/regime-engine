@@ -19,7 +19,7 @@ export const createCandlesIngestHandler = (
 
       const result = candleStore
         ? await candleStore.writeCandles(body, Date.now())
-        : writeCandles(store, body, Date.now());
+        : await Promise.resolve(writeCandles(store, body, Date.now()));
 
       const response: CandleIngestResponse = {
         schemaVersion: SCHEMA_VERSION,

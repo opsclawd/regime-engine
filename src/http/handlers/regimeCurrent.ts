@@ -44,7 +44,7 @@ export const createRegimeCurrentHandler = (
             closedCandleCutoffUnixMs: cutoff,
             limit
           })
-        : getLatestCandlesForFeed(store, {
+        : await Promise.resolve(getLatestCandlesForFeed(store, {
             symbol: query.symbol,
             source: query.source,
             network: query.network,
@@ -52,7 +52,7 @@ export const createRegimeCurrentHandler = (
             timeframe: query.timeframe,
             closedCandleCutoffUnixMs: cutoff,
             limit
-          });
+          }));
 
       if (candles.length === 0) {
         throw candlesNotFoundError(
