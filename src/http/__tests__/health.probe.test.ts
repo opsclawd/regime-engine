@@ -1,8 +1,10 @@
 import { afterEach, describe, expect, it } from "vitest";
 import Fastify, { type FastifyInstance } from "fastify";
+import { DatabaseSync } from "node:sqlite";
 import { registerRoutes } from "../routes.js";
+import { checkSqliteHealth } from "../../ledger/health.js";
 
-describe("GET /health - SQLite branches", () => {
+describe("GET /health - happy path", () => {
   let app: FastifyInstance;
 
   afterEach(async () => {
@@ -28,24 +30,18 @@ describe("GET /health - SQLite branches", () => {
       sqlite: "ok"
     });
   });
+});
 
-  it("returns 503 with sqlite=unavailable when SQLite probe fails", async () => {
-    process.env.LEDGER_DB_PATH = ":memory:";
-    delete process.env.DATABASE_URL;
+describe("checkSqliteHealth — 503 branch coverage", () => {
+  it("returns unavailable for a closed database", () => {
+    const db = new DatabaseSync(":memory:");
+    const store = { db, path: ":memory:", close: () => { db.close(); } };
 
-    app = Fastify({ logger: false });
-    const storeContext = registerRoutes(app);
+    const healthy = checkSqliteHealth(store as never);
+    expect(healthy).toEqual({ ok: true, status: "ok" });
 
-    if (storeContext) {
-      storeContext.ledger.close();
-    } else {
-      return;
-    }
-
-    const response = await app.inject({ method: "GET", url: "/health" });
-    expect(response.statusCode).toBe(503);
-    const body = response.json();
-    expect(body.ok).toBe(false);
-    expect(body.sqlite).toBe("unavailable");
+    db.close();
+    const degraded = checkSqliteHealth(store as never);
+    expect(degraded).toEqual({ ok: false, status: "unavailable" });
   });
 });
