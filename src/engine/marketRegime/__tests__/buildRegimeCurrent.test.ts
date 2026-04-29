@@ -6,7 +6,11 @@ const ONE_HOUR_MS = 60 * 60 * 1000;
 
 const flatCandles = Array.from({ length: 40 }, (_, i) => ({
   unixMs: (i + 1) * ONE_HOUR_MS,
-  open: 100, high: 100.5, low: 99.5, close: 100, volume: 1
+  open: 100,
+  high: 100.5,
+  low: 99.5,
+  close: 100,
+  volume: 1
 }));
 
 const feed = {
@@ -42,7 +46,8 @@ describe("buildRegimeCurrent", () => {
     const fewCandles = flatCandles.slice(0, 5);
     const lastCandleUnixMs = fewCandles[fewCandles.length - 1].unixMs;
     const response = buildRegimeCurrent({
-      feed, candles: fewCandles,
+      feed,
+      candles: fewCandles,
       nowUnixMs: lastCandleUnixMs + 30 * 60 * 1000,
       config: MARKET_REGIME_CONFIG["1h"],
       configVersion: "market-regime-1.0.0",
@@ -55,7 +60,8 @@ describe("buildRegimeCurrent", () => {
   it("returns UNKNOWN when freshness is hardStale", () => {
     const lastCandleUnixMs = flatCandles[flatCandles.length - 1].unixMs;
     const response = buildRegimeCurrent({
-      feed, candles: flatCandles,
+      feed,
+      candles: flatCandles,
       nowUnixMs: lastCandleUnixMs + 91 * 60 * 1000,
       config: MARKET_REGIME_CONFIG["1h"],
       configVersion: "market-regime-1.0.0",

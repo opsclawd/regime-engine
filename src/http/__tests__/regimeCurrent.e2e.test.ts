@@ -21,7 +21,11 @@ const buildRecentCandles = (count: number) => {
   const anchor = Math.floor(Date.now() / ONE_HOUR_MS) * ONE_HOUR_MS - 2 * ONE_HOUR_MS;
   return Array.from({ length: count }, (_, i) => ({
     unixMs: anchor - (count - 1 - i) * ONE_HOUR_MS,
-    open: 100, high: 100.5, low: 99.5, close: 100, volume: 1
+    open: 100,
+    high: 100.5,
+    low: 99.5,
+    close: 100,
+    volume: 1
   }));
 };
 
@@ -84,7 +88,8 @@ describe("GET /v1/regime/current", () => {
 
     const recordedIso = new Date().toISOString();
     await app.inject({
-      method: "POST", url: "/v1/candles",
+      method: "POST",
+      url: "/v1/candles",
       headers: { "X-Candles-Ingest-Token": "test-token" },
       payload: ingestPayload(40, recordedIso)
     });
@@ -110,7 +115,8 @@ describe("GET /v1/regime/current", () => {
     const app = buildApp();
 
     await app.inject({
-      method: "POST", url: "/v1/candles",
+      method: "POST",
+      url: "/v1/candles",
       headers: { "X-Candles-Ingest-Token": "test-token" },
       payload: ingestPayload(40, new Date().toISOString())
     });

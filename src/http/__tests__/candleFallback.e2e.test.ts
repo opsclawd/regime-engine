@@ -32,9 +32,7 @@ const makePayload = (overrides: Record<string, unknown> = {}) => ({
   symbol: "SOL/USDC",
   timeframe: "1h",
   sourceRecordedAtIso: "2026-04-26T12:00:00.000Z",
-  candles: [
-    { unixMs: ONE_HOUR_MS, open: 100, high: 110, low: 95, close: 105, volume: 1 }
-  ],
+  candles: [{ unixMs: ONE_HOUR_MS, open: 100, high: 110, low: 95, close: 105, volume: 1 }],
   ...overrides
 });
 

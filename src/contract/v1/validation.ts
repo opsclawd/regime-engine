@@ -317,14 +317,22 @@ const validateOhlcvInvariants = (
       const value = c[field];
       if (!Number.isFinite(value) || value <= 0) {
         throw malformedCandleError(`Candle ${index}: ${field} must be a finite positive number`, [
-          { path: `${path}.${field}`, code: "INVALID_VALUE", message: `${field} must be finite positive` }
+          {
+            path: `${path}.${field}`,
+            code: "INVALID_VALUE",
+            message: `${field} must be finite positive`
+          }
         ]);
       }
     }
 
     if (!Number.isFinite(c.volume) || c.volume < 0) {
       throw malformedCandleError(`Candle ${index}: volume must be finite and non-negative`, [
-        { path: `${path}.volume`, code: "INVALID_VALUE", message: "volume must be finite non-negative" }
+        {
+          path: `${path}.volume`,
+          code: "INVALID_VALUE",
+          message: "volume must be finite non-negative"
+        }
       ]);
     }
 
@@ -357,10 +365,9 @@ const validateOhlcvInvariants = (
 
 const checkBatchSize = (count: number): void => {
   if (count > 1000) {
-    throw batchTooLargeError(
-      `candles.length must not exceed 1000; received ${count}`,
-      [{ path: "$.candles", code: "OUT_OF_RANGE", message: `length=${count} exceeds 1000` }]
-    );
+    throw batchTooLargeError(`candles.length must not exceed 1000; received ${count}`, [
+      { path: "$.candles", code: "OUT_OF_RANGE", message: `length=${count} exceeds 1000` }
+    ]);
   }
 };
 
@@ -405,7 +412,9 @@ const regimeCurrentQuerySchema = z
   })
   .strict();
 
-export const parseRegimeCurrentQuery = (raw: unknown): {
+export const parseRegimeCurrentQuery = (
+  raw: unknown
+): {
   symbol: string;
   source: string;
   network: string;

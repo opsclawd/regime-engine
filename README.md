@@ -81,18 +81,18 @@ npm run harness -- --fixture ./fixtures/demo --from 2026-01-01 --to 2026-01-31
 
 4. Set environment variables in the Railway dashboard (or via `.env` file mounted at `/app/.env`):
 
-   | Variable                | Default             | Description                                                                                                    |
-   | ----------------------- | ------------------- | -------------------------------------------------------------------------------------------------------------- |
-   | `PORT`                  | —                   | Railway sets this automatically                                                                                |
-   | `HOST`                  | `0.0.0.0`           | Host binding. **Set to `::` on Railway** so Fastify binds dual-stack and is reachable over private networking. |
-   | `LEDGER_DB_PATH`        | `tmp/ledger.sqlite` | **Override to `/data/ledger.sqlite`** to use the persistent volume                                             |
-   | `NODE_ENV`              | `production`        | Node environment                                                                                               |
-   | `COMMIT_SHA`            | —                   | Optional, shown in `/version`                                                                                  |
-   | `OPENCLAW_INGEST_TOKEN` | —                   | Required shared secret for `POST /v1/sr-levels`                                                                |
-   | `CLMM_INTERNAL_TOKEN`   | —                   | Required shared secret for `POST /v1/clmm-execution-result`                                                    |
+   | Variable                | Default             | Description                                                                                                                                                                                                 |
+   | ----------------------- | ------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+   | `PORT`                  | —                   | Railway sets this automatically                                                                                                                                                                             |
+   | `HOST`                  | `0.0.0.0`           | Host binding. **Set to `::` on Railway** so Fastify binds dual-stack and is reachable over private networking.                                                                                              |
+   | `LEDGER_DB_PATH`        | `tmp/ledger.sqlite` | **Override to `/data/ledger.sqlite`** to use the persistent volume                                                                                                                                          |
+   | `NODE_ENV`              | `production`        | Node environment                                                                                                                                                                                            |
+   | `COMMIT_SHA`            | —                   | Optional, shown in `/version`                                                                                                                                                                               |
+   | `OPENCLAW_INGEST_TOKEN` | —                   | Required shared secret for `POST /v1/sr-levels`                                                                                                                                                             |
+   | `CLMM_INTERNAL_TOKEN`   | —                   | Required shared secret for `POST /v1/clmm-execution-result`                                                                                                                                                 |
    | `CANDLES_INGEST_TOKEN`  | —                   | Required for `POST /v1/candles`. Sent via `X-Candles-Ingest-Token`, compared with `timingSafeEqual`. Missing env returns 500 only on the candle ingest route — service boot and read routes are unaffected. |
-   | `DATABASE_URL`           | —                   | Postgres connection string. When set, enables Postgres features with `regime_engine` schema isolation          |
-   | `RAILWAY_RUN_UID`       | `0`                 | **Required** — allows volume writes for non-root container                                                     |
+   | `DATABASE_URL`          | —                   | Postgres connection string. When set, enables Postgres features with `regime_engine` schema isolation                                                                                                       |
+   | `RAILWAY_RUN_UID`       | `0`                 | **Required** — allows volume writes for non-root container                                                                                                                                                  |
 
 5. Railway handles HTTPS termination and SIGTERM — the service shuts down gracefully on deploy.
 

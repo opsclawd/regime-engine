@@ -11,7 +11,16 @@ applies_when:
   - Setting up SQLite for production workloads with concurrent access
   - Connecting to a managed Postgres with schema isolation
   - Testing degraded-state branches in services with dual stores
-tags: [health-check, test-coverage, separation-of-concerns, postgres, sqlite, busy-timeout, schema-verification]
+tags:
+  [
+    health-check,
+    test-coverage,
+    separation-of-concerns,
+    postgres,
+    sqlite,
+    busy-timeout,
+    schema-verification
+  ]
 ---
 
 # Health probe separation, test coverage for degraded states, and connection hardening
@@ -104,7 +113,13 @@ export const createLedgerStore = (databasePath: string): LedgerStore => {
   const db = new DatabaseSync(databasePath);
   db.exec("PRAGMA busy_timeout = 2000");
   db.exec(resolveSchemaSql());
-  return { db, path: databasePath, close: () => { db.close(); } };
+  return {
+    db,
+    path: databasePath,
+    close: () => {
+      db.close();
+    }
+  };
 };
 ```
 
@@ -143,7 +158,7 @@ Don't wrap PG health probes in `Promise.race` with a custom timeout. Instead, co
 
 ```typescript
 const client = postgres(connectionString, {
-  connect_timeout: 10,
+  connect_timeout: 10
   // ...
 });
 ```
@@ -157,14 +172,24 @@ This keeps the health probe synchronous and simple. The connection timeout handl
 ```typescript
 // src/ledger/__tests__/health.test.ts
 describe("checkSqliteHealth", () => {
-  it("returns ok when SELECT 1 succeeds", () => { /* mock */ });
-  it("returns unavailable when SELECT 1 throws", () => { /* mock */ });
+  it("returns ok when SELECT 1 succeeds", () => {
+    /* mock */
+  });
+  it("returns unavailable when SELECT 1 throws", () => {
+    /* mock */
+  });
 });
 
 describe("checkPgHealth", () => {
-  it("returns not_configured when pg is null", async () => { /* null */ });
-  it("returns ok when pg.execute succeeds", async () => { /* mock */ });
-  it("returns unavailable when pg.execute rejects", async () => { /* mock */ });
+  it("returns not_configured when pg is null", async () => {
+    /* null */
+  });
+  it("returns ok when pg.execute succeeds", async () => {
+    /* mock */
+  });
+  it("returns unavailable when pg.execute rejects", async () => {
+    /* mock */
+  });
 });
 ```
 
@@ -189,10 +214,15 @@ it("returns 200 with postgres=not_configured, sqlite=ok", async () => {
 ```typescript
 // src/ledger/__tests__/storeContext.test.ts
 it("closeStoreContext closes pgClient even if ledger.close throws", async () => {
-  const ledgerClose = vi.fn(() => { throw new Error("ledger close failed"); });
+  const ledgerClose = vi.fn(() => {
+    throw new Error("ledger close failed");
+  });
   const pgClientEnd = vi.fn();
-  const ctx = { ledger: { db: {} as never, path: ":memory:", close: ledgerClose },
-                pg: {} as never, pgClient: { end: pgClientEnd } as never };
+  const ctx = {
+    ledger: { db: {} as never, path: ":memory:", close: ledgerClose },
+    pg: {} as never,
+    pgClient: { end: pgClientEnd } as never
+  };
   await expect(closeStoreContext(ctx)).rejects.toThrow("ledger close failed");
   expect(pgClientEnd).toHaveBeenCalledOnce();
 });
@@ -200,13 +230,13 @@ it("closeStoreContext closes pgClient even if ledger.close throws", async () => 
 
 ## Why This Matters
 
-| Issue | Impact | Mitigation |
-|-------|--------|------------|
-| Inline SQL in route handler | Violates architecture boundary; makes health logic untestable in isolation | Extract to `src/ledger/health.ts` |
-| Missing `busy_timeout` | `SQLITE_BUSY` under any write contention → transient 500s | `PRAGMA busy_timeout = 2000` |
-| No schema verification | Service appears healthy but can't actually read/write data | `verifyPgSchema` at startup → fatal |
-| Untested health branches | Degraded states only discovered in production | Unit tests for all 5 branches + HTTP integration test |
-| Missing cleanup on error | Database connections leak on exceptions | `try/finally` in `closeStoreContext` with test |
+| Issue                       | Impact                                                                     | Mitigation                                            |
+| --------------------------- | -------------------------------------------------------------------------- | ----------------------------------------------------- |
+| Inline SQL in route handler | Violates architecture boundary; makes health logic untestable in isolation | Extract to `src/ledger/health.ts`                     |
+| Missing `busy_timeout`      | `SQLITE_BUSY` under any write contention → transient 500s                  | `PRAGMA busy_timeout = 2000`                          |
+| No schema verification      | Service appears healthy but can't actually read/write data                 | `verifyPgSchema` at startup → fatal                   |
+| Untested health branches    | Degraded states only discovered in production                              | Unit tests for all 5 branches + HTTP integration test |
+| Missing cleanup on error    | Database connections leak on exceptions                                    | `try/finally` in `closeStoreContext` with test        |
 
 These patterns compound: a health endpoint that can't detect a missing schema gives false confidence, and missing `busy_timeout` makes the "healthy" database fail under load. Each gap is small in isolation but together they create a service that appears healthy while being functionally broken.
 
@@ -226,10 +256,24 @@ These patterns compound: a health endpoint that can't detect a missing schema gi
 // src/http/routes.ts — SQL embedded in HTTP layer, untested branches
 app.get("/health", async (_req, reply) => {
   let sqliteOk = true;
-  try { ledger.db.prepare("SELECT 1").get(); } catch { sqliteOk = false; }
+  try {
+    ledger.db.prepare("SELECT 1").get();
+  } catch {
+    sqliteOk = false;
+  }
   let postgresStatus = pg ? "ok" : "not_configured";
-  if (pg) { try { await pg.execute(sql`SELECT 1`); } catch { postgresStatus = "unavailable"; } }
-  return { ok: sqliteOk && postgresStatus !== "unavailable", postgres: postgresStatus, sqlite: sqliteOk ? "ok" : "unavailable" };
+  if (pg) {
+    try {
+      await pg.execute(sql`SELECT 1`);
+    } catch {
+      postgresStatus = "unavailable";
+    }
+  }
+  return {
+    ok: sqliteOk && postgresStatus !== "unavailable",
+    postgres: postgresStatus,
+    sqlite: sqliteOk ? "ok" : "unavailable"
+  };
 });
 ```
 
@@ -239,22 +283,30 @@ Problems: SQL in HTTP layer, no `busy_timeout`, no schema check, untested branch
 
 ```typescript
 // src/ledger/health.ts — single module, both probes
-export const checkSqliteHealth = (ledger: LedgerStore): SqliteHealthResult => { /* ... */ };
-export const checkPgHealth = async (pg: Db | null): Promise<PgHealthResult> => { /* ... */ };
+export const checkSqliteHealth = (ledger: LedgerStore): SqliteHealthResult => {
+  /* ... */
+};
+export const checkPgHealth = async (pg: Db | null): Promise<PgHealthResult> => {
+  /* ... */
+};
 
 // src/ledger/store.ts — busy_timeout at creation
 const db = new DatabaseSync(databasePath);
 db.exec("PRAGMA busy_timeout = 2000");
 
 // src/ledger/pg/db.ts — schema verification
-export const verifyPgSchema = async (db: Db): Promise<void> => { /* ... */ };
+export const verifyPgSchema = async (db: Db): Promise<void> => {
+  /* ... */
+};
 
 // src/http/routes.ts — thin handler, no SQL
 app.get("/health", async (_req, reply) => {
   const sqlite = checkSqliteHealth(ledger);
   const postgres = await checkPgHealth(pg);
   const ok = sqlite.ok && postgres.ok;
-  if (!ok) { reply.code(503); }
+  if (!ok) {
+    reply.code(503);
+  }
   return { ok, postgres: postgres.status, sqlite: sqlite.status };
 });
 ```

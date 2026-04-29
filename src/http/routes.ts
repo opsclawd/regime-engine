@@ -1,7 +1,11 @@
 import type { FastifyInstance, FastifyReply } from "fastify";
 import { checkSqliteHealth, checkPgHealth } from "../ledger/health.js";
 import { buildOpenApiDocument } from "./openapi.js";
-import { closeStoreContext, createStoreContext, type StoreContext } from "../ledger/storeContext.js";
+import {
+  closeStoreContext,
+  createStoreContext,
+  type StoreContext
+} from "../ledger/storeContext.js";
 import { createLedgerStore } from "../ledger/store.js";
 import { createClmmExecutionResultHandler } from "./handlers/clmmExecutionResult.js";
 import { createExecutionResultHandler } from "./handlers/executionResult.js";

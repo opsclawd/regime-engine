@@ -33,7 +33,16 @@ When migrating candle storage from SQLite to PostgreSQL in the regime-engine pro
 Drizzle's `pgTable()` generates tables in the default `public` schema. To get `regime_engine.candle_revisions` in migrations, define the schema separately:
 
 ```typescript
-import { pgSchema, serial, varchar, bigint, doublePrecision, text, uniqueIndex, index } from "drizzle-orm/pg-core";
+import {
+  pgSchema,
+  serial,
+  varchar,
+  bigint,
+  doublePrecision,
+  text,
+  uniqueIndex,
+  index
+} from "drizzle-orm/pg-core";
 
 export const regimeEngine = pgSchema("regime_engine");
 
@@ -42,14 +51,19 @@ export const candleRevisions = regimeEngine.table(
   {
     id: serial("id").primaryKey(),
     symbol: varchar("symbol", { length: 64 }).notNull(),
-    open: doublePrecision("open").notNull(),
+    open: doublePrecision("open").notNull()
     // ...
   },
   (table) => [
     uniqueIndex("ux_candle_revisions_slot_hash").on(
-      table.symbol, table.source, table.network,
-      table.poolAddress, table.timeframe, table.unixMs, table.ohlcvHash
-    ),
+      table.symbol,
+      table.source,
+      table.network,
+      table.poolAddress,
+      table.timeframe,
+      table.unixMs,
+      table.ohlcvHash
+    )
   ]
 );
 ```
@@ -98,7 +112,9 @@ Advisory locks serialize writes per-feed within the application. The regular ind
 import { sha256Hex } from "../contract/v1/hash.js";
 
 const feedHash = (feed: Feed): bigint => {
-  const combined = [feed.symbol, feed.source, feed.network, feed.poolAddress, feed.timeframe].join("\0");
+  const combined = [feed.symbol, feed.source, feed.network, feed.poolAddress, feed.timeframe].join(
+    "\0"
+  );
   const hex = sha256Hex(combined);
   return BigInt("0x" + hex.slice(0, 15)) || 1n;
 };
@@ -117,12 +133,12 @@ const rows = await db.execute(sql`
 `);
 
 return rows.map((row: Record<string, unknown>) => ({
-  unixMs: Number(row.unix_ms),   // bigint → string → number
-  open: Number(row.open),         // double precision → number (already correct, but be consistent)
+  unixMs: Number(row.unix_ms), // bigint → string → number
+  open: Number(row.open), // double precision → number (already correct, but be consistent)
   high: Number(row.high),
   low: Number(row.low),
   close: Number(row.close),
-  volume: Number(row.volume),
+  volume: Number(row.volume)
 }));
 ```
 
@@ -150,8 +166,8 @@ When using optional store injection, the fallback is determined at startup:
 export function createCandlesIngestHandler(ledger: LedgerStore, candleStore?: CandleStore) {
   return async (req, res) => {
     const result = candleStore
-      ? await candleStore.writeCandles(body, Date.now())   // PG path — async
-      : writeCandles(ledger, body, Date.now());            // SQLite path — sync
+      ? await candleStore.writeCandles(body, Date.now()) // PG path — async
+      : writeCandles(ledger, body, Date.now()); // SQLite path — sync
   };
 }
 ```
@@ -194,7 +210,7 @@ Without this export, Drizzle may generate `DROP SCHEMA` statements or fail to tr
 ```typescript
 // Schema: no explicit schema — SQLite has none
 const candles = sqliteTable("candle_revisions", {
-  open: real("open").notNull(),  // 8-byte double in SQLite
+  open: real("open").notNull() // 8-byte double in SQLite
 });
 
 // Concurrency: BEGIN IMMEDIATE
@@ -211,7 +227,7 @@ const row = store.db.prepare("SELECT unix_ms FROM candle_revisions").get();
 // Schema: pgSchema for schema-qualified DDL
 const regimeEngine = pgSchema("regime_engine");
 const candleRevisions = regimeEngine.table("candle_revisions", {
-  open: doublePrecision("open").notNull(),  // matches SQLite's 8-byte REAL
+  open: doublePrecision("open").notNull() // matches SQLite's 8-byte REAL
 });
 
 // Concurrency: advisory lock + unique index

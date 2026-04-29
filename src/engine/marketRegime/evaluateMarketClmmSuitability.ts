@@ -59,26 +59,38 @@ export const evaluateMarketClmmSuitability = (
   const blockedReasons: ClmmSuitabilityReason[] = [];
   if (regime === "UP") {
     blockedReasons.push(
-      reason("CLMM_BLOCKED_TRENDING_UP", "WARN",
-        "CLMM positions are not appropriate while regime is trending UP.")
+      reason(
+        "CLMM_BLOCKED_TRENDING_UP",
+        "WARN",
+        "CLMM positions are not appropriate while regime is trending UP."
+      )
     );
   }
   if (regime === "DOWN") {
     blockedReasons.push(
-      reason("CLMM_BLOCKED_TRENDING_DOWN", "WARN",
-        "CLMM positions are not appropriate while regime is trending DOWN.")
+      reason(
+        "CLMM_BLOCKED_TRENDING_DOWN",
+        "WARN",
+        "CLMM positions are not appropriate while regime is trending DOWN."
+      )
     );
   }
   if (telemetry.volRatio >= config.extremeVolRatio) {
     blockedReasons.push(
-      reason("CLMM_BLOCKED_EXTREME_VOLATILITY", "WARN",
-        "Realized volatility is in the extreme band; CLMM is blocked regardless of regime.")
+      reason(
+        "CLMM_BLOCKED_EXTREME_VOLATILITY",
+        "WARN",
+        "Realized volatility is in the extreme band; CLMM is blocked regardless of regime."
+      )
     );
   }
   if (telemetry.compression >= config.extremeCompression) {
     blockedReasons.push(
-      reason("CLMM_BLOCKED_EXTREME_COMPRESSION", "WARN",
-        "Bollinger compression is extreme; CLMM is blocked regardless of regime.")
+      reason(
+        "CLMM_BLOCKED_EXTREME_COMPRESSION",
+        "WARN",
+        "Bollinger compression is extreme; CLMM is blocked regardless of regime."
+      )
     );
   }
   if (blockedReasons.length > 0) {
@@ -88,14 +100,20 @@ export const evaluateMarketClmmSuitability = (
   const cautionReasons: ClmmSuitabilityReason[] = [];
   if (freshness.softStale) {
     cautionReasons.push(
-      reason("CLMM_CAUTION_SOFT_STALE_DATA", "WARN",
-        "Latest candle is in the soft-stale window; treat the read as borderline.")
+      reason(
+        "CLMM_CAUTION_SOFT_STALE_DATA",
+        "WARN",
+        "Latest candle is in the soft-stale window; treat the read as borderline."
+      )
     );
   }
   if (telemetry.volRatio > config.allowedVolRatioMax) {
     cautionReasons.push(
-      reason("CLMM_CAUTION_ELEVATED_VOLATILITY", "WARN",
-        "Volatility is elevated above the allowed band but not extreme.")
+      reason(
+        "CLMM_CAUTION_ELEVATED_VOLATILITY",
+        "WARN",
+        "Volatility is elevated above the allowed band but not extreme."
+      )
     );
   }
   if (cautionReasons.length > 0) {
@@ -105,8 +123,11 @@ export const evaluateMarketClmmSuitability = (
   return {
     status: "ALLOWED",
     reasons: [
-      reason("CLMM_ALLOWED_CHOP_FRESH", "INFO",
-        "Market is in CHOP with fresh data and acceptable volatility for CLMM exposure.")
+      reason(
+        "CLMM_ALLOWED_CHOP_FRESH",
+        "INFO",
+        "Market is in CHOP with fresh data and acceptable volatility for CLMM exposure."
+      )
     ]
   };
 };

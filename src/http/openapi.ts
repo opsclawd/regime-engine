@@ -182,16 +182,14 @@ export const buildOpenApiDocument = () => {
               description: "Missing or invalid X-Candles-Ingest-Token"
             },
             "500": {
-              description:
-                "CANDLES_INGEST_TOKEN environment variable not set"
+              description: "CANDLES_INGEST_TOKEN environment variable not set"
             }
           }
         }
       },
       "/v1/regime/current": {
         get: {
-          summary:
-            "Market-only regime classification + CLMM suitability for a feed",
+          summary: "Market-only regime classification + CLMM suitability for a feed",
           parameters: [
             {
               name: "symbol",
@@ -233,8 +231,7 @@ export const buildOpenApiDocument = () => {
               description: "VALIDATION_ERROR for missing/invalid selectors"
             },
             "404": {
-              description:
-                "CANDLES_NOT_FOUND when no closed candles exist for the feed"
+              description: "CANDLES_NOT_FOUND when no closed candles exist for the feed"
             }
           }
         }

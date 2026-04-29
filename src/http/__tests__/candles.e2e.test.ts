@@ -15,9 +15,7 @@ const makePayload = (overrides: Record<string, unknown> = {}) => ({
   symbol: "SOL/USDC",
   timeframe: "1h",
   sourceRecordedAtIso: "2026-04-26T12:00:00.000Z",
-  candles: [
-    { unixMs: ONE_HOUR_MS, open: 100, high: 110, low: 95, close: 105, volume: 1 }
-  ],
+  candles: [{ unixMs: ONE_HOUR_MS, open: 100, high: 110, low: 95, close: 105, volume: 1 }],
   ...overrides
 });
 
@@ -51,7 +49,8 @@ describe("POST /v1/candles", () => {
     process.env.LEDGER_DB_PATH = tempDb();
     const app = buildApp();
     const res = await app.inject({
-      method: "POST", url: "/v1/candles",
+      method: "POST",
+      url: "/v1/candles",
       headers: { "X-Candles-Ingest-Token": "anything" },
       payload: makePayload()
     });
@@ -65,7 +64,8 @@ describe("POST /v1/candles", () => {
     const app = buildApp();
 
     const res = await app.inject({
-      method: "POST", url: "/v1/candles",
+      method: "POST",
+      url: "/v1/candles",
       headers: { "X-Candles-Ingest-Token": "test-token" },
       payload: makePayload()
     });
@@ -81,13 +81,15 @@ describe("POST /v1/candles", () => {
     const app = buildApp();
 
     await app.inject({
-      method: "POST", url: "/v1/candles",
+      method: "POST",
+      url: "/v1/candles",
       headers: { "X-Candles-Ingest-Token": "test-token" },
       payload: makePayload({ sourceRecordedAtIso: "2026-04-26T13:00:00.000Z" })
     });
 
     const res = await app.inject({
-      method: "POST", url: "/v1/candles",
+      method: "POST",
+      url: "/v1/candles",
       headers: { "X-Candles-Ingest-Token": "test-token" },
       payload: makePayload({
         sourceRecordedAtIso: "2026-04-26T12:00:00.000Z",
@@ -108,11 +110,16 @@ describe("POST /v1/candles", () => {
 
     const oversized = Array.from({ length: 1001 }, (_, i) => ({
       unixMs: (i + 1) * ONE_HOUR_MS,
-      open: 100, high: 110, low: 90, close: 105, volume: 1
+      open: 100,
+      high: 110,
+      low: 90,
+      close: 105,
+      volume: 1
     }));
 
     const res = await app.inject({
-      method: "POST", url: "/v1/candles",
+      method: "POST",
+      url: "/v1/candles",
       headers: { "X-Candles-Ingest-Token": "test-token" },
       payload: makePayload({ candles: oversized })
     });

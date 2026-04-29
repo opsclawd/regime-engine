@@ -53,8 +53,8 @@ export const MARKET_REGIME_CONFIG: Record<"1h", MarketTimeframeConfig> = {
       chopVolRatioMax: 1.4
     },
     suitability: {
-      allowedVolRatioMax: 1.30,
-      extremeVolRatio: 1.60,
+      allowedVolRatioMax: 1.3,
+      extremeVolRatio: 1.6,
       extremeCompression: 0.18,
       minCandles: 30
     },

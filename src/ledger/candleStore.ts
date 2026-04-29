@@ -16,8 +16,11 @@ export type { GetLatestCandlesParams, CandleRow };
 const QUALIFIED_TABLE = `${PG_SCHEMA_NAME}.candle_revisions`;
 
 const feedHash = (feed: {
-  symbol: string; source: string; network: string;
-  poolAddress: string; timeframe: string;
+  symbol: string;
+  source: string;
+  network: string;
+  poolAddress: string;
+  timeframe: string;
 }): bigint => {
   const combined = `${feed.symbol}\0${feed.source}\0${feed.network}\0${feed.poolAddress}\0${feed.timeframe}`;
   const hex = sha256Hex(combined);
@@ -41,7 +44,7 @@ export class CandleStore {
       source: input.source,
       network: input.network,
       poolAddress: input.poolAddress,
-      timeframe: input.timeframe,
+      timeframe: input.timeframe
     };
 
     const lockKey = feedHash(feed);
@@ -62,21 +65,20 @@ export class CandleStore {
           unixMs: candleRevisions.unixMs,
           sourceRecordedAtUnixMs: candleRevisions.sourceRecordedAtUnixMs,
           sourceRecordedAtIso: candleRevisions.sourceRecordedAtIso,
-          ohlcvHash: candleRevisions.ohlcvHash,
+          ohlcvHash: candleRevisions.ohlcvHash
         })
         .from(candleRevisions)
-        .where(and(
-          eq(candleRevisions.symbol, feed.symbol),
-          eq(candleRevisions.source, feed.source),
-          eq(candleRevisions.network, feed.network),
-          eq(candleRevisions.poolAddress, feed.poolAddress),
-          eq(candleRevisions.timeframe, feed.timeframe),
-          inArray(candleRevisions.unixMs, unixMsValues),
-        ))
-        .orderBy(
-          desc(candleRevisions.sourceRecordedAtUnixMs),
-          desc(candleRevisions.id)
-        );
+        .where(
+          and(
+            eq(candleRevisions.symbol, feed.symbol),
+            eq(candleRevisions.source, feed.source),
+            eq(candleRevisions.network, feed.network),
+            eq(candleRevisions.poolAddress, feed.poolAddress),
+            eq(candleRevisions.timeframe, feed.timeframe),
+            inArray(candleRevisions.unixMs, unixMsValues)
+          )
+        )
+        .orderBy(desc(candleRevisions.sourceRecordedAtUnixMs), desc(candleRevisions.id));
 
       const existingBySlot = new Map<number, ExistingLatest>();
       for (const row of existingRows) {
@@ -85,7 +87,7 @@ export class CandleStore {
         }
       }
 
-      const toInsert: typeof candleRevisions.$inferInsert[] = [];
+      const toInsert: (typeof candleRevisions.$inferInsert)[] = [];
 
       for (const candle of input.candles) {
         const { ohlcvCanonical, ohlcvHash } = computeOhlcv(candle);
@@ -107,7 +109,7 @@ export class CandleStore {
               volume: candle.volume,
               ohlcvCanonical,
               ohlcvHash,
-              receivedAtUnixMs,
+              receivedAtUnixMs
             });
             if (decision.kind === "insert") insertedCount += 1;
             else revisedCount += 1;
@@ -120,7 +122,7 @@ export class CandleStore {
             rejections.push({
               unixMs: candle.unixMs,
               reason: "STALE_REVISION",
-              existingSourceRecordedAtIso: decision.existingSourceRecordedAtIso,
+              existingSourceRecordedAtIso: decision.existingSourceRecordedAtIso
             });
             break;
         }
@@ -136,9 +138,7 @@ export class CandleStore {
     return { insertedCount, revisedCount, idempotentCount, rejectedCount, rejections };
   }
 
-  async getLatestCandlesForFeed(
-    params: GetLatestCandlesParams
-  ): Promise<CandleRow[]> {
+  async getLatestCandlesForFeed(params: GetLatestCandlesParams): Promise<CandleRow[]> {
     const rows = await this.db.execute(sql`
       WITH latest_per_slot AS (
         SELECT unix_ms, open, high, low, close, volume,
@@ -173,7 +173,14 @@ export class CandleStore {
       const close = row.close;
       const volume = row.volume;
 
-      if (unixMs == null || open == null || high == null || low == null || close == null || volume == null) {
+      if (
+        unixMs == null ||
+        open == null ||
+        high == null ||
+        low == null ||
+        close == null ||
+        volume == null
+      ) {
         throw new Error(`Unexpected null in candle_revisions row: ${JSON.stringify(row)}`);
       }
 
@@ -183,7 +190,7 @@ export class CandleStore {
         high: Number(high),
         low: Number(low),
         close: Number(close),
-        volume: Number(volume),
+        volume: Number(volume)
       };
     });
   }

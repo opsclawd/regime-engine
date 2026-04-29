@@ -17,8 +17,11 @@ interface ExistingLatest {
 const selectLatest = (
   store: LedgerStore,
   feed: {
-    symbol: string; source: string; network: string;
-    poolAddress: string; timeframe: string;
+    symbol: string;
+    source: string;
+    network: string;
+    poolAddress: string;
+    timeframe: string;
   },
   unixMs: number
 ): ExistingLatest | undefined => {
@@ -31,17 +34,19 @@ const selectLatest = (
         ORDER BY source_recorded_at_unix_ms DESC, id DESC
         LIMIT 1`
     )
-    .get(
-      feed.symbol, feed.source, feed.network,
-      feed.poolAddress, feed.timeframe, unixMs
-    ) as ExistingLatest | undefined;
+    .get(feed.symbol, feed.source, feed.network, feed.poolAddress, feed.timeframe, unixMs) as
+    | ExistingLatest
+    | undefined;
 };
 
 const insertRevision = (
   store: LedgerStore,
   feed: {
-    symbol: string; source: string; network: string;
-    poolAddress: string; timeframe: string;
+    symbol: string;
+    source: string;
+    network: string;
+    poolAddress: string;
+    timeframe: string;
   },
   candle: CandleIngestRequest["candles"][number],
   sourceRecordedAtIso: string,
@@ -60,11 +65,22 @@ const insertRevision = (
        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
     )
     .run(
-      feed.symbol, feed.source, feed.network,
-      feed.poolAddress, feed.timeframe, candle.unixMs,
-      sourceRecordedAtIso, sourceRecordedAtUnixMs,
-      candle.open, candle.high, candle.low, candle.close, candle.volume,
-      ohlcvCanonical, ohlcvHash, receivedAtUnixMs
+      feed.symbol,
+      feed.source,
+      feed.network,
+      feed.poolAddress,
+      feed.timeframe,
+      candle.unixMs,
+      sourceRecordedAtIso,
+      sourceRecordedAtUnixMs,
+      candle.open,
+      candle.high,
+      candle.low,
+      candle.close,
+      candle.volume,
+      ohlcvCanonical,
+      ohlcvHash,
+      receivedAtUnixMs
     );
 };
 
@@ -100,18 +116,42 @@ export const writeCandles = (
       const existing = selectLatest(store, feed, candle.unixMs);
 
       const decision = classifyCandle(
-        existing ? { sourceRecordedAtUnixMs: existing.source_recorded_at_unix_ms, sourceRecordedAtIso: existing.source_recorded_at_iso, ohlcvHash: existing.ohlcv_hash } : undefined,
+        existing
+          ? {
+              sourceRecordedAtUnixMs: existing.source_recorded_at_unix_ms,
+              sourceRecordedAtIso: existing.source_recorded_at_iso,
+              ohlcvHash: existing.ohlcv_hash
+            }
+          : undefined,
         ohlcvHash,
         incomingSourceRecordedAtUnixMs
       );
 
       switch (decision.kind) {
         case "insert":
-          insertRevision(store, feed, candle, input.sourceRecordedAtIso, incomingSourceRecordedAtUnixMs, ohlcvCanonical, ohlcvHash, receivedAtUnixMs);
+          insertRevision(
+            store,
+            feed,
+            candle,
+            input.sourceRecordedAtIso,
+            incomingSourceRecordedAtUnixMs,
+            ohlcvCanonical,
+            ohlcvHash,
+            receivedAtUnixMs
+          );
           insertedCount += 1;
           break;
         case "revise":
-          insertRevision(store, feed, candle, input.sourceRecordedAtIso, incomingSourceRecordedAtUnixMs, ohlcvCanonical, ohlcvHash, receivedAtUnixMs);
+          insertRevision(
+            store,
+            feed,
+            candle,
+            input.sourceRecordedAtIso,
+            incomingSourceRecordedAtUnixMs,
+            ohlcvCanonical,
+            ohlcvHash,
+            receivedAtUnixMs
+          );
           revisedCount += 1;
           break;
         case "idempotent":
@@ -122,7 +162,7 @@ export const writeCandles = (
           rejections.push({
             unixMs: candle.unixMs,
             reason: "STALE_REVISION",
-            existingSourceRecordedAtIso: decision.existingSourceRecordedAtIso,
+            existingSourceRecordedAtIso: decision.existingSourceRecordedAtIso
           });
           break;
       }
@@ -173,13 +213,21 @@ export const getLatestCandlesForFeed = (
         ORDER BY unix_ms ASC`
     )
     .all(
-      params.symbol, params.source, params.network,
-      params.poolAddress, params.timeframe,
-      params.closedCandleCutoffUnixMs, params.limit
+      params.symbol,
+      params.source,
+      params.network,
+      params.poolAddress,
+      params.timeframe,
+      params.closedCandleCutoffUnixMs,
+      params.limit
     ) as Array<{
-      unix_ms: number; open: number; high: number; low: number;
-      close: number; volume: number;
-    }>;
+    unix_ms: number;
+    open: number;
+    high: number;
+    low: number;
+    close: number;
+    volume: number;
+  }>;
 
   return rows.map((row) => ({
     unixMs: row.unix_ms,

@@ -13,6 +13,7 @@
 ### Task 1: Migrate from npm to pnpm
 
 **Files:**
+
 - Delete: `package-lock.json`
 - Create: `pnpm-lock.yaml` (via `pnpm import`)
 - Create: `.npmrc`
@@ -21,6 +22,7 @@
 - [ ] **Step 1: Generate pnpm lockfile from npm lockfile**
 
 Run:
+
 ```bash
 pnpm import
 ```
@@ -96,6 +98,7 @@ Expected: Commit includes `pnpm-lock.yaml` (added), `.npmrc` (added), `AGENTS.md
 ### Task 2: Add GitHub Actions CI workflow
 
 **Files:**
+
 - Create: `.github/workflows/ci.yml`
 
 - [ ] **Step 1: Create the workflow directory**
@@ -190,6 +193,7 @@ Check the Actions tab in the GitHub repo. The `check` job should appear and all 
 - [ ] **Step 4: Configure branch protection (manual)**
 
 After the first successful CI run on `main`, go to GitHub repo Settings → Branches → Branch protection rules → Add rule for `main`:
+
 - Check "Require status checks to pass before merging"
 - Select the `check` status check
 - Check "Require branches to be up to date before merging" (optional but recommended)

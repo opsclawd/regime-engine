@@ -39,6 +39,7 @@ Single `check` job, sequential steps, no parallelism:
   9. `pnpm run test`
 
 **Not included:**
+
 - `test:pg` — requires a running Postgres instance; not part of the default quality gate
 - Explicit caching steps — `setup-node` with `cache: pnpm` handles pnpm store caching automatically
 

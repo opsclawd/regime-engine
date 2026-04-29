@@ -78,6 +78,7 @@ docs/runbooks/2026-04-railway-deploy.md      add CANDLES_INGEST_TOKEN to env che
 ### Task 1.1: Extend ERROR_CODES with new top-level codes
 
 **Files:**
+
 - Modify: `src/http/errors.ts`
 
 - [ ] **Step 1: Add new constants to `ERROR_CODES`**
@@ -157,6 +158,7 @@ POST /v1/candles and GET /v1/regime/current handlers."
 ### Task 1.2: Add candle and regime-current types
 
 **Files:**
+
 - Modify: `src/contract/v1/types.ts`
 
 - [ ] **Step 1: Append type definitions to the end of the file**
@@ -280,6 +282,7 @@ git commit -m "feat(types): add candle ingest and regime-current contract types"
 ### Task 1.3: Validate `POST /v1/candles` request
 
 **Files:**
+
 - Test: `src/contract/v1/__tests__/candles.validation.test.ts`
 - Modify: `src/contract/v1/validation.ts`
 
@@ -339,32 +342,25 @@ describe("parseCandleIngestRequest", () => {
     try {
       parseCandleIngestRequest(makeBody({ timeframe: "5m" }));
     } catch (error) {
-      expect((error as ContractValidationError).response.error.code).toBe(
-        "VALIDATION_ERROR"
-      );
+      expect((error as ContractValidationError).response.error.code).toBe("VALIDATION_ERROR");
     }
   });
 
-  it.each([
-    ["source"],
-    ["network"],
-    ["poolAddress"],
-    ["symbol"],
-    ["sourceRecordedAtIso"]
-  ])("rejects missing %s with VALIDATION_ERROR", (key) => {
-    const body = makeBody();
-    delete (body as Record<string, unknown>)[key];
-    expect(() => parseCandleIngestRequest(body)).toThrow(ContractValidationError);
-  });
+  it.each([["source"], ["network"], ["poolAddress"], ["symbol"], ["sourceRecordedAtIso"]])(
+    "rejects missing %s with VALIDATION_ERROR",
+    (key) => {
+      const body = makeBody();
+      delete (body as Record<string, unknown>)[key];
+      expect(() => parseCandleIngestRequest(body)).toThrow(ContractValidationError);
+    }
+  );
 
   it("rejects malformed sourceRecordedAtIso with VALIDATION_ERROR", () => {
     expect.assertions(1);
     try {
       parseCandleIngestRequest(makeBody({ sourceRecordedAtIso: "not-an-iso-date" }));
     } catch (error) {
-      expect((error as ContractValidationError).response.error.code).toBe(
-        "VALIDATION_ERROR"
-      );
+      expect((error as ContractValidationError).response.error.code).toBe("VALIDATION_ERROR");
     }
   });
 
@@ -373,35 +369,35 @@ describe("parseCandleIngestRequest", () => {
     try {
       parseCandleIngestRequest(makeBody({ candles: [] }));
     } catch (error) {
-      expect((error as ContractValidationError).response.error.code).toBe(
-        "VALIDATION_ERROR"
-      );
+      expect((error as ContractValidationError).response.error.code).toBe("VALIDATION_ERROR");
     }
   });
 
   it("rejects 1001-candle batch with BATCH_TOO_LARGE", () => {
     const oversized = Array.from({ length: 1001 }, (_, i) => ({
       unixMs: (i + 1) * ONE_HOUR_MS,
-      open: 100, high: 110, low: 95, close: 105, volume: 1000
+      open: 100,
+      high: 110,
+      low: 95,
+      close: 105,
+      volume: 1000
     }));
     expect.assertions(1);
     try {
       parseCandleIngestRequest(makeBody({ candles: oversized }));
     } catch (error) {
-      expect((error as ContractValidationError).response.error.code).toBe(
-        "BATCH_TOO_LARGE"
-      );
+      expect((error as ContractValidationError).response.error.code).toBe("BATCH_TOO_LARGE");
     }
   });
 
   it.each([
-    ["high < open",      { open: 100, high:  90, low: 80,  close: 95,  volume: 1 }],
-    ["high < close",     { open: 100, high:  90, low: 80,  close: 95,  volume: 1 }],
-    ["low > open",       { open: 100, high: 120, low: 110, close: 105, volume: 1 }],
-    ["low > close",      { open: 100, high: 120, low: 110, close: 105, volume: 1 }],
-    ["zero open",        { open:   0, high: 100, low: 50,  close: 80,  volume: 1 }],
-    ["negative volume",  { open: 100, high: 110, low: 95,  close: 105, volume: -1 }],
-    ["non-finite high",  { open: 100, high: Infinity, low: 95, close: 105, volume: 1 }]
+    ["high < open", { open: 100, high: 90, low: 80, close: 95, volume: 1 }],
+    ["high < close", { open: 100, high: 90, low: 80, close: 95, volume: 1 }],
+    ["low > open", { open: 100, high: 120, low: 110, close: 105, volume: 1 }],
+    ["low > close", { open: 100, high: 120, low: 110, close: 105, volume: 1 }],
+    ["zero open", { open: 0, high: 100, low: 50, close: 80, volume: 1 }],
+    ["negative volume", { open: 100, high: 110, low: 95, close: 105, volume: -1 }],
+    ["non-finite high", { open: 100, high: Infinity, low: 95, close: 105, volume: 1 }]
   ])("rejects malformed candle (%s) with MALFORMED_CANDLE", (_label, ohlc) => {
     expect.assertions(2);
     try {
@@ -416,28 +412,36 @@ describe("parseCandleIngestRequest", () => {
   it("rejects unixMs not aligned to timeframeMs with MALFORMED_CANDLE", () => {
     expect.assertions(1);
     try {
-      parseCandleIngestRequest(makeBody({
-        candles: [{
-          unixMs: ONE_HOUR_MS + 1,
-          open: 100, high: 110, low: 95, close: 105, volume: 1000
-        }]
-      }));
-    } catch (error) {
-      expect((error as ContractValidationError).response.error.code).toBe(
-        "MALFORMED_CANDLE"
+      parseCandleIngestRequest(
+        makeBody({
+          candles: [
+            {
+              unixMs: ONE_HOUR_MS + 1,
+              open: 100,
+              high: 110,
+              low: 95,
+              close: 105,
+              volume: 1000
+            }
+          ]
+        })
       );
+    } catch (error) {
+      expect((error as ContractValidationError).response.error.code).toBe("MALFORMED_CANDLE");
     }
   });
 
   it("rejects duplicate unixMs in batch with DUPLICATE_CANDLE_IN_BATCH", () => {
     expect.assertions(1);
     try {
-      parseCandleIngestRequest(makeBody({
-        candles: [
-          { unixMs: ONE_HOUR_MS, open: 100, high: 110, low: 95, close: 105, volume: 1 },
-          { unixMs: ONE_HOUR_MS, open: 101, high: 111, low: 96, close: 106, volume: 2 }
-        ]
-      }));
+      parseCandleIngestRequest(
+        makeBody({
+          candles: [
+            { unixMs: ONE_HOUR_MS, open: 100, high: 110, low: 95, close: 105, volume: 1 },
+            { unixMs: ONE_HOUR_MS, open: 101, high: 111, low: 96, close: 106, volume: 2 }
+          ]
+        })
+      );
     } catch (error) {
       expect((error as ContractValidationError).response.error.code).toBe(
         "DUPLICATE_CANDLE_IN_BATCH"
@@ -462,9 +466,7 @@ import {
   duplicateCandleInBatchError,
   malformedCandleError
 } from "../../http/errors.js";
-import type {
-  CandleIngestRequest
-} from "./types.js";
+import type { CandleIngestRequest } from "./types.js";
 ```
 
 Append the new schema and parser before the existing `export const schemas`:
@@ -548,10 +550,9 @@ const validateOhlcvInvariants = (
 
 const checkBatchSize = (count: number): void => {
   if (count > 1000) {
-    throw batchTooLargeError(
-      `candles.length must not exceed 1000; received ${count}`,
-      [{ path: "$.candles", code: "OUT_OF_RANGE", message: `length=${count} exceeds 1000` }]
-    );
+    throw batchTooLargeError(`candles.length must not exceed 1000; received ${count}`, [
+      { path: "$.candles", code: "OUT_OF_RANGE", message: `length=${count} exceeds 1000` }
+    ]);
   }
 };
 
@@ -613,6 +614,7 @@ and duplicate unixMs rejection within a single batch."
 ### Task 1.4: Validate `GET /v1/regime/current` query
 
 **Files:**
+
 - Test: `src/contract/v1/__tests__/regimeCurrent.validation.test.ts`
 - Modify: `src/contract/v1/validation.ts`
 
@@ -639,33 +641,26 @@ describe("parseRegimeCurrentQuery", () => {
     expect(result.timeframe).toBe("1h");
   });
 
-  it.each([
-    ["symbol"],
-    ["source"],
-    ["network"],
-    ["poolAddress"],
-    ["timeframe"]
-  ])("rejects missing %s with VALIDATION_ERROR", (key) => {
-    const query = { ...baseQuery } as Record<string, string>;
-    delete query[key];
-    expect.assertions(1);
-    try {
-      parseRegimeCurrentQuery(query);
-    } catch (error) {
-      expect((error as ContractValidationError).response.error.code).toBe(
-        "VALIDATION_ERROR"
-      );
+  it.each([["symbol"], ["source"], ["network"], ["poolAddress"], ["timeframe"]])(
+    "rejects missing %s with VALIDATION_ERROR",
+    (key) => {
+      const query = { ...baseQuery } as Record<string, string>;
+      delete query[key];
+      expect.assertions(1);
+      try {
+        parseRegimeCurrentQuery(query);
+      } catch (error) {
+        expect((error as ContractValidationError).response.error.code).toBe("VALIDATION_ERROR");
+      }
     }
-  });
+  );
 
   it("rejects timeframe outside allowlist with VALIDATION_ERROR", () => {
     expect.assertions(1);
     try {
       parseRegimeCurrentQuery({ ...baseQuery, timeframe: "4h" });
     } catch (error) {
-      expect((error as ContractValidationError).response.error.code).toBe(
-        "VALIDATION_ERROR"
-      );
+      expect((error as ContractValidationError).response.error.code).toBe("VALIDATION_ERROR");
     }
   });
 
@@ -674,9 +669,7 @@ describe("parseRegimeCurrentQuery", () => {
     try {
       parseRegimeCurrentQuery({ ...baseQuery, symbol: ["SOL/USDC", "x"] });
     } catch (error) {
-      expect((error as ContractValidationError).response.error.code).toBe(
-        "VALIDATION_ERROR"
-      );
+      expect((error as ContractValidationError).response.error.code).toBe("VALIDATION_ERROR");
     }
   });
 });
@@ -702,7 +695,9 @@ const regimeCurrentQuerySchema = z
   })
   .strict();
 
-export const parseRegimeCurrentQuery = (raw: unknown): {
+export const parseRegimeCurrentQuery = (
+  raw: unknown
+): {
   symbol: string;
   source: string;
   network: string;
@@ -741,6 +736,7 @@ git commit -m "feat(validation): parseRegimeCurrentQuery for the five required s
 ### Task 2.1: Append `candle_revisions` schema
 
 **Files:**
+
 - Modify: `src/ledger/schema.sql`
 
 - [ ] **Step 1: Append the table and three indexes**
@@ -836,6 +832,7 @@ getLedgerCounts extended with candleRevisions for route-test assertions."
 ### Task 2.2: Implement `candlesWriter` — write path
 
 **Files:**
+
 - Test: `src/ledger/__tests__/candlesWriter.test.ts`
 - Create: `src/ledger/candlesWriter.ts`
 
@@ -860,7 +857,7 @@ const makeRequest = (overrides: Partial<CandleIngestRequest> = {}): CandleIngest
   timeframe: "1h",
   sourceRecordedAtIso: "2026-04-26T12:00:00.000Z",
   candles: [
-    { unixMs: 1 * ONE_HOUR_MS, open: 100, high: 110, low: 90,  close: 105, volume: 1 },
+    { unixMs: 1 * ONE_HOUR_MS, open: 100, high: 110, low: 90, close: 105, volume: 1 },
     { unixMs: 2 * ONE_HOUR_MS, open: 105, high: 115, low: 100, close: 110, volume: 2 },
     { unixMs: 3 * ONE_HOUR_MS, open: 110, high: 120, low: 105, close: 115, volume: 3 }
   ],
@@ -911,7 +908,7 @@ describe("writeCandles", () => {
     const newer = makeRequest({
       sourceRecordedAtIso: "2026-04-26T13:00:00.000Z",
       candles: [
-        { unixMs: 1 * ONE_HOUR_MS, open: 101, high: 111, low: 91,  close: 106, volume: 11 },
+        { unixMs: 1 * ONE_HOUR_MS, open: 101, high: 111, low: 91, close: 106, volume: 11 },
         { unixMs: 2 * ONE_HOUR_MS, open: 106, high: 116, low: 101, close: 111, volume: 22 },
         { unixMs: 3 * ONE_HOUR_MS, open: 111, high: 121, low: 106, close: 116, volume: 33 }
       ]
@@ -929,9 +926,13 @@ describe("writeCandles", () => {
     expect(getLedgerCounts(store).candleRevisions).toBe(6);
 
     const latest = getLatestCandlesForFeed(store, {
-      symbol: "SOL/USDC", source: "birdeye", network: "solana-mainnet",
-      poolAddress: "Pool111", timeframe: "1h",
-      closedCandleCutoffUnixMs: 10 * ONE_HOUR_MS, limit: 100
+      symbol: "SOL/USDC",
+      source: "birdeye",
+      network: "solana-mainnet",
+      poolAddress: "Pool111",
+      timeframe: "1h",
+      closedCandleCutoffUnixMs: 10 * ONE_HOUR_MS,
+      limit: 100
     });
     expect(latest.map((c) => c.close)).toEqual([106, 111, 116]);
   });
@@ -946,9 +947,7 @@ describe("writeCandles", () => {
 
     const stale = makeRequest({
       sourceRecordedAtIso: "2026-04-26T12:00:00.000Z",
-      candles: [
-        { unixMs: 1 * ONE_HOUR_MS, open: 200, high: 210, low: 190, close: 205, volume: 1 }
-      ]
+      candles: [{ unixMs: 1 * ONE_HOUR_MS, open: 200, high: 210, low: 190, close: 205, volume: 1 }]
     });
 
     const result = writeCandles(store, stale, 1_700_000_001_000);
@@ -982,7 +981,7 @@ describe("writeCandles", () => {
     const mixed = makeRequest({
       sourceRecordedAtIso: "2026-04-26T12:00:00.000Z",
       candles: [
-        { unixMs: 1 * ONE_HOUR_MS, open: 100, high: 110, low: 90,  close: 105, volume: 1 },
+        { unixMs: 1 * ONE_HOUR_MS, open: 100, high: 110, low: 90, close: 105, volume: 1 },
         { unixMs: 2 * ONE_HOUR_MS, open: 999, high: 999, low: 999, close: 999, volume: 9 },
         { unixMs: 3 * ONE_HOUR_MS, open: 110, high: 120, low: 105, close: 115, volume: 3 }
       ]
@@ -1028,8 +1027,11 @@ interface ExistingLatest {
 const selectLatest = (
   store: LedgerStore,
   feed: {
-    symbol: string; source: string; network: string;
-    poolAddress: string; timeframe: string;
+    symbol: string;
+    source: string;
+    network: string;
+    poolAddress: string;
+    timeframe: string;
   },
   unixMs: number
 ): ExistingLatest | undefined => {
@@ -1042,17 +1044,19 @@ const selectLatest = (
         ORDER BY source_recorded_at_unix_ms DESC, id DESC
         LIMIT 1`
     )
-    .get(
-      feed.symbol, feed.source, feed.network,
-      feed.poolAddress, feed.timeframe, unixMs
-    ) as ExistingLatest | undefined;
+    .get(feed.symbol, feed.source, feed.network, feed.poolAddress, feed.timeframe, unixMs) as
+    | ExistingLatest
+    | undefined;
 };
 
 const insertRevision = (
   store: LedgerStore,
   feed: {
-    symbol: string; source: string; network: string;
-    poolAddress: string; timeframe: string;
+    symbol: string;
+    source: string;
+    network: string;
+    poolAddress: string;
+    timeframe: string;
   },
   candle: CandleIngestRequest["candles"][number],
   sourceRecordedAtIso: string,
@@ -1071,11 +1075,22 @@ const insertRevision = (
        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
     )
     .run(
-      feed.symbol, feed.source, feed.network,
-      feed.poolAddress, feed.timeframe, candle.unixMs,
-      sourceRecordedAtIso, sourceRecordedAtUnixMs,
-      candle.open, candle.high, candle.low, candle.close, candle.volume,
-      ohlcvCanonical, ohlcvHash, receivedAtUnixMs
+      feed.symbol,
+      feed.source,
+      feed.network,
+      feed.poolAddress,
+      feed.timeframe,
+      candle.unixMs,
+      sourceRecordedAtIso,
+      sourceRecordedAtUnixMs,
+      candle.open,
+      candle.high,
+      candle.low,
+      candle.close,
+      candle.volume,
+      ohlcvCanonical,
+      ohlcvHash,
+      receivedAtUnixMs
     );
 };
 
@@ -1104,8 +1119,11 @@ export const writeCandles = (
   try {
     for (const candle of input.candles) {
       const ohlcvCanonical = toCanonicalJson({
-        open: candle.open, high: candle.high, low: candle.low,
-        close: candle.close, volume: candle.volume
+        open: candle.open,
+        high: candle.high,
+        low: candle.low,
+        close: candle.close,
+        volume: candle.volume
       });
       const ohlcvHash = sha256Hex(ohlcvCanonical);
 
@@ -1113,9 +1131,14 @@ export const writeCandles = (
 
       if (!existing) {
         insertRevision(
-          store, feed, candle,
-          input.sourceRecordedAtIso, incomingSourceRecordedAtUnixMs,
-          ohlcvCanonical, ohlcvHash, receivedAtUnixMs
+          store,
+          feed,
+          candle,
+          input.sourceRecordedAtIso,
+          incomingSourceRecordedAtUnixMs,
+          ohlcvCanonical,
+          ohlcvHash,
+          receivedAtUnixMs
         );
         insertedCount += 1;
         continue;
@@ -1128,9 +1151,14 @@ export const writeCandles = (
 
       if (existing.source_recorded_at_unix_ms < incomingSourceRecordedAtUnixMs) {
         insertRevision(
-          store, feed, candle,
-          input.sourceRecordedAtIso, incomingSourceRecordedAtUnixMs,
-          ohlcvCanonical, ohlcvHash, receivedAtUnixMs
+          store,
+          feed,
+          candle,
+          input.sourceRecordedAtIso,
+          incomingSourceRecordedAtUnixMs,
+          ohlcvCanonical,
+          ohlcvHash,
+          receivedAtUnixMs
         );
         revisedCount += 1;
         continue;
@@ -1191,6 +1219,7 @@ parsed source_recorded_at_unix_ms; ISO strings audit-only."
 ### Task 2.3: Implement `candlesWriter` — read path
 
 **Files:**
+
 - Modify: `src/ledger/candlesWriter.ts`
 
 - [ ] **Step 1: Implement `getLatestCandlesForFeed`**
@@ -1245,13 +1274,21 @@ export const getLatestCandlesForFeed = (
         ORDER BY unix_ms ASC`
     )
     .all(
-      params.symbol, params.source, params.network,
-      params.poolAddress, params.timeframe,
-      params.closedCandleCutoffUnixMs, params.limit
+      params.symbol,
+      params.source,
+      params.network,
+      params.poolAddress,
+      params.timeframe,
+      params.closedCandleCutoffUnixMs,
+      params.limit
     ) as Array<{
-      unix_ms: number; open: number; high: number; low: number;
-      close: number; volume: number;
-    }>;
+    unix_ms: number;
+    open: number;
+    high: number;
+    low: number;
+    close: number;
+    volume: number;
+  }>;
 
   return rows.map((row) => ({
     unixMs: row.unix_ms,
@@ -1292,6 +1329,7 @@ indicator computation."
 ### Task 3.1: Add `MARKET_REGIME_CONFIG`
 
 **Files:**
+
 - Create: `src/engine/marketRegime/config.ts`
 
 - [ ] **Step 1: Create the config module**
@@ -1361,8 +1399,8 @@ export const MARKET_REGIME_CONFIG: Record<"1h", MarketTimeframeConfig> = {
     },
 
     suitability: {
-      allowedVolRatioMax: 1.30,
-      extremeVolRatio: 1.60,
+      allowedVolRatioMax: 1.3,
+      extremeVolRatio: 1.6,
       extremeCompression: 0.18,
       minCandles: 30
     },
@@ -1396,6 +1434,7 @@ source."
 ### Task 3.2: `closedCandleCutoffUnixMs`
 
 **Files:**
+
 - Test: `src/engine/marketRegime/__tests__/closedCandleCutoff.test.ts`
 - Create: `src/engine/marketRegime/closedCandleCutoff.ts`
 
@@ -1477,6 +1516,7 @@ revisions can still arrive before classification."
 ### Task 3.3: `computeFreshness`
 
 **Files:**
+
 - Test: `src/engine/marketRegime/__tests__/freshness.test.ts`
 - Create: `src/engine/marketRegime/freshness.ts`
 
@@ -1596,6 +1636,7 @@ git commit -m "feat(marketRegime): computeFreshness with soft/hard stale boundar
 ### Task 3.4: `classifyMarketRegime`
 
 **Files:**
+
 - Test: `src/engine/marketRegime/__tests__/classifyMarketRegime.test.ts`
 - Create: `src/engine/marketRegime/classifyMarketRegime.ts`
 
@@ -1613,8 +1654,13 @@ const config = MARKET_REGIME_CONFIG["1h"].regime;
 describe("classifyMarketRegime", () => {
   it("returns CHOP when telemetry is calm and trend is flat", () => {
     const result = classifyMarketRegime(
-      { realizedVolShort: 0.01, realizedVolLong: 0.01, volRatio: 0.5,
-        trendStrength: 0, compression: 0.05 },
+      {
+        realizedVolShort: 0.01,
+        realizedVolLong: 0.01,
+        volRatio: 0.5,
+        trendStrength: 0,
+        compression: 0.05
+      },
       config
     );
     expect(result.regime).toBe("CHOP");
@@ -1623,8 +1669,13 @@ describe("classifyMarketRegime", () => {
 
   it("returns UP and emits REGIME_SWITCH_CONFIRMED when trend strong + low vol", () => {
     const result = classifyMarketRegime(
-      { realizedVolShort: 0.01, realizedVolLong: 0.01, volRatio: 0.5,
-        trendStrength: 1.0, compression: 0.05 },
+      {
+        realizedVolShort: 0.01,
+        realizedVolLong: 0.01,
+        volRatio: 0.5,
+        trendStrength: 1.0,
+        compression: 0.05
+      },
       config
     );
     expect(result.regime).toBe("UP");
@@ -1633,8 +1684,13 @@ describe("classifyMarketRegime", () => {
 
   it("returns DOWN when trend is strongly negative", () => {
     const result = classifyMarketRegime(
-      { realizedVolShort: 0.01, realizedVolLong: 0.01, volRatio: 0.5,
-        trendStrength: -1.0, compression: 0.05 },
+      {
+        realizedVolShort: 0.01,
+        realizedVolLong: 0.01,
+        volRatio: 0.5,
+        trendStrength: -1.0,
+        compression: 0.05
+      },
       config
     );
     expect(result.regime).toBe("DOWN");
@@ -1642,8 +1698,13 @@ describe("classifyMarketRegime", () => {
 
   it("rewrites the message for REGIME_SWITCH_CONFIRMED to market-read language", () => {
     const result = classifyMarketRegime(
-      { realizedVolShort: 0.01, realizedVolLong: 0.01, volRatio: 0.5,
-        trendStrength: 1.0, compression: 0.05 },
+      {
+        realizedVolShort: 0.01,
+        realizedVolLong: 0.01,
+        volRatio: 0.5,
+        trendStrength: 1.0,
+        compression: 0.05
+      },
       config
     );
     expect(result.reasons[0].message).toBe("Current telemetry supports UP regime.");
@@ -1652,8 +1713,20 @@ describe("classifyMarketRegime", () => {
   it("never emits REGIME_CONFIRM_PENDING or REGIME_MIN_HOLD_ACTIVE", () => {
     const samples = [
       { realizedVolShort: 0, realizedVolLong: 0, volRatio: 2.0, trendStrength: 0, compression: 0 },
-      { realizedVolShort: 0, realizedVolLong: 0, volRatio: 0.1, trendStrength: 0.5, compression: 0 },
-      { realizedVolShort: 0, realizedVolLong: 0, volRatio: 0.1, trendStrength: -0.5, compression: 0 }
+      {
+        realizedVolShort: 0,
+        realizedVolLong: 0,
+        volRatio: 0.1,
+        trendStrength: 0.5,
+        compression: 0
+      },
+      {
+        realizedVolShort: 0,
+        realizedVolLong: 0,
+        volRatio: 0.1,
+        trendStrength: -0.5,
+        compression: 0
+      }
     ];
     for (const telemetry of samples) {
       const codes = classifyMarketRegime(telemetry, config).reasons.map((r) => r.code);
@@ -1664,8 +1737,11 @@ describe("classifyMarketRegime", () => {
 
   it("is deterministic: same telemetry produces identical output", () => {
     const telemetry = {
-      realizedVolShort: 0.01, realizedVolLong: 0.01, volRatio: 0.5,
-      trendStrength: 0, compression: 0.05
+      realizedVolShort: 0.01,
+      realizedVolLong: 0.01,
+      volRatio: 0.5,
+      trendStrength: 0,
+      compression: 0.05
     };
     const a = classifyMarketRegime(telemetry, config);
     const b = classifyMarketRegime(telemetry, config);
@@ -1749,6 +1825,7 @@ message strings to market-read phrasing."
 ### Task 3.5: `evaluateMarketClmmSuitability`
 
 **Files:**
+
 - Test: `src/engine/marketRegime/__tests__/evaluateMarketClmmSuitability.test.ts`
 - Create: `src/engine/marketRegime/evaluateMarketClmmSuitability.ts`
 
@@ -1764,21 +1841,27 @@ import { MARKET_REGIME_CONFIG } from "../config.js";
 const cfg = MARKET_REGIME_CONFIG["1h"].suitability;
 
 const baseTelemetry = {
-  realizedVolShort: 0.01, realizedVolLong: 0.01,
-  volRatio: 0.5, trendStrength: 0, compression: 0.05
+  realizedVolShort: 0.01,
+  realizedVolLong: 0.01,
+  volRatio: 0.5,
+  trendStrength: 0,
+  compression: 0.05
 };
 
 const fresh = { hardStale: false, softStale: false };
 const stale = { hardStale: false, softStale: true };
-const dead  = { hardStale: true,  softStale: true };
+const dead = { hardStale: true, softStale: true };
 const sufficient = 30;
 const insufficient = 5;
 
 describe("evaluateMarketClmmSuitability", () => {
   it("returns UNKNOWN with CLMM_UNKNOWN_INSUFFICIENT_SAMPLES when below minCandles", () => {
     const r = evaluateMarketClmmSuitability({
-      regime: "CHOP", telemetry: baseTelemetry, freshness: fresh,
-      candleCount: insufficient, config: cfg
+      regime: "CHOP",
+      telemetry: baseTelemetry,
+      freshness: fresh,
+      candleCount: insufficient,
+      config: cfg
     });
     expect(r.status).toBe("UNKNOWN");
     expect(r.reasons.map((x) => x.code)).toEqual(["CLMM_UNKNOWN_INSUFFICIENT_SAMPLES"]);
@@ -1786,8 +1869,11 @@ describe("evaluateMarketClmmSuitability", () => {
 
   it("returns UNKNOWN with CLMM_UNKNOWN_HARD_STALE_DATA when hardStale", () => {
     const r = evaluateMarketClmmSuitability({
-      regime: "CHOP", telemetry: baseTelemetry, freshness: dead,
-      candleCount: sufficient, config: cfg
+      regime: "CHOP",
+      telemetry: baseTelemetry,
+      freshness: dead,
+      candleCount: sufficient,
+      config: cfg
     });
     expect(r.status).toBe("UNKNOWN");
     expect(r.reasons.map((x) => x.code)).toEqual(["CLMM_UNKNOWN_HARD_STALE_DATA"]);
@@ -1795,8 +1881,11 @@ describe("evaluateMarketClmmSuitability", () => {
 
   it("returns BLOCKED CLMM_BLOCKED_TRENDING_UP for UP regime even with fresh data", () => {
     const r = evaluateMarketClmmSuitability({
-      regime: "UP", telemetry: baseTelemetry, freshness: fresh,
-      candleCount: sufficient, config: cfg
+      regime: "UP",
+      telemetry: baseTelemetry,
+      freshness: fresh,
+      candleCount: sufficient,
+      config: cfg
     });
     expect(r.status).toBe("BLOCKED");
     expect(r.reasons.map((x) => x.code)).toContain("CLMM_BLOCKED_TRENDING_UP");
@@ -1804,8 +1893,11 @@ describe("evaluateMarketClmmSuitability", () => {
 
   it("returns BLOCKED CLMM_BLOCKED_TRENDING_DOWN for DOWN regime", () => {
     const r = evaluateMarketClmmSuitability({
-      regime: "DOWN", telemetry: baseTelemetry, freshness: fresh,
-      candleCount: sufficient, config: cfg
+      regime: "DOWN",
+      telemetry: baseTelemetry,
+      freshness: fresh,
+      candleCount: sufficient,
+      config: cfg
     });
     expect(r.status).toBe("BLOCKED");
     expect(r.reasons.map((x) => x.code)).toContain("CLMM_BLOCKED_TRENDING_DOWN");
@@ -1815,7 +1907,9 @@ describe("evaluateMarketClmmSuitability", () => {
     const r = evaluateMarketClmmSuitability({
       regime: "CHOP",
       telemetry: { ...baseTelemetry, volRatio: cfg.extremeVolRatio + 0.01 },
-      freshness: fresh, candleCount: sufficient, config: cfg
+      freshness: fresh,
+      candleCount: sufficient,
+      config: cfg
     });
     expect(r.status).toBe("BLOCKED");
     expect(r.reasons.map((x) => x.code)).toContain("CLMM_BLOCKED_EXTREME_VOLATILITY");
@@ -1825,7 +1919,9 @@ describe("evaluateMarketClmmSuitability", () => {
     const r = evaluateMarketClmmSuitability({
       regime: "CHOP",
       telemetry: { ...baseTelemetry, compression: cfg.extremeCompression + 0.01 },
-      freshness: fresh, candleCount: sufficient, config: cfg
+      freshness: fresh,
+      candleCount: sufficient,
+      config: cfg
     });
     expect(r.status).toBe("BLOCKED");
     expect(r.reasons.map((x) => x.code)).toContain("CLMM_BLOCKED_EXTREME_COMPRESSION");
@@ -1835,7 +1931,9 @@ describe("evaluateMarketClmmSuitability", () => {
     const r = evaluateMarketClmmSuitability({
       regime: "UP",
       telemetry: { ...baseTelemetry, volRatio: cfg.extremeVolRatio + 0.01 },
-      freshness: stale, candleCount: sufficient, config: cfg
+      freshness: stale,
+      candleCount: sufficient,
+      config: cfg
     });
     expect(r.status).toBe("BLOCKED");
     const codes = r.reasons.map((x) => x.code);
@@ -1847,8 +1945,11 @@ describe("evaluateMarketClmmSuitability", () => {
 
   it("returns CAUTION CLMM_CAUTION_SOFT_STALE_DATA for CHOP + softStale", () => {
     const r = evaluateMarketClmmSuitability({
-      regime: "CHOP", telemetry: baseTelemetry, freshness: stale,
-      candleCount: sufficient, config: cfg
+      regime: "CHOP",
+      telemetry: baseTelemetry,
+      freshness: stale,
+      candleCount: sufficient,
+      config: cfg
     });
     expect(r.status).toBe("CAUTION");
     expect(r.reasons.map((x) => x.code)).toContain("CLMM_CAUTION_SOFT_STALE_DATA");
@@ -1858,7 +1959,9 @@ describe("evaluateMarketClmmSuitability", () => {
     const r = evaluateMarketClmmSuitability({
       regime: "CHOP",
       telemetry: { ...baseTelemetry, volRatio: cfg.allowedVolRatioMax + 0.01 },
-      freshness: fresh, candleCount: sufficient, config: cfg
+      freshness: fresh,
+      candleCount: sufficient,
+      config: cfg
     });
     expect(r.status).toBe("CAUTION");
     expect(r.reasons.map((x) => x.code)).toContain("CLMM_CAUTION_ELEVATED_VOLATILITY");
@@ -1868,7 +1971,9 @@ describe("evaluateMarketClmmSuitability", () => {
     const r = evaluateMarketClmmSuitability({
       regime: "CHOP",
       telemetry: { ...baseTelemetry, volRatio: cfg.allowedVolRatioMax + 0.01 },
-      freshness: stale, candleCount: sufficient, config: cfg
+      freshness: stale,
+      candleCount: sufficient,
+      config: cfg
     });
     expect(r.status).toBe("CAUTION");
     const codes = r.reasons.map((x) => x.code);
@@ -1878,8 +1983,11 @@ describe("evaluateMarketClmmSuitability", () => {
 
   it("returns ALLOWED CLMM_ALLOWED_CHOP_FRESH for fresh + sufficient + low-vol CHOP", () => {
     const r = evaluateMarketClmmSuitability({
-      regime: "CHOP", telemetry: baseTelemetry, freshness: fresh,
-      candleCount: sufficient, config: cfg
+      regime: "CHOP",
+      telemetry: baseTelemetry,
+      freshness: fresh,
+      candleCount: sufficient,
+      config: cfg
     });
     expect(r.status).toBe("ALLOWED");
     expect(r.reasons.map((x) => x.code)).toEqual(["CLMM_ALLOWED_CHOP_FRESH"]);
@@ -1960,26 +2068,38 @@ export const evaluateMarketClmmSuitability = (
   const blockedReasons: ClmmSuitabilityReason[] = [];
   if (regime === "UP") {
     blockedReasons.push(
-      reason("CLMM_BLOCKED_TRENDING_UP", "WARN",
-        "CLMM positions are not appropriate while regime is trending UP.")
+      reason(
+        "CLMM_BLOCKED_TRENDING_UP",
+        "WARN",
+        "CLMM positions are not appropriate while regime is trending UP."
+      )
     );
   }
   if (regime === "DOWN") {
     blockedReasons.push(
-      reason("CLMM_BLOCKED_TRENDING_DOWN", "WARN",
-        "CLMM positions are not appropriate while regime is trending DOWN.")
+      reason(
+        "CLMM_BLOCKED_TRENDING_DOWN",
+        "WARN",
+        "CLMM positions are not appropriate while regime is trending DOWN."
+      )
     );
   }
   if (telemetry.volRatio >= config.extremeVolRatio) {
     blockedReasons.push(
-      reason("CLMM_BLOCKED_EXTREME_VOLATILITY", "WARN",
-        "Realized volatility is in the extreme band; CLMM is blocked regardless of regime.")
+      reason(
+        "CLMM_BLOCKED_EXTREME_VOLATILITY",
+        "WARN",
+        "Realized volatility is in the extreme band; CLMM is blocked regardless of regime."
+      )
     );
   }
   if (telemetry.compression >= config.extremeCompression) {
     blockedReasons.push(
-      reason("CLMM_BLOCKED_EXTREME_COMPRESSION", "WARN",
-        "Bollinger compression is extreme; CLMM is blocked regardless of regime.")
+      reason(
+        "CLMM_BLOCKED_EXTREME_COMPRESSION",
+        "WARN",
+        "Bollinger compression is extreme; CLMM is blocked regardless of regime."
+      )
     );
   }
   if (blockedReasons.length > 0) {
@@ -1990,14 +2110,20 @@ export const evaluateMarketClmmSuitability = (
   const cautionReasons: ClmmSuitabilityReason[] = [];
   if (freshness.softStale) {
     cautionReasons.push(
-      reason("CLMM_CAUTION_SOFT_STALE_DATA", "WARN",
-        "Latest candle is in the soft-stale window; treat the read as borderline.")
+      reason(
+        "CLMM_CAUTION_SOFT_STALE_DATA",
+        "WARN",
+        "Latest candle is in the soft-stale window; treat the read as borderline."
+      )
     );
   }
   if (telemetry.volRatio > config.allowedVolRatioMax) {
     cautionReasons.push(
-      reason("CLMM_CAUTION_ELEVATED_VOLATILITY", "WARN",
-        "Volatility is elevated above the allowed band but not extreme.")
+      reason(
+        "CLMM_CAUTION_ELEVATED_VOLATILITY",
+        "WARN",
+        "Volatility is elevated above the allowed band but not extreme."
+      )
     );
   }
   if (cautionReasons.length > 0) {
@@ -2008,8 +2134,11 @@ export const evaluateMarketClmmSuitability = (
   return {
     status: "ALLOWED",
     reasons: [
-      reason("CLMM_ALLOWED_CHOP_FRESH", "INFO",
-        "Market is in CHOP with fresh data and acceptable volatility for CLMM exposure.")
+      reason(
+        "CLMM_ALLOWED_CHOP_FRESH",
+        "INFO",
+        "Market is in CHOP with fresh data and acceptable volatility for CLMM exposure."
+      )
     ]
   };
 };
@@ -2033,6 +2162,7 @@ accumulating only within the winning band."
 ### Task 3.6: `buildRegimeCurrent` orchestrator + snapshot
 
 **Files:**
+
 - Test: `src/engine/marketRegime/__tests__/buildRegimeCurrent.test.ts`
 - Test: `src/engine/marketRegime/__tests__/buildRegimeCurrent.snapshot.test.ts`
 - Create: `src/engine/marketRegime/buildRegimeCurrent.ts`
@@ -2050,7 +2180,11 @@ const ONE_HOUR_MS = 60 * 60 * 1000;
 
 const flatCandles = Array.from({ length: 40 }, (_, i) => ({
   unixMs: (i + 1) * ONE_HOUR_MS,
-  open: 100, high: 100.5, low: 99.5, close: 100, volume: 1
+  open: 100,
+  high: 100.5,
+  low: 99.5,
+  close: 100,
+  volume: 1
 }));
 
 const feed = {
@@ -2086,7 +2220,8 @@ describe("buildRegimeCurrent", () => {
     const fewCandles = flatCandles.slice(0, 5);
     const lastCandleUnixMs = fewCandles[fewCandles.length - 1].unixMs;
     const response = buildRegimeCurrent({
-      feed, candles: fewCandles,
+      feed,
+      candles: fewCandles,
       nowUnixMs: lastCandleUnixMs + 30 * 60 * 1000,
       config: MARKET_REGIME_CONFIG["1h"],
       configVersion: "market-regime-1.0.0",
@@ -2099,7 +2234,8 @@ describe("buildRegimeCurrent", () => {
   it("returns UNKNOWN when freshness is hardStale", () => {
     const lastCandleUnixMs = flatCandles[flatCandles.length - 1].unixMs;
     const response = buildRegimeCurrent({
-      feed, candles: flatCandles,
+      feed,
+      candles: flatCandles,
       nowUnixMs: lastCandleUnixMs + 91 * 60 * 1000, // > hardStaleMs
       config: MARKET_REGIME_CONFIG["1h"],
       configVersion: "market-regime-1.0.0",
@@ -2317,6 +2453,7 @@ reasons. Snapshot test pins object output for golden fixture."
 ### Task 4.1: `POST /v1/candles` handler
 
 **Files:**
+
 - Test: `src/http/__tests__/candles.e2e.test.ts`
 - Create: `src/http/handlers/candlesIngest.ts`
 
@@ -2344,9 +2481,7 @@ const makePayload = (overrides: Record<string, unknown> = {}) => ({
   symbol: "SOL/USDC",
   timeframe: "1h",
   sourceRecordedAtIso: "2026-04-26T12:00:00.000Z",
-  candles: [
-    { unixMs: ONE_HOUR_MS, open: 100, high: 110, low: 95, close: 105, volume: 1 }
-  ],
+  candles: [{ unixMs: ONE_HOUR_MS, open: 100, high: 110, low: 95, close: 105, volume: 1 }],
   ...overrides
 });
 
@@ -2380,7 +2515,8 @@ describe("POST /v1/candles", () => {
     process.env.LEDGER_DB_PATH = tempDb();
     const app = buildApp();
     const res = await app.inject({
-      method: "POST", url: "/v1/candles",
+      method: "POST",
+      url: "/v1/candles",
       headers: { "X-Candles-Ingest-Token": "anything" },
       payload: makePayload()
     });
@@ -2394,7 +2530,8 @@ describe("POST /v1/candles", () => {
     const app = buildApp();
 
     const res = await app.inject({
-      method: "POST", url: "/v1/candles",
+      method: "POST",
+      url: "/v1/candles",
       headers: { "X-Candles-Ingest-Token": "test-token" },
       payload: makePayload()
     });
@@ -2410,13 +2547,15 @@ describe("POST /v1/candles", () => {
     const app = buildApp();
 
     await app.inject({
-      method: "POST", url: "/v1/candles",
+      method: "POST",
+      url: "/v1/candles",
       headers: { "X-Candles-Ingest-Token": "test-token" },
       payload: makePayload({ sourceRecordedAtIso: "2026-04-26T13:00:00.000Z" })
     });
 
     const res = await app.inject({
-      method: "POST", url: "/v1/candles",
+      method: "POST",
+      url: "/v1/candles",
       headers: { "X-Candles-Ingest-Token": "test-token" },
       payload: makePayload({
         sourceRecordedAtIso: "2026-04-26T12:00:00.000Z",
@@ -2437,11 +2576,16 @@ describe("POST /v1/candles", () => {
 
     const oversized = Array.from({ length: 1001 }, (_, i) => ({
       unixMs: (i + 1) * ONE_HOUR_MS,
-      open: 100, high: 110, low: 90, close: 105, volume: 1
+      open: 100,
+      high: 110,
+      low: 90,
+      close: 105,
+      volume: 1
     }));
 
     const res = await app.inject({
-      method: "POST", url: "/v1/candles",
+      method: "POST",
+      url: "/v1/candles",
       headers: { "X-Candles-Ingest-Token": "test-token" },
       payload: makePayload({ candles: oversized })
     });
@@ -2533,6 +2677,7 @@ unset env."
 ### Task 4.2: `GET /v1/regime/current` handler
 
 **Files:**
+
 - Test: `src/http/__tests__/regimeCurrent.e2e.test.ts`
 - Create: `src/http/handlers/regimeCurrent.ts`
 
@@ -2566,7 +2711,11 @@ const buildRecentCandles = (count: number) => {
   const lastClose = Math.floor(Date.now() / ONE_HOUR_MS) * ONE_HOUR_MS - ONE_HOUR_MS;
   return Array.from({ length: count }, (_, i) => ({
     unixMs: lastClose - (count - 1 - i) * ONE_HOUR_MS,
-    open: 100, high: 100.5, low: 99.5, close: 100, volume: 1
+    open: 100,
+    high: 100.5,
+    low: 99.5,
+    close: 100,
+    volume: 1
   }));
 };
 
@@ -2629,7 +2778,8 @@ describe("GET /v1/regime/current", () => {
 
     const recordedIso = new Date().toISOString();
     await app.inject({
-      method: "POST", url: "/v1/candles",
+      method: "POST",
+      url: "/v1/candles",
       headers: { "X-Candles-Ingest-Token": "test-token" },
       payload: ingestPayload(40, recordedIso)
     });
@@ -2646,8 +2796,9 @@ describe("GET /v1/regime/current", () => {
     expect(body.regime).toBe("CHOP");
     expect(body.metadata.candleCount).toBeGreaterThan(0);
     expect(body.clmmSuitability.status).toBe("ALLOWED");
-    expect(body.clmmSuitability.reasons.map((r: { code: string }) => r.code))
-      .toEqual(["CLMM_ALLOWED_CHOP_FRESH"]);
+    expect(body.clmmSuitability.reasons.map((r: { code: string }) => r.code)).toEqual([
+      "CLMM_ALLOWED_CHOP_FRESH"
+    ]);
   });
 
   it("does not write to the plan ledger when called repeatedly", async () => {
@@ -2656,7 +2807,8 @@ describe("GET /v1/regime/current", () => {
     const app = buildApp();
 
     await app.inject({
-      method: "POST", url: "/v1/candles",
+      method: "POST",
+      url: "/v1/candles",
       headers: { "X-Candles-Ingest-Token": "test-token" },
       payload: ingestPayload(40, new Date().toISOString())
     });
@@ -2697,10 +2849,7 @@ Create `src/http/handlers/regimeCurrent.ts`:
 ```ts
 import type { FastifyReply, FastifyRequest } from "fastify";
 import { parseRegimeCurrentQuery } from "../../contract/v1/validation.js";
-import {
-  candlesNotFoundError,
-  ContractValidationError
-} from "../errors.js";
+import { candlesNotFoundError, ContractValidationError } from "../errors.js";
 import type { LedgerStore } from "../../ledger/store.js";
 import { getLatestCandlesForFeed } from "../../ledger/candlesWriter.js";
 import {
@@ -2724,8 +2873,8 @@ export const createRegimeCurrentHandler = (store: LedgerStore) => {
         config.timeframeMs,
         config.freshness.closedCandleDelayMs
       );
-      const limit = Math.max(config.indicators.volLongWindow, config.suitability.minCandles)
-        + READ_BUFFER;
+      const limit =
+        Math.max(config.indicators.volLongWindow, config.suitability.minCandles) + READ_BUFFER;
 
       const candles = getLatestCandlesForFeed(store, {
         symbol: query.symbol,
@@ -2740,8 +2889,8 @@ export const createRegimeCurrentHandler = (store: LedgerStore) => {
       if (candles.length === 0) {
         throw candlesNotFoundError(
           `No closed candles found for symbol="${query.symbol}", source="${query.source}", ` +
-          `network="${query.network}", poolAddress="${query.poolAddress}", ` +
-          `timeframe="${query.timeframe}".`
+            `network="${query.network}", poolAddress="${query.poolAddress}", ` +
+            `timeframe="${query.timeframe}".`
         );
       }
 
@@ -2813,6 +2962,7 @@ getLedgerCounts."
 ### Task 5.1: Document both new paths in OpenAPI
 
 **Files:**
+
 - Modify: `src/http/openapi.ts`
 
 - [ ] **Step 1: Add `POST /v1/candles` and `GET /v1/regime/current` paths**
@@ -2903,6 +3053,7 @@ parameters for the regime read."
 ### Task 6.1: Document new endpoints and env var in README
 
 **Files:**
+
 - Modify: `README.md`
 - Modify: `docs/runbooks/2026-04-railway-deploy.md` (if it exists)
 

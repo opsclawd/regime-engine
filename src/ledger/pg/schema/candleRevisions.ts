@@ -1,4 +1,12 @@
-import { pgSchema, serial, varchar, bigint, doublePrecision, text, index } from "drizzle-orm/pg-core";
+import {
+  pgSchema,
+  serial,
+  varchar,
+  bigint,
+  doublePrecision,
+  text,
+  index
+} from "drizzle-orm/pg-core";
 
 export const PG_SCHEMA_NAME = "regime_engine";
 
@@ -23,22 +31,35 @@ export const candleRevisions = regimeEngine.table(
     volume: doublePrecision("volume").notNull(),
     ohlcvCanonical: text("ohlcv_canonical").notNull(),
     ohlcvHash: varchar("ohlcv_hash", { length: 64 }).notNull(),
-    receivedAtUnixMs: bigint("received_at_unix_ms", { mode: "number" }).notNull(),
+    receivedAtUnixMs: bigint("received_at_unix_ms", { mode: "number" }).notNull()
   },
   (table) => [
     index("idx_candle_revisions_slot_hash").on(
-      table.symbol, table.source, table.network,
-      table.poolAddress, table.timeframe, table.unixMs,
+      table.symbol,
+      table.source,
+      table.network,
+      table.poolAddress,
+      table.timeframe,
+      table.unixMs,
       table.ohlcvHash
     ),
     index("idx_candle_revisions_slot_latest").on(
-      table.symbol, table.source, table.network,
-      table.poolAddress, table.timeframe, table.unixMs,
-      table.sourceRecordedAtUnixMs, table.id
+      table.symbol,
+      table.source,
+      table.network,
+      table.poolAddress,
+      table.timeframe,
+      table.unixMs,
+      table.sourceRecordedAtUnixMs,
+      table.id
     ),
     index("idx_candle_revisions_feed_window").on(
-      table.symbol, table.source, table.network,
-      table.poolAddress, table.timeframe, table.unixMs
-    ),
+      table.symbol,
+      table.source,
+      table.network,
+      table.poolAddress,
+      table.timeframe,
+      table.unixMs
+    )
   ]
 );

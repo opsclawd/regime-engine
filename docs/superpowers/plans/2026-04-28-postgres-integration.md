@@ -59,11 +59,13 @@ Dockerfile                                  # no changes needed (migrations run 
 ## Task 1: Install Postgres Dependencies
 
 **Files:**
+
 - Modify: `package.json`
 
 - [ ] **Step 1: Install drizzle-orm and postgres.js as runtime dependencies**
 
 Run:
+
 ```bash
 npm install drizzle-orm@^0.36.0 postgres@^3.4.0
 ```
@@ -73,6 +75,7 @@ Expected: `package.json` gains `"drizzle-orm": "^0.36.0"` and `"postgres": "^3.4
 - [ ] **Step 2: Install drizzle-kit as a dev dependency**
 
 Run:
+
 ```bash
 npm install -D drizzle-kit@^0.31.10
 ```
@@ -130,6 +133,7 @@ git commit -m "m022: add drizzle-orm, postgres, drizzle-kit dependencies"
 ## Task 2: Create Drizzle Config and Initial Migration
 
 **Files:**
+
 - Create: `drizzle.config.ts`
 - Create: `drizzle/0000_create_regime_engine_schema.sql`
 - Create: `drizzle/meta/_journal.json`
@@ -228,6 +232,7 @@ git commit -m "m022: add drizzle config and initial regime_engine schema migrati
 ## Task 3: Create the Postgres DB Factory
 
 **Files:**
+
 - Create: `src/ledger/pg/db.ts`
 - Create: `src/ledger/pg/__tests__/db.test.ts`
 
@@ -250,7 +255,9 @@ describe("createDb", () => {
     expect(db).toBeDefined();
     expect(typeof db.select).toBe("function");
 
-    const result = await db.execute({ sql: "SELECT current_setting('search_path') AS search_path" });
+    const result = await db.execute({
+      sql: "SELECT current_setting('search_path') AS search_path"
+    });
     const rows = result.rows as Array<{ search_path: string }>;
     expect(rows[0].search_path).toContain("regime_engine");
 
@@ -280,7 +287,10 @@ Create `src/ledger/pg/db.ts`:
 import { drizzle } from "drizzle-orm/postgres-js";
 import postgres from "postgres";
 
-export function createDb(connectionString: string): { db: ReturnType<typeof drizzle>; client: ReturnType<typeof postgres> } {
+export function createDb(connectionString: string): {
+  db: ReturnType<typeof drizzle>;
+  client: ReturnType<typeof postgres>;
+} {
   const client = postgres(connectionString, {
     onconnect: async (conn) => {
       await conn.unsafe("SET search_path=regime_engine");
@@ -301,7 +311,10 @@ export type Db = ReturnType<typeof createDb>["db"];
 import { drizzle } from "drizzle-orm/postgres-js";
 import postgres from "postgres";
 
-export function createDb(connectionString: string): { db: ReturnType<typeof drizzle>; client: ReturnType<typeof postgres> } {
+export function createDb(connectionString: string): {
+  db: ReturnType<typeof drizzle>;
+  client: ReturnType<typeof postgres>;
+} {
   const client = postgres(connectionString);
 
   const db = drizzle(client);
@@ -334,6 +347,7 @@ git commit -m "m022: add createDb factory with search_path=regime_engine"
 ## Task 4: Create StoreContext
 
 **Files:**
+
 - Create: `src/ledger/storeContext.ts`
 - Create: `src/ledger/__tests__/storeContext.test.ts`
 
@@ -390,7 +404,10 @@ export interface StoreContext {
   pgClient: { end: () => Promise<void> };
 }
 
-export const createStoreContext = (ledgerPath: string, pgConnectionString: string): StoreContext => {
+export const createStoreContext = (
+  ledgerPath: string,
+  pgConnectionString: string
+): StoreContext => {
   const ledger = createLedgerStore(ledgerPath);
   const { db: pg, client: pgClient } = createDb(pgConnectionString);
   return { ledger, pg, pgClient };
@@ -405,7 +422,10 @@ export const closeStoreContext = async (ctx: StoreContext): Promise<void> => {
 **Fallback note:** If `onconnect` is not available in `postgres.js` (see Task 3), add `SET search_path=regime_engine` execution here:
 
 ```ts
-export const createStoreContext = async (ledgerPath: string, pgConnectionString: string): Promise<StoreContext> => {
+export const createStoreContext = async (
+  ledgerPath: string,
+  pgConnectionString: string
+): Promise<StoreContext> => {
   const ledger = createLedgerStore(ledgerPath);
   const { db: pg, client: pgClient } = createDb(pgConnectionString);
 
@@ -443,6 +463,7 @@ git commit -m "m022: add StoreContext interface and factory"
 ## Task 5: Wire StoreContext into Routes and App
 
 **Files:**
+
 - Modify: `src/http/routes.ts`
 - Modify: `src/app.ts`
 - Modify: `src/server.ts`
@@ -524,7 +545,11 @@ Replace the contents of `src/http/routes.ts`:
 ```ts
 import type { FastifyInstance } from "fastify";
 import { buildOpenApiDocument } from "./openapi.js";
-import { closeStoreContext, createStoreContext, type StoreContext } from "../ledger/storeContext.js";
+import {
+  closeStoreContext,
+  createStoreContext,
+  type StoreContext
+} from "../ledger/storeContext.js";
 import { createLedgerStore } from "../ledger/store.js";
 import { createClmmExecutionResultHandler } from "./handlers/clmmExecutionResult.js";
 import { createExecutionResultHandler } from "./handlers/executionResult.js";
@@ -620,7 +645,11 @@ export const registerRoutes = (app: FastifyInstance): StoreContext | null => {
 ```ts
 import type { FastifyInstance } from "fastify";
 import { buildOpenApiDocument } from "./openapi.js";
-import { closeStoreContext, createStoreContext, type StoreContext } from "../ledger/storeContext.js";
+import {
+  closeStoreContext,
+  createStoreContext,
+  type StoreContext
+} from "../ledger/storeContext.js";
 import { createLedgerStore } from "../ledger/store.js";
 import { createClmmExecutionResultHandler } from "./handlers/clmmExecutionResult.js";
 import { createExecutionResultHandler } from "./handlers/executionResult.js";
@@ -709,10 +738,13 @@ export const registerRoutes = (app: FastifyInstance): StoreContext | null => {
 In `src/http/__tests__/routes.contract.test.ts`, the `/health` test currently asserts `{ ok: true }`. Update it:
 
 Change:
+
 ```ts
 expect(response.json()).toEqual({ ok: true });
 ```
+
 To:
+
 ```ts
 expect(response.json()).toEqual({
   ok: true,
@@ -755,6 +787,7 @@ git commit -m "m022: wire StoreContext into routes, enhance /health with postgre
 ## Task 6: Add Docker Compose for Integration Tests
 
 **Files:**
+
 - Create: `docker-compose.test.yml`
 - Create: `vitest.config.pg.ts`
 
@@ -817,10 +850,13 @@ Or more precisely, update the `test:pg` script in `package.json` to include it:
 - [ ] **Step 3: Update the test:pg script in package.json**
 
 Change:
+
 ```json
 "test:pg": "vitest run --config vitest.config.pg.ts"
 ```
+
 To:
+
 ```json
 "test:pg": "DATABASE_URL=postgres://test:test@localhost:5432/regime_engine_test vitest run"
 ```
@@ -851,6 +887,7 @@ git commit -m "m022: add docker-compose.test.yml and test:pg script for Postgres
 ## Task 7: Add Startup Hard-Fail for Postgres
 
 **Files:**
+
 - Modify: `src/server.ts`
 - Modify: `src/app.ts`
 - Create: `src/__tests__/pgStartup.test.ts`
@@ -1005,6 +1042,7 @@ git commit -m "m022: add Postgres startup hard-fail and verifyPgConnection"
 ## Task 8: Update OpenAPI Document
 
 **Files:**
+
 - Modify: `src/http/openapi.ts`
 - Modify: `src/http/__tests__/routes.contract.test.ts`
 
@@ -1059,6 +1097,7 @@ git commit -m "m022: update OpenAPI /health schema with postgres and sqlite fiel
 ## Task 9: Update Railway Config and Docker
 
 **Files:**
+
 - Modify: `railway.toml`
 
 - [ ] **Step 1: Add preDeploy migration command to railway.toml**
@@ -1284,6 +1323,7 @@ git commit -m "m022: add preDeploy migration, update Dockerfile for drizzle migr
 ## Task 10: Update .env.example and Documentation
 
 **Files:**
+
 - Modify: `.env.example`
 
 - [ ] **Step 1: Add Postgres-related env vars to .env.example**
@@ -1321,16 +1361,19 @@ git commit -m "m022: add DATABASE_URL and PG_MAX_CONNECTIONS to .env.example"
 ## Task 11: Verify Full Integration with Docker Compose
 
 **Files:**
+
 - No new files
 
 - [ ] **Step 1: Start Postgres via Docker Compose**
 
 Run:
+
 ```bash
 docker compose -f docker-compose.test.yml up -d
 ```
 
 Wait for healthcheck:
+
 ```bash
 docker compose -f docker-compose.test.yml exec postgres pg_isready -U test -d regime_engine_test
 ```
@@ -1340,6 +1383,7 @@ Expected: `accepting connections`
 - [ ] **Step 2: Push the initial migration**
 
 Run:
+
 ```bash
 DATABASE_URL=postgres://test:test@localhost:5432/regime_engine_test npm run db:push
 ```
@@ -1349,6 +1393,7 @@ Expected: Schema `regime_engine` created on the test Postgres.
 - [ ] **Step 3: Verify the schema exists**
 
 Run:
+
 ```bash
 psql "postgres://test:test@localhost:5432/regime_engine_test" -c "SELECT schema_name FROM information_schema.schemata WHERE schema_name = 'regime_engine';"
 ```
@@ -1358,6 +1403,7 @@ Expected: Output shows `regime_engine` row.
 - [ ] **Step 4: Run integration tests**
 
 Run:
+
 ```bash
 DATABASE_URL=postgres://test:test@localhost:5432/regime_engine_test npm run test:pg
 ```
@@ -1367,6 +1413,7 @@ Expected: All tests PASS, including the Postgres DB factory test and health chec
 - [ ] **Step 5: Tear down**
 
 Run:
+
 ```bash
 docker compose -f docker-compose.test.yml down
 ```
@@ -1389,14 +1436,14 @@ Expected: All PASS
 
 ### 1. Spec coverage (#22 issue tasks)
 
-| #22 Task | Plan Task |
-|---|---|
-| Create `regime_engine` schema | Task 2 (migration), Task 11 (verify) |
-| Configure regime-engine DB connection with `search_path=regime_engine` | Task 3 (onconnect), Task 4 (StoreContext) |
-| Set up Drizzle with schema isolation | Task 2 (config), Task 3 (db.ts) |
-| Migrate/create data tables in `regime_engine` schema | Task 2 (initial migration only; #20/#21 add feature tables) |
-| Add new regime engine endpoints backed by Postgres | Out of scope — #20/#21 own this |
-| Document multi-schema architecture | Task 10 (.env.example) — design doc already written |
+| #22 Task                                                               | Plan Task                                                   |
+| ---------------------------------------------------------------------- | ----------------------------------------------------------- |
+| Create `regime_engine` schema                                          | Task 2 (migration), Task 11 (verify)                        |
+| Configure regime-engine DB connection with `search_path=regime_engine` | Task 3 (onconnect), Task 4 (StoreContext)                   |
+| Set up Drizzle with schema isolation                                   | Task 2 (config), Task 3 (db.ts)                             |
+| Migrate/create data tables in `regime_engine` schema                   | Task 2 (initial migration only; #20/#21 add feature tables) |
+| Add new regime engine endpoints backed by Postgres                     | Out of scope — #20/#21 own this                             |
+| Document multi-schema architecture                                     | Task 10 (.env.example) — design doc already written         |
 
 ### 2. Placeholder scan
 

@@ -35,7 +35,13 @@ describe("GET /health - happy path", () => {
 describe("checkSqliteHealth — 503 branch coverage", () => {
   it("returns unavailable for a closed database", () => {
     const db = new DatabaseSync(":memory:");
-    const store = { db, path: ":memory:", close: () => { db.close(); } };
+    const store = {
+      db,
+      path: ":memory:",
+      close: () => {
+        db.close();
+      }
+    };
 
     const healthy = checkSqliteHealth(store as never);
     expect(healthy).toEqual({ ok: true, status: "ok" });
