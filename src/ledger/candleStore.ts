@@ -191,7 +191,7 @@ export class CandleStore {
        ORDER BY unix_ms ASC
     `);
 
-    return rows.map((row: any) => ({
+    return rows.map((row: Record<string, unknown>) => ({
       unixMs: Number(row.unix_ms),
       open: Number(row.open),
       high: Number(row.high),

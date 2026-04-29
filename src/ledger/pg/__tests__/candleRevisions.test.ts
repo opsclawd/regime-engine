@@ -13,7 +13,7 @@ describe.skipIf(!process.env.DATABASE_URL)("candle_revisions schema (PG)", () =>
            ORDER BY ordinal_position`
     );
 
-    const columns = result.map((row: any) => row.column_name);
+    const columns = result.map((row: Record<string, unknown>) => row.column_name as string);
 
     expect(columns).toContain("id");
     expect(columns).toContain("symbol");
@@ -33,7 +33,7 @@ describe.skipIf(!process.env.DATABASE_URL)("candle_revisions schema (PG)", () =>
     expect(columns).toContain("ohlcv_hash");
     expect(columns).toContain("received_at_unix_ms");
 
-    const openCol = result.find((row: any) => row.column_name === "open");
+    const openCol = result.find((row: Record<string, unknown>) => row.column_name === "open");
     expect(openCol?.data_type).toBe("double precision");
 
     await client.end();
@@ -47,7 +47,7 @@ describe.skipIf(!process.env.DATABASE_URL)("candle_revisions schema (PG)", () =>
            WHERE schemaname = 'regime_engine' AND tablename = 'candle_revisions'`
     );
 
-    const indexNames = result.map((row: any) => row.indexname);
+    const indexNames = result.map((row: Record<string, unknown>) => row.indexname as string);
 
     expect(indexNames).toContain("ux_candle_revisions_slot_hash");
     expect(indexNames).toContain("idx_candle_revisions_slot_latest");
