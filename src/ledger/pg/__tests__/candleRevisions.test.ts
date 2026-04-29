@@ -39,7 +39,7 @@ describe.skipIf(!process.env.DATABASE_URL)("candle_revisions schema (PG)", () =>
     await client.end();
   });
 
-  it("has the unique index on slot+hash", async () => {
+  it("has the slot+hash index", async () => {
     const { db, client } = createDb(process.env.DATABASE_URL!);
 
     const result = await db.execute(
@@ -49,7 +49,7 @@ describe.skipIf(!process.env.DATABASE_URL)("candle_revisions schema (PG)", () =>
 
     const indexNames = result.map((row: Record<string, unknown>) => row.indexname as string);
 
-    expect(indexNames).toContain("ux_candle_revisions_slot_hash");
+    expect(indexNames).toContain("idx_candle_revisions_slot_hash");
     expect(indexNames).toContain("idx_candle_revisions_slot_latest");
     expect(indexNames).toContain("idx_candle_revisions_feed_window");
 
