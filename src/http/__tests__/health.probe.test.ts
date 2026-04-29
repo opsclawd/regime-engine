@@ -28,4 +28,24 @@ describe("GET /health - SQLite branches", () => {
       sqlite: "ok"
     });
   });
+
+  it("returns 503 with sqlite=unavailable when SQLite probe fails", async () => {
+    process.env.LEDGER_DB_PATH = ":memory:";
+    delete process.env.DATABASE_URL;
+
+    app = Fastify({ logger: false });
+    const storeContext = registerRoutes(app);
+
+    if (storeContext) {
+      storeContext.ledger.close();
+    } else {
+      return;
+    }
+
+    const response = await app.inject({ method: "GET", url: "/health" });
+    expect(response.statusCode).toBe(503);
+    const body = response.json();
+    expect(body.ok).toBe(false);
+    expect(body.sqlite).toBe("unavailable");
+  });
 });

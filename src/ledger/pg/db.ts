@@ -6,7 +6,8 @@ export function createDb(connectionString: string): {
   db: ReturnType<typeof drizzle>;
   client: ReturnType<typeof postgres>;
 } {
-  const max = process.env.PG_MAX_CONNECTIONS ? parseInt(process.env.PG_MAX_CONNECTIONS, 10) : 10;
+  const parsed = parseInt(process.env.PG_MAX_CONNECTIONS ?? "", 10);
+  const max = Number.isFinite(parsed) && parsed > 0 ? parsed : 10;
   const ssl = process.env.PG_SSL === "false" ? false : { rejectUnauthorized: false };
 
   const client = postgres(connectionString, {
