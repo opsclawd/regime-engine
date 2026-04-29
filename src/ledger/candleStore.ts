@@ -161,7 +161,7 @@ export class CandleStore {
            WHERE rn = 1
            ORDER BY unix_ms DESC
            LIMIT ${params.limit}
-        )
+        ) AS latest
        ORDER BY unix_ms ASC
     `);
 
