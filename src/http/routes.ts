@@ -1,5 +1,5 @@
 import type { FastifyInstance, FastifyReply } from "fastify";
-import { sql } from "drizzle-orm/sql";
+import { checkSqliteHealth, checkPgHealth } from "../ledger/health.js";
 import { buildOpenApiDocument } from "./openapi.js";
 import { closeStoreContext, createStoreContext, type StoreContext } from "../ledger/storeContext.js";
 import { createLedgerStore } from "../ledger/store.js";
@@ -40,33 +40,18 @@ export const registerRoutes = (app: FastifyInstance): StoreContext | null => {
   const pg = storeContext?.pg ?? null;
 
   app.get("/health", async (_req, reply: FastifyReply) => {
-    let sqliteOk = true;
-    try {
-      ledger.db.prepare("SELECT 1").get();
-    } catch {
-      sqliteOk = false;
-    }
+    const sqlite = checkSqliteHealth(ledger);
+    const postgres = await checkPgHealth(pg);
 
-    let postgresStatus: string = pg ? "ok" : "not_configured";
-
-    if (pg) {
-      try {
-        await pg.execute(sql`SELECT 1`);
-        postgresStatus = "ok";
-      } catch {
-        postgresStatus = "unavailable";
-      }
-    }
-
-    const ok = sqliteOk && postgresStatus !== "unavailable";
+    const ok = sqlite.ok && postgres.ok;
     if (!ok) {
       reply.code(503);
     }
 
     return {
       ok,
-      postgres: postgresStatus,
-      sqlite: sqliteOk ? "ok" : "unavailable"
+      postgres: postgres.status,
+      sqlite: sqlite.status
     };
   });
 
