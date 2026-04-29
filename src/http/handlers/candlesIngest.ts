@@ -3,16 +3,23 @@ import { SCHEMA_VERSION, type CandleIngestResponse } from "../../contract/v1/typ
 import { parseCandleIngestRequest } from "../../contract/v1/validation.js";
 import type { LedgerStore } from "../../ledger/store.js";
 import { writeCandles } from "../../ledger/candlesWriter.js";
+import type { CandleStore } from "../../ledger/candleStore.js";
 import { AuthError, requireSharedSecret } from "../auth.js";
 import { ContractValidationError } from "../errors.js";
 
-export const createCandlesIngestHandler = (store: LedgerStore) => {
+export const createCandlesIngestHandler = (
+  store: LedgerStore,
+  candleStore?: CandleStore
+) => {
   return async (request: FastifyRequest, reply: FastifyReply) => {
     try {
       requireSharedSecret(request.headers, "X-Candles-Ingest-Token", "CANDLES_INGEST_TOKEN");
 
       const body = parseCandleIngestRequest(request.body);
-      const result = writeCandles(store, body, Date.now());
+
+      const result = candleStore
+        ? await candleStore.writeCandles(body, Date.now())
+        : writeCandles(store, body, Date.now());
 
       const response: CandleIngestResponse = {
         schemaVersion: SCHEMA_VERSION,

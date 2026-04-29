@@ -9,6 +9,7 @@ import { createPlanHandler } from "./handlers/plan.js";
 import { createWeeklyReportHandler } from "./handlers/report.js";
 import { createCandlesIngestHandler } from "./handlers/candlesIngest.js";
 import { createRegimeCurrentHandler } from "./handlers/regimeCurrent.js";
+import type { CandleStore } from "../ledger/candleStore.js";
 import { createSrLevelsIngestHandler } from "./handlers/srLevelsIngest.js";
 import { createSrLevelsCurrentHandler } from "./handlers/srLevelsCurrent.js";
 
@@ -78,8 +79,8 @@ export const registerRoutes = (app: FastifyInstance): StoreContext | null => {
   app.get("/v1/report/weekly", createWeeklyReportHandler(ledger));
   app.post("/v1/sr-levels", createSrLevelsIngestHandler(ledger));
   app.get("/v1/sr-levels/current", createSrLevelsCurrentHandler(ledger));
-  app.post("/v1/candles", createCandlesIngestHandler(ledger));
-  app.get("/v1/regime/current", createRegimeCurrentHandler(ledger));
+  app.post("/v1/candles", createCandlesIngestHandler(ledger, storeContext?.candleStore));
+  app.get("/v1/regime/current", createRegimeCurrentHandler(ledger, storeContext?.candleStore));
 
   return storeContext;
 };
