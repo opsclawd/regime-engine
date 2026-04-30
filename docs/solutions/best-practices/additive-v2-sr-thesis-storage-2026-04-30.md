@@ -50,9 +50,7 @@ Use flat typed columns instead of JSON blobs. This gives you type safety, indexa
 
 ```typescript
 // src/ledger/pg/schema/srThesesV2.ts
-import {
-  bigint, index, serial, text, uniqueIndex, varchar
-} from "drizzle-orm/pg-core";
+import { bigint, index, serial, text, uniqueIndex, varchar } from "drizzle-orm/pg-core";
 import { regimeEngine } from "./candleRevisions.js";
 
 export const srThesesV2 = regimeEngine.table(
@@ -92,19 +90,20 @@ export const srThesesV2 = regimeEngine.table(
   },
   (t) => [
     uniqueIndex("uniq_sr_theses_v2_idempotency").on(
-      t.source, t.symbol, t.briefId, t.asset, t.sourceHandle
+      t.source,
+      t.symbol,
+      t.briefId,
+      t.asset,
+      t.sourceHandle
     ),
-    index("idx_sr_theses_v2_symbol_received").on(
-      t.symbol, t.source, t.capturedAtUnixMs, t.id
-    ),
-    index("idx_sr_theses_v2_source_brief").on(
-      t.source, t.briefId, t.capturedAtUnixMs, t.id
-    )
+    index("idx_sr_theses_v2_symbol_received").on(t.symbol, t.source, t.capturedAtUnixMs, t.id),
+    index("idx_sr_theses_v2_source_brief").on(t.source, t.briefId, t.capturedAtUnixMs, t.id)
   ]
 );
 ```
 
 Key points:
+
 - Import `regimeEngine` from the existing schema module — never redefine `pgSchema("regime_engine")`
 - Use `.array()` on `text()` columns for PostgreSQL `TEXT[]`
 - Use `bigint("...", { mode: "number" })` so Drizzle returns JS numbers, not BigInt objects
@@ -165,6 +164,7 @@ import { zodIssueToDetails, stableSortDetails } from "../../http/errors.js";
 ### 3. Idempotent batch insert: ON CONFLICT DO NOTHING + hash conflict detection
 
 The idempotency contract is:
+
 - Same `(source, symbol, briefId, asset, sourceHandle)` + same payload → `200 already_ingested`
 - Same identity key, different payload → `409 conflict`
 - New identity key → `201 created`
@@ -280,17 +280,17 @@ When Postgres (`DATABASE_URL`) is not configured, the v2 store is `null`. Handle
 
 ```typescript
 // src/http/handlers/srLevelsV2Ingest.ts
-export const createSrLevelsV2IngestHandler = (
-  store: SrThesesV2Store | null
-) => {
+export const createSrLevelsV2IngestHandler = (store: SrThesesV2Store | null) => {
   return async (request: FastifyRequest, reply: FastifyReply) => {
     // ... auth check first ...
     if (!store) {
-      return reply.code(503).send(
-        serviceUnavailableV2Error(
-          "S/R thesis v2 store is not available (no DATABASE_URL configured)"
-        )
-      );
+      return reply
+        .code(503)
+        .send(
+          serviceUnavailableV2Error(
+            "S/R thesis v2 store is not available (no DATABASE_URL configured)"
+          )
+        );
     }
     // ... proceed with store ...
   };
@@ -302,8 +302,8 @@ The `StoreContext` bundles all stores and gracefully handles the absence of PG:
 ```typescript
 // src/ledger/storeContext.ts
 export interface StoreContext {
-  ledger: LedgerStore;                              // always present (SQLite)
-  pg: Db;                                            // always present if DATABASE_URL set
+  ledger: LedgerStore; // always present (SQLite)
+  pg: Db; // always present if DATABASE_URL set
   pgClient: { end: () => Promise<void> };
   candleStore: CandleStore;
   insightsStore: InsightsStore;
@@ -402,8 +402,8 @@ throw validationErrorV2FromZod("Invalid request", issues);
 ```typescript
 // BAD — opaque JSON, no typed queries, no per-column indexes
 const srThesesV2 = regimeEngine.table("sr_theses_v2", {
-  brief: text("brief").notNull(),      // JSON string
-  thesis: text("thesis").notNull(),     // JSON string
+  brief: text("brief").notNull(), // JSON string
+  thesis: text("thesis").notNull() // JSON string
 });
 // Can't do: WHERE timeframe = '1h' AND bias = 'bullish'
 ```
@@ -415,7 +415,7 @@ const srThesesV2 = regimeEngine.table("sr_theses_v2", {
   timeframe: varchar("timeframe", { length: 64 }).notNull(),
   bias: text("bias"),
   setupType: text("setup_type"),
-  supportLevels: text("support_levels").notNull().array().notNull(),
+  supportLevels: text("support_levels").notNull().array().notNull()
   // ... etc
 });
 // Can index and query: WHERE timeframe = '1h' AND bias = 'bullish'

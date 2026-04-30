@@ -16,43 +16,44 @@
 
 ### New files
 
-| Path | Purpose |
-| ---- | ------- |
-| `src/ledger/pg/schema/srThesesV2.ts` | Drizzle table definition for `regime_engine.sr_theses_v2`. |
-| `drizzle/0003_create_sr_theses_v2.sql` | Generated migration (`pnpm exec drizzle-kit generate --name create_sr_theses_v2`). |
-| `drizzle/meta/0003_snapshot.json` | Generated Drizzle metadata snapshot for migration 0003. |
-| `src/contract/v2/errors.ts` | V2 error envelope (`schemaVersion: "2.0"`), `V2_ERROR_CODES`, `V2ContractValidationError`, builders for `validation`, `unsupportedSchemaVersion`, `unauthorized`, `serverMisconfiguration`, `serviceUnavailable`, `srThesisV2NotFound`, `srThesisV2Conflict`, `internalError`. |
-| `src/contract/v2/srLevels.ts` | TS types (request, thesis, current response), Zod schema, `parseSrLevelsV2IngestRequest`, `computeSrThesisV2CanonicalAndHash`. |
-| `src/contract/v2/__tests__/srLevels.validation.test.ts` | Validation matrix for the v2 ingest parser. |
-| `src/contract/v2/__tests__/srLevels.canonicalHash.snapshot.test.ts` | Canonical JSON + sha256 snapshot, key-order independence, exact timestamp string sensitivity. |
-| `src/ledger/srThesesV2Store.ts` | `SrThesesV2Store` class wrapping a Drizzle `Db`; `SrThesisV2ConflictError`; `SR_THESIS_V2_ERROR_CODES`; row-to-wire mapper. |
-| `src/ledger/__tests__/srThesesV2Store.test.ts` | PG-gated integration test for `insertBrief` + `getCurrent`. |
-| `src/http/handlers/srLevelsV2Ingest.ts` | `POST /v2/sr-levels` handler. |
-| `src/http/handlers/srLevelsV2Current.ts` | `GET /v2/sr-levels/current` handler. |
-| `src/http/__tests__/srLevelsV2.e2e.test.ts` | Fastify-injected e2e for the no-`DATABASE_URL` (503 + 500 + 401) paths. |
-| `src/http/__tests__/srLevelsV2.e2e.pg.test.ts` | PG-gated Fastify-injected e2e for ingest + current. |
+| Path                                                                | Purpose                                                                                                                                                                                                                                                                        |
+| ------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `src/ledger/pg/schema/srThesesV2.ts`                                | Drizzle table definition for `regime_engine.sr_theses_v2`.                                                                                                                                                                                                                     |
+| `drizzle/0003_create_sr_theses_v2.sql`                              | Generated migration (`pnpm exec drizzle-kit generate --name create_sr_theses_v2`).                                                                                                                                                                                             |
+| `drizzle/meta/0003_snapshot.json`                                   | Generated Drizzle metadata snapshot for migration 0003.                                                                                                                                                                                                                        |
+| `src/contract/v2/errors.ts`                                         | V2 error envelope (`schemaVersion: "2.0"`), `V2_ERROR_CODES`, `V2ContractValidationError`, builders for `validation`, `unsupportedSchemaVersion`, `unauthorized`, `serverMisconfiguration`, `serviceUnavailable`, `srThesisV2NotFound`, `srThesisV2Conflict`, `internalError`. |
+| `src/contract/v2/srLevels.ts`                                       | TS types (request, thesis, current response), Zod schema, `parseSrLevelsV2IngestRequest`, `computeSrThesisV2CanonicalAndHash`.                                                                                                                                                 |
+| `src/contract/v2/__tests__/srLevels.validation.test.ts`             | Validation matrix for the v2 ingest parser.                                                                                                                                                                                                                                    |
+| `src/contract/v2/__tests__/srLevels.canonicalHash.snapshot.test.ts` | Canonical JSON + sha256 snapshot, key-order independence, exact timestamp string sensitivity.                                                                                                                                                                                  |
+| `src/ledger/srThesesV2Store.ts`                                     | `SrThesesV2Store` class wrapping a Drizzle `Db`; `SrThesisV2ConflictError`; `SR_THESIS_V2_ERROR_CODES`; row-to-wire mapper.                                                                                                                                                    |
+| `src/ledger/__tests__/srThesesV2Store.test.ts`                      | PG-gated integration test for `insertBrief` + `getCurrent`.                                                                                                                                                                                                                    |
+| `src/http/handlers/srLevelsV2Ingest.ts`                             | `POST /v2/sr-levels` handler.                                                                                                                                                                                                                                                  |
+| `src/http/handlers/srLevelsV2Current.ts`                            | `GET /v2/sr-levels/current` handler.                                                                                                                                                                                                                                           |
+| `src/http/__tests__/srLevelsV2.e2e.test.ts`                         | Fastify-injected e2e for the no-`DATABASE_URL` (503 + 500 + 401) paths.                                                                                                                                                                                                        |
+| `src/http/__tests__/srLevelsV2.e2e.pg.test.ts`                      | PG-gated Fastify-injected e2e for ingest + current.                                                                                                                                                                                                                            |
 
 ### Touched files
 
-| Path | Change |
-| ---- | ------ |
-| `src/ledger/pg/schema/index.ts` | Re-export `srThesesV2`, `SrThesisV2Row`, `SrThesisV2Insert`. |
-| `src/ledger/pg/db.ts` | Add `verifySrThesesV2Table` mirroring `verifyClmmInsightsTable`. |
-| `src/ledger/storeContext.ts` | Construct `new SrThesesV2Store(pg)` and expose on `StoreContext`. |
-| `src/server.ts` | Call `verifySrThesesV2Table` during Postgres startup verification. |
-| `src/http/routes.ts` | Register `POST /v2/sr-levels` and `GET /v2/sr-levels/current` (always). |
-| `src/http/openapi.ts` | Document both v2 paths and their response codes. |
-| `src/http/errors.ts` | Export `zodIssueToDetails` and `stableSortDetails` (currently private) so v2 errors can reuse them without duplicating Zod issue translation. |
-| `src/http/auth.ts` | Export `safeEqual` so v2 handler can do timing-safe token comparison while building v2 envelopes. |
-| `src/http/__tests__/routes.contract.test.ts` | Assert OpenAPI advertises both v2 paths and the v2 routes are wired. |
-| `package.json` | Extend `test:pg` script to include `src/ledger/__tests__/srThesesV2Store.test.ts` and `src/http/__tests__/srLevelsV2.e2e.pg.test.ts`. |
-| `drizzle/meta/_journal.json` | Auto-updated by `drizzle-kit generate` to add the new entry. |
+| Path                                         | Change                                                                                                                                        |
+| -------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
+| `src/ledger/pg/schema/index.ts`              | Re-export `srThesesV2`, `SrThesisV2Row`, `SrThesisV2Insert`.                                                                                  |
+| `src/ledger/pg/db.ts`                        | Add `verifySrThesesV2Table` mirroring `verifyClmmInsightsTable`.                                                                              |
+| `src/ledger/storeContext.ts`                 | Construct `new SrThesesV2Store(pg)` and expose on `StoreContext`.                                                                             |
+| `src/server.ts`                              | Call `verifySrThesesV2Table` during Postgres startup verification.                                                                            |
+| `src/http/routes.ts`                         | Register `POST /v2/sr-levels` and `GET /v2/sr-levels/current` (always).                                                                       |
+| `src/http/openapi.ts`                        | Document both v2 paths and their response codes.                                                                                              |
+| `src/http/errors.ts`                         | Export `zodIssueToDetails` and `stableSortDetails` (currently private) so v2 errors can reuse them without duplicating Zod issue translation. |
+| `src/http/auth.ts`                           | Export `safeEqual` so v2 handler can do timing-safe token comparison while building v2 envelopes.                                             |
+| `src/http/__tests__/routes.contract.test.ts` | Assert OpenAPI advertises both v2 paths and the v2 routes are wired.                                                                          |
+| `package.json`                               | Extend `test:pg` script to include `src/ledger/__tests__/srThesesV2Store.test.ts` and `src/http/__tests__/srLevelsV2.e2e.pg.test.ts`.         |
+| `drizzle/meta/_journal.json`                 | Auto-updated by `drizzle-kit generate` to add the new entry.                                                                                  |
 
 ---
 
 ## Task 1: Add Drizzle schema for `sr_theses_v2`
 
 **Files:**
+
 - Create: `src/ledger/pg/schema/srThesesV2.ts`
 - Modify: `src/ledger/pg/schema/index.ts`
 
@@ -207,6 +208,7 @@ git commit -m "feat: add sr_theses_v2 drizzle schema"
 ## Task 2: Generate the `0003_create_sr_theses_v2` migration
 
 **Files:**
+
 - Create (generated): `drizzle/0003_create_sr_theses_v2.sql`
 - Create (generated): `drizzle/meta/0003_snapshot.json`
 - Modify (generated): `drizzle/meta/_journal.json`
@@ -293,6 +295,7 @@ git commit -m "feat: generate 0003_create_sr_theses_v2 drizzle migration"
 ## Task 3: Add `verifySrThesesV2Table` startup check
 
 **Files:**
+
 - Modify: `src/ledger/pg/db.ts`
 
 - [ ] **Step 1: Write the failing test**
@@ -385,6 +388,7 @@ git commit -m "feat: verify sr_theses_v2 table at postgres startup"
 ## Task 4: Build v2 error envelope helpers
 
 **Files:**
+
 - Create: `src/contract/v2/errors.ts`
 - Modify: `src/http/errors.ts`
 
@@ -425,9 +429,7 @@ describe("v2 error envelopes", () => {
     expect(err.response.schemaVersion).toBe("2.0");
     expect(err.response.error.code).toBe("VALIDATION_ERROR");
     expect(err.response.error.details).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({ path: "$.foo", code: "REQUIRED" })
-      ])
+      expect.arrayContaining([expect.objectContaining({ path: "$.foo", code: "REQUIRED" })])
     );
   });
 
@@ -672,6 +674,7 @@ git commit -m "feat: add v2 error envelope helpers (schemaVersion 2.0)"
 ## Task 5: Build the v2 contract module (types, schema, parser)
 
 **Files:**
+
 - Create: `src/contract/v2/srLevels.ts`
 
 The contract module owns the wire schema, parser, and TS types. The `computeSrThesisV2CanonicalAndHash` helper is added in Task 6 alongside its tests so it can be exercised end-to-end with the parsed shape.
@@ -882,6 +885,7 @@ git commit -m "feat: add v2 sr-levels ingest contract types and parser"
 ## Task 6: Add canonical-JSON + payload hash helper for thesis rows
 
 **Files:**
+
 - Modify: `src/contract/v2/srLevels.ts`
 - Create: `src/contract/v2/__tests__/srLevels.canonicalHash.snapshot.test.ts`
 
@@ -1030,10 +1034,7 @@ describe("computeSrThesisV2CanonicalAndHash", () => {
 
   it("produces different hashes for different theses in the same request", () => {
     const req = baseRequest({
-      theses: [
-        baseThesis({ asset: "SOL" }),
-        baseThesis({ asset: "BTC", sourceHandle: "@trader2" })
-      ]
+      theses: [baseThesis({ asset: "SOL" }), baseThesis({ asset: "BTC", sourceHandle: "@trader2" })]
     });
     const a = computeSrThesisV2CanonicalAndHash(req, req.theses[0]);
     const b = computeSrThesisV2CanonicalAndHash(req, req.theses[1]);
@@ -1102,6 +1103,7 @@ git commit -m "feat: add v2 sr-thesis canonical JSON and payload hash helper"
 ## Task 7: Validation matrix tests for the v2 parser
 
 **Files:**
+
 - Create: `src/contract/v2/__tests__/srLevels.validation.test.ts`
 
 - [ ] **Step 1: Write the failing test**
@@ -1339,6 +1341,7 @@ git commit -m "test: v2 sr-levels ingest validation matrix"
 ## Task 8: Implement `SrThesesV2Store` (insertBrief + getCurrent)
 
 **Files:**
+
 - Create: `src/ledger/srThesesV2Store.ts`
 
 - [ ] **Step 1: Write the failing unit test (no DB)**
@@ -1602,6 +1605,7 @@ git commit -m "feat: add SrThesesV2Store with transactional insertBrief and getC
 ## Task 9: PG-gated integration tests for `SrThesesV2Store`
 
 **Files:**
+
 - Create: `src/ledger/__tests__/srThesesV2Store.test.ts`
 
 - [ ] **Step 1: Write the test file**
@@ -1779,7 +1783,9 @@ describe.skipIf(!process.env.DATABASE_URL)("SrThesesV2Store (PG)", () => {
 
   it("getCurrent selects the latest brief by capturedAtUnixMs DESC, id DESC", async () => {
     await store.insertBrief({
-      request: validRequest({ brief: { briefId: "old", sourceRecordedAtIso: null, summary: null } }),
+      request: validRequest({
+        brief: { briefId: "old", sourceRecordedAtIso: null, summary: null }
+      }),
       capturedAtUnixMs: 1_777_000_000_000
     });
     await store.insertBrief({
@@ -1875,6 +1881,7 @@ git commit -m "test: PG-gated integration tests for SrThesesV2Store"
 ## Task 10: Wire `SrThesesV2Store` into `StoreContext`
 
 **Files:**
+
 - Modify: `src/ledger/storeContext.ts`
 
 - [ ] **Step 1: Write the failing test**
@@ -1971,6 +1978,7 @@ git commit -m "feat: wire SrThesesV2Store through StoreContext"
 ## Task 11: Implement `POST /v2/sr-levels` handler
 
 **Files:**
+
 - Create: `src/http/handlers/srLevelsV2Ingest.ts`
 - Modify: `src/http/auth.ts`
 
@@ -2107,6 +2115,7 @@ git commit -m "feat: implement POST /v2/sr-levels handler"
 ## Task 12: Implement `GET /v2/sr-levels/current` handler
 
 **Files:**
+
 - Create: `src/http/handlers/srLevelsV2Current.ts`
 
 - [ ] **Step 1: Write a handler-shape test**
@@ -2172,8 +2181,7 @@ export const createSrLevelsV2CurrentHandler = (store: SrThesesV2Store | null) =>
       return reply
         .code(400)
         .send(
-          validationErrorV2("Query parameters 'symbol' and 'source' are required", missing)
-            .response
+          validationErrorV2("Query parameters 'symbol' and 'source' are required", missing).response
         );
     }
 
@@ -2215,6 +2223,7 @@ git commit -m "feat: implement GET /v2/sr-levels/current handler"
 ## Task 13: Register v2 routes in `src/http/routes.ts`
 
 **Files:**
+
 - Modify: `src/http/routes.ts`
 
 - [ ] **Step 1: Write a routing smoke test**
@@ -2296,6 +2305,7 @@ git commit -m "feat: register POST /v2/sr-levels and GET /v2/sr-levels/current"
 ## Task 14: Document v2 routes in OpenAPI
 
 **Files:**
+
 - Modify: `src/http/openapi.ts`
 
 - [ ] **Step 1: Add OpenAPI entries**
@@ -2358,6 +2368,7 @@ git commit -m "docs: add /v2/sr-levels and /v2/sr-levels/current to OpenAPI"
 ## Task 15: HTTP e2e tests without `DATABASE_URL` (auth and 503)
 
 **Files:**
+
 - Create: `src/http/__tests__/srLevelsV2.e2e.test.ts`
 
 - [ ] **Step 1: Write the failing test**
@@ -2505,6 +2516,7 @@ git commit -m "test: e2e v2 sr-levels behavior without DATABASE_URL"
 ## Task 16: HTTP e2e PG tests (full ingest + current happy/sad paths)
 
 **Files:**
+
 - Create: `src/http/__tests__/srLevelsV2.e2e.pg.test.ts`
 
 - [ ] **Step 1: Write the failing PG e2e test**
@@ -2860,6 +2872,7 @@ git commit -m "test: PG-gated e2e for v2 sr-levels endpoints"
 ## Task 17: Extend `package.json` `test:pg` to include v2 tests
 
 **Files:**
+
 - Modify: `package.json`
 
 - [ ] **Step 1: Update `test:pg`**
@@ -2892,6 +2905,7 @@ git commit -m "chore: include v2 sr-levels tests in test:pg suite"
 ## Task 18: Final verification + acceptance criteria sweep
 
 **Files:**
+
 - (no edits)
 
 - [ ] **Step 1: Run the full pnpm checks**

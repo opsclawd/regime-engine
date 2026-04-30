@@ -25,19 +25,19 @@ If timestamp range queries become necessary later, add derived typed columns or 
 
 ## 3. Locked Decisions
 
-| Topic | Decision |
-| --- | --- |
-| Persistence | Postgres via Drizzle in the existing `regime_engine` schema. |
-| Table | `sr_theses_v2`, one flat row per thesis. |
-| Arrays | Native Postgres `TEXT[]` for `support_levels`, `resistance_levels`, and `targets`. |
+| Topic            | Decision                                                                                                                                                                                                                        |
+| ---------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Persistence      | Postgres via Drizzle in the existing `regime_engine` schema.                                                                                                                                                                    |
+| Table            | `sr_theses_v2`, one flat row per thesis.                                                                                                                                                                                        |
+| Arrays           | Native Postgres `TEXT[]` for `support_levels`, `resistance_levels`, and `targets`.                                                                                                                                              |
 | Timestamp fields | `source_recorded_at_iso`, `collected_at_iso`, and `published_at_iso` are `TEXT` for exact round-trip. They are validated as ISO datetimes at the contract boundary but are not normalized before storage, hashing, or response. |
-| Ordering | `captured_at_unix_ms BIGINT NOT NULL` is server-generated and used for latest-brief selection. |
-| Idempotency | Unique `(source, symbol, brief_id, asset, source_handle)` plus `payload_hash VARCHAR(64) NOT NULL`. |
-| Routes | `POST /v2/sr-levels` and `GET /v2/sr-levels/current`. |
-| Store wiring | `StoreContext` gets `srThesesV2Store` alongside `candleStore` and `insightsStore` when `DATABASE_URL` is configured. |
-| No Postgres | v2 handlers return `503 SERVICE_UNAVAILABLE` when `srThesesV2Store` is null after request auth succeeds. |
-| Error envelopes | All `/v2` error envelopes use `schemaVersion: "2.0"`, including auth, validation, 503, 404, and conflict responses. |
-| Auth | Reuse the existing ingest-token pattern for S/R ingest: `X-Ingest-Token` checked against `OPENCLAW_INGEST_TOKEN`. |
+| Ordering         | `captured_at_unix_ms BIGINT NOT NULL` is server-generated and used for latest-brief selection.                                                                                                                                  |
+| Idempotency      | Unique `(source, symbol, brief_id, asset, source_handle)` plus `payload_hash VARCHAR(64) NOT NULL`.                                                                                                                             |
+| Routes           | `POST /v2/sr-levels` and `GET /v2/sr-levels/current`.                                                                                                                                                                           |
+| Store wiring     | `StoreContext` gets `srThesesV2Store` alongside `candleStore` and `insightsStore` when `DATABASE_URL` is configured.                                                                                                            |
+| No Postgres      | v2 handlers return `503 SERVICE_UNAVAILABLE` when `srThesesV2Store` is null after request auth succeeds.                                                                                                                        |
+| Error envelopes  | All `/v2` error envelopes use `schemaVersion: "2.0"`, including auth, validation, 503, 404, and conflict responses.                                                                                                             |
+| Auth             | Reuse the existing ingest-token pattern for S/R ingest: `X-Ingest-Token` checked against `OPENCLAW_INGEST_TOKEN`.                                                                                                               |
 
 ## 4. Architecture
 
@@ -151,11 +151,7 @@ interface SrLevelsV2CurrentResponse {
 
 ```ts
 {
-  schemaVersion: "2.0",
-  source,
-  symbol,
-  brief,
-  thesis
+  schemaVersion: ("2.0", source, symbol, brief, thesis);
 }
 ```
 
