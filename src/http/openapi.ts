@@ -314,15 +314,17 @@ export const buildOpenApiDocument = () => {
                 schema: {
                   type: "object",
                   required: ["schemaVersion", "source", "symbol", "brief", "theses"],
+                  additionalProperties: false,
                   properties: {
                     schemaVersion: { type: "string", enum: ["2.0"] },
-                    source: { type: "string", maxLength: 64 },
-                    symbol: { type: "string", maxLength: 64 },
+                    source: { type: "string", minLength: 1, maxLength: 64 },
+                    symbol: { type: "string", minLength: 1, maxLength: 64 },
                     brief: {
                       type: "object",
                       required: ["briefId", "sourceRecordedAtIso", "summary"],
+                      additionalProperties: false,
                       properties: {
-                        briefId: { type: "string", maxLength: 256 },
+                        briefId: { type: "string", minLength: 1, maxLength: 256 },
                         sourceRecordedAtIso: {
                           type: "string",
                           format: "date-time",
@@ -359,9 +361,10 @@ export const buildOpenApiDocument = () => {
                           "sourceUrl",
                           "notes"
                         ],
+                        additionalProperties: false,
                         properties: {
-                          asset: { type: "string", maxLength: 64 },
-                          timeframe: { type: "string", maxLength: 64 },
+                          asset: { type: "string", minLength: 1, maxLength: 64 },
+                          timeframe: { type: "string", minLength: 1, maxLength: 64 },
                           bias: { type: "string", nullable: true },
                           setupType: { type: "string", nullable: true },
                           supportLevels: { type: "array", items: { type: "string" } },
@@ -371,9 +374,9 @@ export const buildOpenApiDocument = () => {
                           invalidation: { type: "string", nullable: true },
                           trigger: { type: "string", nullable: true },
                           chartReference: { type: "string", nullable: true },
-                          sourceHandle: { type: "string", maxLength: 256 },
+                          sourceHandle: { type: "string", minLength: 1, maxLength: 256 },
                           sourceChannel: { type: "string", nullable: true },
-                          sourceKind: { type: "string", maxLength: 64 },
+                          sourceKind: { type: "string", minLength: 1, maxLength: 64 },
                           sourceReliability: { type: "string", nullable: true },
                           rawThesisText: { type: "string", nullable: true },
                           collectedAt: { type: "string", format: "date-time", nullable: true },
