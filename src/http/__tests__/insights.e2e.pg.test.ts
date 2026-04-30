@@ -1,7 +1,7 @@
-import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, afterEach, describe, expect, it } from "vitest";
 import { buildApp } from "../../app.js";
 import type { Db } from "../../ledger/pg/db.js";
-import { createDb, verifyPgConnection } from "../../ledger/pg/db.js";
+import { createDb } from "../../ledger/pg/db.js";
 import { clmmInsights } from "../../ledger/pg/schema/index.js";
 
 const PG_CONNECTION_STRING =
@@ -34,27 +34,14 @@ const makePayload = (overrides: Record<string, unknown> = {}) => ({
 
 let db: Db;
 let pgClient: { end: () => Promise<void> };
-let pgAvailable = false;
 
-try {
+if (process.env.DATABASE_URL) {
   const result = createDb(PG_CONNECTION_STRING);
   db = result.db;
   pgClient = result.client;
-  pgAvailable = true;
-} catch {
-  pgAvailable = false;
 }
 
-const setupPg = describe.skipIf(!pgAvailable);
-
-beforeAll(async () => {
-  if (!pgAvailable) return;
-  try {
-    await verifyPgConnection(db);
-  } catch {
-    pgAvailable = false;
-  }
-});
+const setupPg = describe.skipIf(!process.env.DATABASE_URL);
 
 afterAll(async () => {
   if (pgClient) {
@@ -66,7 +53,7 @@ afterEach(async () => {
   delete process.env.LEDGER_DB_PATH;
   delete process.env.DATABASE_URL;
   delete process.env.INSIGHT_INGEST_TOKEN;
-  if (db && pgAvailable) {
+  if (db) {
     await db.delete(clmmInsights);
   }
 });
