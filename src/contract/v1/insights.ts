@@ -153,8 +153,8 @@ export const parseInsightRowEnums = (row: {
     asOf: "", // filled by caller from asOfUnixMs
     source: z.enum(["openclaw"]).parse(row.source),
     runId: "", // filled by caller
-    marketRegime: row.marketRegime,
-    fundamentalRegime: row.fundamentalRegime,
+    marketRegime: snakeCaseLabel.parse(row.marketRegime),
+    fundamentalRegime: snakeCaseLabel.parse(row.fundamentalRegime),
     recommendedAction: z.enum(RECOMMENDED_ACTIONS).parse(row.recommendedAction),
     confidence: z.enum(CONFIDENCES).parse(row.confidence),
     riskLevel: z.enum(RISK_LEVELS).parse(row.riskLevel),

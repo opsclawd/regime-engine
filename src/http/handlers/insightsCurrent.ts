@@ -33,7 +33,7 @@ export const createInsightsCurrentHandler = (insightsStore: InsightsStore | null
 
       const nowUnixMs = Date.now();
       const ageSeconds = Math.floor((nowUnixMs - row.asOfUnixMs) / 1000);
-      const stale = nowUnixMs > row.expiresAtUnixMs;
+      const stale = nowUnixMs >= row.expiresAtUnixMs;
 
       const freshness: InsightFreshness = {
         generatedAtIso: new Date(row.asOfUnixMs).toISOString(),
