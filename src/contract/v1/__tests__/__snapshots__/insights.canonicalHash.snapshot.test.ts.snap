@@ -1,0 +1,5 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`insight canonical JSON + payload hash > canonical JSON snapshot is stable 1`] = `"{"asOf":"2026-04-27T13:00:00Z","clmmPolicy":{"maxCapitalDeploymentPercent":50,"posture":"defensive","rangeBias":"wide","rebalanceSensitivity":"high"},"confidence":"medium","dataQuality":"complete","expiresAt":"2026-04-28T13:00:00Z","fundamentalRegime":"constructive","levels":{"resistance":[154,162],"support":[138.5,132]},"marketRegime":"high_volatility_uptrend","pair":"SOL/USDC","reasoning":["SOL volatility expanded.","Range is near upper edge."],"recommendedAction":"widen_range","riskLevel":"elevated","runId":"clmm-daily-sol-usdc-insight-2026-04-27","schemaVersion":"1.0","source":"openclaw","sourceRefs":["openclaw:clmm-daily-sol-usdc-insight"]}"`;
+
+exports[`insight canonical JSON + payload hash > payload hash snapshot is stable 1`] = `"df8406821edfaac2626dc890a0719c168a5c617aa64880db80c51a0897212eb8"`;
