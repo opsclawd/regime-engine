@@ -3,7 +3,8 @@ import {
   createDb,
   verifyPgConnection,
   verifyPgSchema,
-  verifyCandleRevisionsTable
+  verifyCandleRevisionsTable,
+  verifyClmmInsightsTable
 } from "./ledger/pg/db.js";
 
 const redactUrl = (url: string): string => url.replace(/:\/\/[^@]+@/, "://***@");
@@ -23,6 +24,7 @@ const start = async (): Promise<void> => {
       await verifyPgConnection(pg);
       await verifyPgSchema(pg);
       await verifyCandleRevisionsTable(pg);
+      await verifyClmmInsightsTable(pg);
     } catch (error) {
       console.error("FATAL: Postgres connection failed at startup.", {
         url: redactUrl(pgConnectionString),
