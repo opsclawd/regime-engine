@@ -323,7 +323,11 @@ export const buildOpenApiDocument = () => {
                       required: ["briefId", "sourceRecordedAtIso", "summary"],
                       properties: {
                         briefId: { type: "string", maxLength: 256 },
-                        sourceRecordedAtIso: { type: "string", nullable: true },
+                        sourceRecordedAtIso: {
+                          type: "string",
+                          format: "date-time",
+                          nullable: true
+                        },
                         summary: { type: "string", nullable: true }
                       }
                     },
@@ -372,8 +376,8 @@ export const buildOpenApiDocument = () => {
                           sourceKind: { type: "string", maxLength: 64 },
                           sourceReliability: { type: "string", nullable: true },
                           rawThesisText: { type: "string", nullable: true },
-                          collectedAt: { type: "string", nullable: true },
-                          publishedAt: { type: "string", nullable: true },
+                          collectedAt: { type: "string", format: "date-time", nullable: true },
+                          publishedAt: { type: "string", format: "date-time", nullable: true },
                           sourceUrl: { type: "string", nullable: true },
                           notes: { type: "string", nullable: true }
                         }
