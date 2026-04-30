@@ -1,15 +1,15 @@
 import { z } from "zod";
 import { SCHEMA_VERSION, type SchemaVersion } from "./types.js";
-import {
-  unsupportedSchemaVersionError,
-  validationErrorFromZod
-} from "../../http/errors.js";
+import { unsupportedSchemaVersionError, validationErrorFromZod } from "../../http/errors.js";
 import { toCanonicalJson } from "./canonical.js";
 import { sha256Hex } from "./hash.js";
 
 const ISO = z.string().datetime({ offset: true });
 const finitePositive = z.number().finite().positive();
-const snakeCaseLabel = z.string().regex(/^[a-z][a-z0-9_]*$/).max(64);
+const snakeCaseLabel = z
+  .string()
+  .regex(/^[a-z][a-z0-9_]*$/)
+  .max(64);
 
 export const RECOMMENDED_ACTIONS = [
   "hold",
@@ -123,6 +123,12 @@ export interface InsightIngestAlreadyIngestedResponse {
   payloadHash: string;
 }
 
+export type InsightRowEnums = Omit<InsightIngestRequest, "asOf" | "runId" | "expiresAt"> & {
+  asOf: "";
+  runId: "";
+  expiresAt: "";
+};
+
 export const parseInsightRowEnums = (row: {
   marketRegime: string;
   fundamentalRegime: string;
@@ -135,7 +141,7 @@ export const parseInsightRowEnums = (row: {
   levelsJson: unknown;
   reasoningJson: unknown;
   sourceRefsJson: unknown;
-}): InsightIngestRequest => {
+}): InsightRowEnums => {
   const clmmPolicy = clmmPolicySchema.parse(row.clmmPolicyJson);
   const levels = levelsSchema.parse(row.levelsJson);
   const reasoning = z.array(z.string().min(1).max(1024)).max(16).parse(row.reasoningJson);
@@ -169,10 +175,7 @@ export const parseInsightIngestRequest = (raw: unknown): InsightIngestRequest =>
 
   const parsed = insightIngestRequestSchema.safeParse(raw);
   if (!parsed.success) {
-    throw validationErrorFromZod(
-      "Invalid /v1/insights/sol-usdc request body",
-      parsed.error.issues
-    );
+    throw validationErrorFromZod("Invalid /v1/insights/sol-usdc request body", parsed.error.issues);
   }
 
   return parsed.data;

@@ -10,9 +10,12 @@ export const INSIGHT_ERROR_CODES = {
 } as const;
 
 export class InsightConflictError extends Error {
-  public readonly errorCode: string = INSIGHT_ERROR_CODES.RUN_CONFLICT;
+  public readonly errorCode = INSIGHT_ERROR_CODES.RUN_CONFLICT;
 
-  public constructor(public readonly source: string, public readonly runId: string) {
+  public constructor(
+    public readonly source: string,
+    public readonly runId: string
+  ) {
     super(`Insight conflict for source="${source}", runId="${runId}"`);
   }
 }

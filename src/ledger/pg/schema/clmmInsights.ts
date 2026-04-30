@@ -1,12 +1,4 @@
-import {
-  bigint,
-  index,
-  jsonb,
-  serial,
-  text,
-  uniqueIndex,
-  varchar
-} from "drizzle-orm/pg-core";
+import { bigint, index, jsonb, serial, text, uniqueIndex, varchar } from "drizzle-orm/pg-core";
 import { regimeEngine } from "./candleRevisions.js";
 
 export const clmmInsights = regimeEngine.table(

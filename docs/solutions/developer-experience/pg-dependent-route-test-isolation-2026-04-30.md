@@ -236,11 +236,19 @@ expect(paths).toHaveLength(11); // fails: actual is 14 after adding 3 insight ro
 expect(paths).toHaveLength(14);
 expect(paths).toEqual(
   expect.arrayContaining([
-    "/health", "/version", "/v1/openapi.json", "/v1/plan",
-    "/v1/execution-result", "/v1/clmm-execution-result",
-    "/v1/report/weekly", "/v1/sr-levels", "/v1/sr-levels/current",
-    "/v1/candles", "/v1/regime/current",
-    "/v1/insights/sol-usdc", "/v1/insights/sol-usdc/current",
+    "/health",
+    "/version",
+    "/v1/openapi.json",
+    "/v1/plan",
+    "/v1/execution-result",
+    "/v1/clmm-execution-result",
+    "/v1/report/weekly",
+    "/v1/sr-levels",
+    "/v1/sr-levels/current",
+    "/v1/candles",
+    "/v1/regime/current",
+    "/v1/insights/sol-usdc",
+    "/v1/insights/sol-usdc/current",
     "/v1/insights/sol-usdc/history"
   ])
 );

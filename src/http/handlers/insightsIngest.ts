@@ -4,7 +4,10 @@ import type {
   InsightIngestCreatedResponse,
   InsightIngestAlreadyIngestedResponse
 } from "../../contract/v1/insights.js";
-import { parseInsightIngestRequest, computeInsightCanonicalAndHash } from "../../contract/v1/insights.js";
+import {
+  parseInsightIngestRequest,
+  computeInsightCanonicalAndHash
+} from "../../contract/v1/insights.js";
 import { InsightsStore, InsightConflictError } from "../../ledger/insightsStore.js";
 import { AuthError, requireSharedSecret } from "../auth.js";
 import { ContractValidationError, ERROR_CODES } from "../errors.js";

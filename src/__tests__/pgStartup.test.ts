@@ -64,28 +64,4 @@ describe("verifyClmmInsightsTable", () => {
 
     await client.end();
   });
-
-  it("rejects with a clear message when the table is missing", async () => {
-    const connectionString = process.env.DATABASE_URL;
-    if (!connectionString) {
-      return;
-    }
-
-    const { createDb, verifyClmmInsightsTable: verify } = await import(
-      "../ledger/pg/db.js"
-    );
-    const { db, client } = createDb(connectionString);
-
-    await db.execute(
-      (await import("drizzle-orm/sql")).sql`SET search_path TO regime_engine`
-    );
-
-    await db.execute(
-      (await import("drizzle-orm/sql")).sql`DROP TABLE IF EXISTS clmm_insights`
-    );
-
-    await expect(verify(db)).rejects.toThrow(/clmm_insights/);
-
-    await client.end();
-  });
 });

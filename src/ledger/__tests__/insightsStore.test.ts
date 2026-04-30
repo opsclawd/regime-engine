@@ -36,7 +36,10 @@ const validRequest = (overrides: Partial<InsightIngestRequest> = {}): InsightIng
     ...overrides
   }) as InsightIngestRequest;
 
-const makeInput = (req: InsightIngestRequest, receivedAtUnixMs = 1_700_000_000_000): InsightInsertInput => {
+const makeInput = (
+  req: InsightIngestRequest,
+  receivedAtUnixMs = 1_700_000_000_000
+): InsightInsertInput => {
   const { canonical, hash } = computeInsightCanonicalAndHash(req);
   return { request: req, payloadCanonical: canonical, payloadHash: hash, receivedAtUnixMs };
 };
@@ -101,10 +104,7 @@ describe.skipIf(!process.env.DATABASE_URL)("InsightsStore (PG)", () => {
     const inputA = makeInput(validRequest(), 1_700_000_000_000);
     const inputB = makeInput(validRequest(), 1_700_000_000_500);
 
-    const results = await Promise.all([
-      store.insertInsight(inputA),
-      store.insertInsight(inputB)
-    ]);
+    const results = await Promise.all([store.insertInsight(inputA), store.insertInsight(inputB)]);
 
     const statuses = results.map((r) => r.status).sort();
     expect(statuses).toEqual(["already_ingested", "created"]);
@@ -138,13 +138,31 @@ describe.skipIf(!process.env.DATABASE_URL)("InsightsStore (PG)", () => {
 
   it("getCurrent returns the newest row by (asOfUnixMs DESC, id DESC)", async () => {
     await store.insertInsight(
-      makeInput(validRequest({ runId: "run-A", asOf: "2026-04-25T00:00:00Z", expiresAt: "2026-04-26T00:00:00Z" }))
+      makeInput(
+        validRequest({
+          runId: "run-A",
+          asOf: "2026-04-25T00:00:00Z",
+          expiresAt: "2026-04-26T00:00:00Z"
+        })
+      )
     );
     await store.insertInsight(
-      makeInput(validRequest({ runId: "run-C", asOf: "2026-04-27T00:00:00Z", expiresAt: "2026-04-28T00:00:00Z" }))
+      makeInput(
+        validRequest({
+          runId: "run-C",
+          asOf: "2026-04-27T00:00:00Z",
+          expiresAt: "2026-04-28T00:00:00Z"
+        })
+      )
     );
     await store.insertInsight(
-      makeInput(validRequest({ runId: "run-B", asOf: "2026-04-26T00:00:00Z", expiresAt: "2026-04-27T00:00:00Z" }))
+      makeInput(
+        validRequest({
+          runId: "run-B",
+          asOf: "2026-04-26T00:00:00Z",
+          expiresAt: "2026-04-27T00:00:00Z"
+        })
+      )
     );
 
     const latest = await store.getCurrent("SOL/USDC");

@@ -1,7 +1,7 @@
-import { afterAll, afterEach, describe, expect, it } from "vitest";
+import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 import { buildApp } from "../../app.js";
 import type { Db } from "../../ledger/pg/db.js";
-import { createDb } from "../../ledger/pg/db.js";
+import { createDb, verifyPgConnection } from "../../ledger/pg/db.js";
 import { clmmInsights } from "../../ledger/pg/schema/index.js";
 
 const PG_CONNECTION_STRING =
@@ -47,6 +47,15 @@ try {
 
 const setupPg = describe.skipIf(!pgAvailable);
 
+beforeAll(async () => {
+  if (!pgAvailable) return;
+  try {
+    await verifyPgConnection(db);
+  } catch {
+    pgAvailable = false;
+  }
+});
+
 afterAll(async () => {
   if (pgClient) {
     await pgClient.end();
@@ -77,7 +86,13 @@ setupPg("POST /v1/insights/sol-usdc (PG)", () => {
       payload: makePayload()
     });
     expect(res.statusCode).toBe(201);
-    const body = res.json() as { schemaVersion: string; status: string; runId: string; payloadHash: string; receivedAtIso: string };
+    const body = res.json() as {
+      schemaVersion: string;
+      status: string;
+      runId: string;
+      payloadHash: string;
+      receivedAtIso: string;
+    };
     expect(body.status).toBe("created");
     expect(body.runId).toBe("run-001");
     expect(typeof body.payloadHash).toBe("string");
@@ -249,7 +264,11 @@ setupPg("GET /v1/insights/sol-usdc/current (PG)", () => {
       url: "/v1/insights/sol-usdc/current"
     });
     expect(res.statusCode).toBe(200);
-    const body = res.json() as { status: string; payloadHash: string; freshness: { stale: boolean } };
+    const body = res.json() as {
+      status: string;
+      payloadHash: string;
+      freshness: { stale: boolean };
+    };
     expect(body.status).toBe("FRESH");
     expect(body.freshness.stale).toBe(false);
     expect(typeof body.payloadHash).toBe("string");

@@ -100,18 +100,26 @@ describe("parseInsightIngestRequest — rejections", () => {
   });
 
   it("rejects marketRegime that violates snake_case regex", () => {
-    expect(expectReject({ marketRegime: "Uppercase" }).response.error.code).toBe("VALIDATION_ERROR");
-    expect(expectReject({ marketRegime: "1leading_digit" }).response.error.code).toBe("VALIDATION_ERROR");
+    expect(expectReject({ marketRegime: "Uppercase" }).response.error.code).toBe(
+      "VALIDATION_ERROR"
+    );
+    expect(expectReject({ marketRegime: "1leading_digit" }).response.error.code).toBe(
+      "VALIDATION_ERROR"
+    );
     expect(expectReject({ marketRegime: "has-dash" }).response.error.code).toBe("VALIDATION_ERROR");
     expect(expectReject({ marketRegime: "" }).response.error.code).toBe("VALIDATION_ERROR");
   });
 
   it("rejects fundamentalRegime that violates snake_case regex", () => {
-    expect(expectReject({ fundamentalRegime: "Constructive" }).response.error.code).toBe("VALIDATION_ERROR");
+    expect(expectReject({ fundamentalRegime: "Constructive" }).response.error.code).toBe(
+      "VALIDATION_ERROR"
+    );
   });
 
   it("rejects unknown recommendedAction", () => {
-    expect(expectReject({ recommendedAction: "yolo" }).response.error.code).toBe("VALIDATION_ERROR");
+    expect(expectReject({ recommendedAction: "yolo" }).response.error.code).toBe(
+      "VALIDATION_ERROR"
+    );
   });
 
   it("rejects unknown confidence / riskLevel / dataQuality", () => {
@@ -177,27 +185,27 @@ describe("parseInsightIngestRequest — rejections", () => {
   });
 
   it("rejects when both support and resistance arrays are empty", () => {
-    expect(
-      expectReject({ levels: { support: [], resistance: [] } }).response.error.code
-    ).toBe("VALIDATION_ERROR");
+    expect(expectReject({ levels: { support: [], resistance: [] } }).response.error.code).toBe(
+      "VALIDATION_ERROR"
+    );
   });
 
   it("rejects negative or zero level prices", () => {
-    expect(
-      expectReject({ levels: { support: [-1], resistance: [] } }).response.error.code
-    ).toBe("VALIDATION_ERROR");
-    expect(
-      expectReject({ levels: { support: [0], resistance: [] } }).response.error.code
-    ).toBe("VALIDATION_ERROR");
+    expect(expectReject({ levels: { support: [-1], resistance: [] } }).response.error.code).toBe(
+      "VALIDATION_ERROR"
+    );
+    expect(expectReject({ levels: { support: [0], resistance: [] } }).response.error.code).toBe(
+      "VALIDATION_ERROR"
+    );
   });
 
   it("rejects too many reasoning entries or over-length entries", () => {
     expect(
       expectReject({ reasoning: Array.from({ length: 17 }, () => "x") }).response.error.code
     ).toBe("VALIDATION_ERROR");
-    expect(
-      expectReject({ reasoning: ["x".repeat(1025)] }).response.error.code
-    ).toBe("VALIDATION_ERROR");
+    expect(expectReject({ reasoning: ["x".repeat(1025)] }).response.error.code).toBe(
+      "VALIDATION_ERROR"
+    );
     expect(expectReject({ reasoning: [""] }).response.error.code).toBe("VALIDATION_ERROR");
   });
 
@@ -205,9 +213,9 @@ describe("parseInsightIngestRequest — rejections", () => {
     expect(
       expectReject({ sourceRefs: Array.from({ length: 17 }, () => "x") }).response.error.code
     ).toBe("VALIDATION_ERROR");
-    expect(
-      expectReject({ sourceRefs: ["x".repeat(513)] }).response.error.code
-    ).toBe("VALIDATION_ERROR");
+    expect(expectReject({ sourceRefs: ["x".repeat(513)] }).response.error.code).toBe(
+      "VALIDATION_ERROR"
+    );
   });
 
   it("rejects unknown top-level keys (strict)", () => {

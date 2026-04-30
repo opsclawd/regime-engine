@@ -16,34 +16,34 @@
 
 ### New files
 
-| Path | Purpose |
-| --- | --- |
-| `src/ledger/pg/schema/clmmInsights.ts` | Drizzle table definition for `regime_engine.clmm_insights`. |
-| `drizzle/0002_create_clmm_insights.sql` | Generated migration (output of `pnpm exec drizzle-kit generate --name create_clmm_insights`). |
-| `src/contract/v1/insights.ts` | Zod schema, TS types (request + responses), `parseInsightIngestRequest`, `computeInsightCanonicalAndHash`. |
-| `src/contract/v1/__tests__/insights.validation.test.ts` | Validation matrix (acceptance + each rejection rule). |
-| `src/contract/v1/__tests__/insights.canonicalHash.snapshot.test.ts` | Canonical JSON + sha256 snapshot for the pinned fixture; key-order determinism. |
-| `src/ledger/insightsStore.ts` | `InsightsStore` class, `InsightConflictError`, `INSIGHT_ERROR_CODES`, `rowToInsightWire`. |
-| `src/ledger/__tests__/insightsStore.test.ts` | PG integration test, gated by `DATABASE_URL`. |
-| `src/http/handlers/insightsIngest.ts` | POST `/v1/insights/sol-usdc`. |
-| `src/http/handlers/insightsCurrent.ts` | GET `/v1/insights/sol-usdc/current`. |
-| `src/http/handlers/insightsHistory.ts` | GET `/v1/insights/sol-usdc/history`. |
-| `src/http/handlers/insightsResponses.ts` | Shared 503 helper used by all three handlers. |
-| `src/http/__tests__/insightsIngest.e2e.test.ts` | E2E for POST. |
-| `src/http/__tests__/insightsCurrent.e2e.test.ts` | E2E for GET current. |
-| `src/http/__tests__/insightsHistory.e2e.test.ts` | E2E for GET history. |
-| `src/http/__tests__/insightsOpenapi.test.ts` | Lightweight OpenAPI assertion for the three new paths. |
+| Path                                                                | Purpose                                                                                                    |
+| ------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------- |
+| `src/ledger/pg/schema/clmmInsights.ts`                              | Drizzle table definition for `regime_engine.clmm_insights`.                                                |
+| `drizzle/0002_create_clmm_insights.sql`                             | Generated migration (output of `pnpm exec drizzle-kit generate --name create_clmm_insights`).              |
+| `src/contract/v1/insights.ts`                                       | Zod schema, TS types (request + responses), `parseInsightIngestRequest`, `computeInsightCanonicalAndHash`. |
+| `src/contract/v1/__tests__/insights.validation.test.ts`             | Validation matrix (acceptance + each rejection rule).                                                      |
+| `src/contract/v1/__tests__/insights.canonicalHash.snapshot.test.ts` | Canonical JSON + sha256 snapshot for the pinned fixture; key-order determinism.                            |
+| `src/ledger/insightsStore.ts`                                       | `InsightsStore` class, `InsightConflictError`, `INSIGHT_ERROR_CODES`, `rowToInsightWire`.                  |
+| `src/ledger/__tests__/insightsStore.test.ts`                        | PG integration test, gated by `DATABASE_URL`.                                                              |
+| `src/http/handlers/insightsIngest.ts`                               | POST `/v1/insights/sol-usdc`.                                                                              |
+| `src/http/handlers/insightsCurrent.ts`                              | GET `/v1/insights/sol-usdc/current`.                                                                       |
+| `src/http/handlers/insightsHistory.ts`                              | GET `/v1/insights/sol-usdc/history`.                                                                       |
+| `src/http/handlers/insightsResponses.ts`                            | Shared 503 helper used by all three handlers.                                                              |
+| `src/http/__tests__/insightsIngest.e2e.test.ts`                     | E2E for POST.                                                                                              |
+| `src/http/__tests__/insightsCurrent.e2e.test.ts`                    | E2E for GET current.                                                                                       |
+| `src/http/__tests__/insightsHistory.e2e.test.ts`                    | E2E for GET history.                                                                                       |
+| `src/http/__tests__/insightsOpenapi.test.ts`                        | Lightweight OpenAPI assertion for the three new paths.                                                     |
 
 ### Touched files
 
-| Path | Change |
-| --- | --- |
-| `src/ledger/pg/schema/index.ts` | Re-export `clmmInsights`. |
-| `src/ledger/pg/db.ts` | Add `verifyClmmInsightsTable`. |
-| `src/http/routes.ts` | Build `InsightsStore`, register the three new routes (always). |
-| `src/http/openapi.ts` | Add the three new operations. |
-| `package.json` | Add `src/ledger/__tests__/insightsStore.test.ts` to the `test:pg` script. |
-| `.env.example` | Uncomment `INSIGHT_INGEST_TOKEN=`. |
+| Path                            | Change                                                                    |
+| ------------------------------- | ------------------------------------------------------------------------- |
+| `src/ledger/pg/schema/index.ts` | Re-export `clmmInsights`.                                                 |
+| `src/ledger/pg/db.ts`           | Add `verifyClmmInsightsTable`.                                            |
+| `src/http/routes.ts`            | Build `InsightsStore`, register the three new routes (always).            |
+| `src/http/openapi.ts`           | Add the three new operations.                                             |
+| `package.json`                  | Add `src/ledger/__tests__/insightsStore.test.ts` to the `test:pg` script. |
+| `.env.example`                  | Uncomment `INSIGHT_INGEST_TOKEN=`.                                        |
 
 ### Tests at a glance
 
@@ -56,6 +56,7 @@
 ## Task 1: Add Drizzle table for `clmm_insights`
 
 **Files:**
+
 - Create: `src/ledger/pg/schema/clmmInsights.ts`
 - Modify: `src/ledger/pg/schema/index.ts`
 
@@ -64,15 +65,7 @@
 Write `src/ledger/pg/schema/clmmInsights.ts`:
 
 ```ts
-import {
-  bigint,
-  index,
-  jsonb,
-  serial,
-  text,
-  uniqueIndex,
-  varchar
-} from "drizzle-orm/pg-core";
+import { bigint, index, jsonb, serial, text, uniqueIndex, varchar } from "drizzle-orm/pg-core";
 import { regimeEngine } from "./candleRevisions.js";
 
 export const clmmInsights = regimeEngine.table(
@@ -137,6 +130,7 @@ git commit -m "m25: add Drizzle table for clmm_insights"
 ## Task 2: Generate the Drizzle migration
 
 **Files:**
+
 - Create: `drizzle/0002_create_clmm_insights.sql` (generated)
 - Create: `drizzle/meta/0002_snapshot.json` (generated)
 - Modify: `drizzle/meta/_journal.json` (generated)
@@ -174,6 +168,7 @@ git commit -m "m25: generate migration for clmm_insights table"
 ## Task 3: Add startup verification for `clmm_insights`
 
 **Files:**
+
 - Modify: `src/ledger/pg/db.ts`
 - Test: `src/__tests__/pgStartup.test.ts` (add a sibling test, see Step 1)
 
@@ -211,9 +206,7 @@ describe("verifyClmmInsightsTable", () => {
       (await import("drizzle-orm/sql")).sql`SET search_path TO regime_engine`
     );
 
-    await db.execute(
-      (await import("drizzle-orm/sql")).sql`DROP TABLE IF EXISTS clmm_insights`
-    );
+    await db.execute((await import("drizzle-orm/sql")).sql`DROP TABLE IF EXISTS clmm_insights`);
 
     await expect(verifyClmmInsightsTable(db)).rejects.toThrow(/clmm_insights/);
 
@@ -263,6 +256,7 @@ git commit -m "m25: add startup verification for clmm_insights table"
 ## Task 4: Wire startup verification into the app
 
 **Files:**
+
 - Modify: `src/ledger/pg/db.ts` (if a barrel `verifyAllTables` exists) OR `src/ledger/storeContext.ts` OR wherever `verifyCandleRevisionsTable` is currently called.
 
 - [ ] **Step 1: Locate the existing call site for `verifyCandleRevisionsTable`**
@@ -308,6 +302,7 @@ git commit -m "m25: call verifyClmmInsightsTable on app startup"
 ## Task 5: Add contract types and Zod schema for insights
 
 **Files:**
+
 - Create: `src/contract/v1/insights.ts`
 
 - [ ] **Step 1: Create the contract module**
@@ -317,16 +312,16 @@ Write `src/contract/v1/insights.ts`:
 ```ts
 import { z } from "zod";
 import { SCHEMA_VERSION, type SchemaVersion } from "./types.js";
-import {
-  unsupportedSchemaVersionError,
-  validationErrorFromZod
-} from "../../http/errors.js";
+import { unsupportedSchemaVersionError, validationErrorFromZod } from "../../http/errors.js";
 import { toCanonicalJson } from "./canonical.js";
 import { sha256Hex } from "./hash.js";
 
 const ISO = z.string().datetime({ offset: true });
 const finitePositive = z.number().finite().positive();
-const snakeCaseLabel = z.string().regex(/^[a-z][a-z0-9_]*$/).max(64);
+const snakeCaseLabel = z
+  .string()
+  .regex(/^[a-z][a-z0-9_]*$/)
+  .max(64);
 
 export const RECOMMENDED_ACTIONS = [
   "hold",
@@ -448,10 +443,7 @@ export const parseInsightIngestRequest = (raw: unknown): InsightIngestRequest =>
 
   const parsed = insightIngestRequestSchema.safeParse(raw);
   if (!parsed.success) {
-    throw validationErrorFromZod(
-      "Invalid /v1/insights/sol-usdc request body",
-      parsed.error.issues
-    );
+    throw validationErrorFromZod("Invalid /v1/insights/sol-usdc request body", parsed.error.issues);
   }
 
   return parsed.data;
@@ -483,6 +475,7 @@ git commit -m "m25: add Zod contract for insight ingest payload"
 ## Task 6: Validation matrix tests
 
 **Files:**
+
 - Create: `src/contract/v1/__tests__/insights.validation.test.ts`
 
 - [ ] **Step 1: Write the validation test file**
@@ -592,18 +585,26 @@ describe("parseInsightIngestRequest — rejections", () => {
   });
 
   it("rejects marketRegime that violates snake_case regex", () => {
-    expect(expectReject({ marketRegime: "Uppercase" }).response.error.code).toBe("VALIDATION_ERROR");
-    expect(expectReject({ marketRegime: "1leading_digit" }).response.error.code).toBe("VALIDATION_ERROR");
+    expect(expectReject({ marketRegime: "Uppercase" }).response.error.code).toBe(
+      "VALIDATION_ERROR"
+    );
+    expect(expectReject({ marketRegime: "1leading_digit" }).response.error.code).toBe(
+      "VALIDATION_ERROR"
+    );
     expect(expectReject({ marketRegime: "has-dash" }).response.error.code).toBe("VALIDATION_ERROR");
     expect(expectReject({ marketRegime: "" }).response.error.code).toBe("VALIDATION_ERROR");
   });
 
   it("rejects fundamentalRegime that violates snake_case regex", () => {
-    expect(expectReject({ fundamentalRegime: "Constructive" }).response.error.code).toBe("VALIDATION_ERROR");
+    expect(expectReject({ fundamentalRegime: "Constructive" }).response.error.code).toBe(
+      "VALIDATION_ERROR"
+    );
   });
 
   it("rejects unknown recommendedAction", () => {
-    expect(expectReject({ recommendedAction: "yolo" }).response.error.code).toBe("VALIDATION_ERROR");
+    expect(expectReject({ recommendedAction: "yolo" }).response.error.code).toBe(
+      "VALIDATION_ERROR"
+    );
   });
 
   it("rejects unknown confidence / riskLevel / dataQuality", () => {
@@ -669,27 +670,27 @@ describe("parseInsightIngestRequest — rejections", () => {
   });
 
   it("rejects when both support and resistance arrays are empty", () => {
-    expect(
-      expectReject({ levels: { support: [], resistance: [] } }).response.error.code
-    ).toBe("VALIDATION_ERROR");
+    expect(expectReject({ levels: { support: [], resistance: [] } }).response.error.code).toBe(
+      "VALIDATION_ERROR"
+    );
   });
 
   it("rejects negative or zero level prices", () => {
-    expect(
-      expectReject({ levels: { support: [-1], resistance: [] } }).response.error.code
-    ).toBe("VALIDATION_ERROR");
-    expect(
-      expectReject({ levels: { support: [0], resistance: [] } }).response.error.code
-    ).toBe("VALIDATION_ERROR");
+    expect(expectReject({ levels: { support: [-1], resistance: [] } }).response.error.code).toBe(
+      "VALIDATION_ERROR"
+    );
+    expect(expectReject({ levels: { support: [0], resistance: [] } }).response.error.code).toBe(
+      "VALIDATION_ERROR"
+    );
   });
 
   it("rejects too many reasoning entries or over-length entries", () => {
     expect(
       expectReject({ reasoning: Array.from({ length: 17 }, () => "x") }).response.error.code
     ).toBe("VALIDATION_ERROR");
-    expect(
-      expectReject({ reasoning: ["x".repeat(1025)] }).response.error.code
-    ).toBe("VALIDATION_ERROR");
+    expect(expectReject({ reasoning: ["x".repeat(1025)] }).response.error.code).toBe(
+      "VALIDATION_ERROR"
+    );
     expect(expectReject({ reasoning: [""] }).response.error.code).toBe("VALIDATION_ERROR");
   });
 
@@ -697,9 +698,9 @@ describe("parseInsightIngestRequest — rejections", () => {
     expect(
       expectReject({ sourceRefs: Array.from({ length: 17 }, () => "x") }).response.error.code
     ).toBe("VALIDATION_ERROR");
-    expect(
-      expectReject({ sourceRefs: ["x".repeat(513)] }).response.error.code
-    ).toBe("VALIDATION_ERROR");
+    expect(expectReject({ sourceRefs: ["x".repeat(513)] }).response.error.code).toBe(
+      "VALIDATION_ERROR"
+    );
   });
 
   it("rejects unknown top-level keys (strict)", () => {
@@ -727,6 +728,7 @@ git commit -m "m25: add validation matrix tests for insight ingest"
 ## Task 7: Canonical + hash snapshot test
 
 **Files:**
+
 - Create: `src/contract/v1/__tests__/insights.canonicalHash.snapshot.test.ts`
 
 - [ ] **Step 1: Write the snapshot test**
@@ -829,6 +831,7 @@ git commit -m "m25: pin canonical JSON and payload hash for insight fixture"
 ## Task 8: `InsightsStore` — `insertInsight` (created path)
 
 **Files:**
+
 - Create: `src/ledger/insightsStore.ts`
 - Test: `src/ledger/__tests__/insightsStore.test.ts`
 
@@ -840,11 +843,7 @@ Create `src/ledger/__tests__/insightsStore.test.ts`:
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 import { createDb, type Db } from "../pg/db.js";
 import { clmmInsights } from "../pg/schema/index.js";
-import {
-  InsightsStore,
-  InsightConflictError,
-  type InsightInsertInput
-} from "../insightsStore.js";
+import { InsightsStore, InsightConflictError, type InsightInsertInput } from "../insightsStore.js";
 import { computeInsightCanonicalAndHash } from "../../contract/v1/insights.js";
 import type { InsightIngestRequest } from "../../contract/v1/insights.js";
 
@@ -874,7 +873,10 @@ const validRequest = (overrides: Partial<InsightIngestRequest> = {}): InsightIng
     ...overrides
   }) as InsightIngestRequest;
 
-const makeInput = (req: InsightIngestRequest, receivedAtUnixMs = 1_700_000_000_000): InsightInsertInput => {
+const makeInput = (
+  req: InsightIngestRequest,
+  receivedAtUnixMs = 1_700_000_000_000
+): InsightInsertInput => {
   const { canonical, hash } = computeInsightCanonicalAndHash(req);
   return { request: req, payloadCanonical: canonical, payloadHash: hash, receivedAtUnixMs };
 };
@@ -940,7 +942,10 @@ type InsightErrorCode = (typeof INSIGHT_ERROR_CODES)[keyof typeof INSIGHT_ERROR_
 export class InsightConflictError extends Error {
   public readonly code: InsightErrorCode = INSIGHT_ERROR_CODES.RUN_CONFLICT;
 
-  public constructor(public readonly source: string, public readonly runId: string) {
+  public constructor(
+    public readonly source: string,
+    public readonly runId: string
+  ) {
     super(`Insight conflict for source="${source}", runId="${runId}"`);
   }
 }
@@ -1032,6 +1037,7 @@ git commit -m "m25: insertInsight created path with InsightsStore class"
 ## Task 9: `InsightsStore` — idempotent + conflict + race
 
 **Files:**
+
 - Modify: `src/ledger/__tests__/insightsStore.test.ts`
 
 - [ ] **Step 1: Append failing tests**
@@ -1039,62 +1045,59 @@ git commit -m "m25: insertInsight created path with InsightsStore class"
 Inside the `describe.skipIf(...)` block in `src/ledger/__tests__/insightsStore.test.ts`, after the existing `it("inserts a new row...")` test, add:
 
 ```ts
-  it("returns 'already_ingested' for byte-identical replay without inserting a new row", async () => {
-    await store.insertInsight(makeInput(validRequest()));
+it("returns 'already_ingested' for byte-identical replay without inserting a new row", async () => {
+  await store.insertInsight(makeInput(validRequest()));
 
-    const second = await store.insertInsight(makeInput(validRequest(), 1_700_000_001_000));
-    expect(second.status).toBe("already_ingested");
+  const second = await store.insertInsight(makeInput(validRequest(), 1_700_000_001_000));
+  expect(second.status).toBe("already_ingested");
 
-    const all = await db.select().from(clmmInsights).execute();
-    expect(all).toHaveLength(1);
-  });
+  const all = await db.select().from(clmmInsights).execute();
+  expect(all).toHaveLength(1);
+});
 
-  it("throws InsightConflictError when same (source, runId) has different payload", async () => {
-    await store.insertInsight(makeInput(validRequest()));
+it("throws InsightConflictError when same (source, runId) has different payload", async () => {
+  await store.insertInsight(makeInput(validRequest()));
 
-    const different = validRequest({ confidence: "high" });
-    await expect(store.insertInsight(makeInput(different))).rejects.toBeInstanceOf(
-      InsightConflictError
-    );
+  const different = validRequest({ confidence: "high" });
+  await expect(store.insertInsight(makeInput(different))).rejects.toBeInstanceOf(
+    InsightConflictError
+  );
 
-    const all = await db.select().from(clmmInsights).execute();
-    expect(all).toHaveLength(1);
-  });
+  const all = await db.select().from(clmmInsights).execute();
+  expect(all).toHaveLength(1);
+});
 
-  it("concurrent identical inserts: exactly one is 'created', one is 'already_ingested'", async () => {
-    const inputA = makeInput(validRequest(), 1_700_000_000_000);
-    const inputB = makeInput(validRequest(), 1_700_000_000_500);
+it("concurrent identical inserts: exactly one is 'created', one is 'already_ingested'", async () => {
+  const inputA = makeInput(validRequest(), 1_700_000_000_000);
+  const inputB = makeInput(validRequest(), 1_700_000_000_500);
 
-    const results = await Promise.all([
-      store.insertInsight(inputA),
-      store.insertInsight(inputB)
-    ]);
+  const results = await Promise.all([store.insertInsight(inputA), store.insertInsight(inputB)]);
 
-    const statuses = results.map((r) => r.status).sort();
-    expect(statuses).toEqual(["already_ingested", "created"]);
+  const statuses = results.map((r) => r.status).sort();
+  expect(statuses).toEqual(["already_ingested", "created"]);
 
-    const all = await db.select().from(clmmInsights).execute();
-    expect(all).toHaveLength(1);
-  });
+  const all = await db.select().from(clmmInsights).execute();
+  expect(all).toHaveLength(1);
+});
 
-  it("concurrent different-payload-same-runId: one created, one InsightConflictError", async () => {
-    const inputA = makeInput(validRequest());
-    const inputB = makeInput(validRequest({ confidence: "high" }));
+it("concurrent different-payload-same-runId: one created, one InsightConflictError", async () => {
+  const inputA = makeInput(validRequest());
+  const inputB = makeInput(validRequest({ confidence: "high" }));
 
-    const settled = await Promise.allSettled([
-      store.insertInsight(inputA),
-      store.insertInsight(inputB)
-    ]);
+  const settled = await Promise.allSettled([
+    store.insertInsight(inputA),
+    store.insertInsight(inputB)
+  ]);
 
-    const fulfilled = settled.filter((r) => r.status === "fulfilled");
-    const rejected = settled.filter((r) => r.status === "rejected");
-    expect(fulfilled).toHaveLength(1);
-    expect(rejected).toHaveLength(1);
+  const fulfilled = settled.filter((r) => r.status === "fulfilled");
+  const rejected = settled.filter((r) => r.status === "rejected");
+  expect(fulfilled).toHaveLength(1);
+  expect(rejected).toHaveLength(1);
 
-    const fulfilledValue = (fulfilled[0] as PromiseFulfilledResult<{ status: string }>).value;
-    expect(fulfilledValue.status).toBe("created");
-    expect((rejected[0] as PromiseRejectedResult).reason).toBeInstanceOf(InsightConflictError);
-  });
+  const fulfilledValue = (fulfilled[0] as PromiseFulfilledResult<{ status: string }>).value;
+  expect(fulfilledValue.status).toBe("created");
+  expect((rejected[0] as PromiseRejectedResult).reason).toBeInstanceOf(InsightConflictError);
+});
 ```
 
 - [ ] **Step 2: Run tests**
@@ -1114,6 +1117,7 @@ git commit -m "m25: cover idempotent replay, conflict, and concurrent ingest"
 ## Task 10: `InsightsStore.getCurrent`
 
 **Files:**
+
 - Modify: `src/ledger/insightsStore.ts`
 - Modify: `src/ledger/__tests__/insightsStore.test.ts`
 
@@ -1122,25 +1126,43 @@ git commit -m "m25: cover idempotent replay, conflict, and concurrent ingest"
 In `src/ledger/__tests__/insightsStore.test.ts`, append more cases inside the `describe.skipIf(...)` block:
 
 ```ts
-  it("getCurrent returns null when the table is empty for the pair", async () => {
-    expect(await store.getCurrent("SOL/USDC")).toBeNull();
-  });
+it("getCurrent returns null when the table is empty for the pair", async () => {
+  expect(await store.getCurrent("SOL/USDC")).toBeNull();
+});
 
-  it("getCurrent returns the newest row by (asOfUnixMs DESC, id DESC)", async () => {
-    await store.insertInsight(
-      makeInput(validRequest({ runId: "run-A", asOf: "2026-04-25T00:00:00Z", expiresAt: "2026-04-26T00:00:00Z" }))
-    );
-    await store.insertInsight(
-      makeInput(validRequest({ runId: "run-C", asOf: "2026-04-27T00:00:00Z", expiresAt: "2026-04-28T00:00:00Z" }))
-    );
-    await store.insertInsight(
-      makeInput(validRequest({ runId: "run-B", asOf: "2026-04-26T00:00:00Z", expiresAt: "2026-04-27T00:00:00Z" }))
-    );
+it("getCurrent returns the newest row by (asOfUnixMs DESC, id DESC)", async () => {
+  await store.insertInsight(
+    makeInput(
+      validRequest({
+        runId: "run-A",
+        asOf: "2026-04-25T00:00:00Z",
+        expiresAt: "2026-04-26T00:00:00Z"
+      })
+    )
+  );
+  await store.insertInsight(
+    makeInput(
+      validRequest({
+        runId: "run-C",
+        asOf: "2026-04-27T00:00:00Z",
+        expiresAt: "2026-04-28T00:00:00Z"
+      })
+    )
+  );
+  await store.insertInsight(
+    makeInput(
+      validRequest({
+        runId: "run-B",
+        asOf: "2026-04-26T00:00:00Z",
+        expiresAt: "2026-04-27T00:00:00Z"
+      })
+    )
+  );
 
-    const latest = await store.getCurrent("SOL/USDC");
-    expect(latest).not.toBeNull();
-    expect(latest?.runId).toBe("run-C");
-  });
+  const latest = await store.getCurrent("SOL/USDC");
+  expect(latest).not.toBeNull();
+  expect(latest?.runId).toBe("run-C");
+});
 ```
 
 - [ ] **Step 2: Run tests, see them fail**
@@ -1188,41 +1210,42 @@ git commit -m "m25: getCurrent returns newest insight by asOf desc"
 ## Task 11: `InsightsStore.getHistory` with id tie-breaker
 
 **Files:**
+
 - Modify: `src/ledger/insightsStore.ts`
 - Modify: `src/ledger/__tests__/insightsStore.test.ts`
 
 - [ ] **Step 1: Append failing tests**
 
 ```ts
-  it("getHistory returns rows newest-first by receivedAtUnixMs", async () => {
-    await store.insertInsight(makeInput(validRequest({ runId: "old" }), 1_700_000_000_000));
-    await store.insertInsight(makeInput(validRequest({ runId: "newer" }), 1_700_000_001_000));
-    await store.insertInsight(makeInput(validRequest({ runId: "newest" }), 1_700_000_002_000));
+it("getHistory returns rows newest-first by receivedAtUnixMs", async () => {
+  await store.insertInsight(makeInput(validRequest({ runId: "old" }), 1_700_000_000_000));
+  await store.insertInsight(makeInput(validRequest({ runId: "newer" }), 1_700_000_001_000));
+  await store.insertInsight(makeInput(validRequest({ runId: "newest" }), 1_700_000_002_000));
 
-    const rows = await store.getHistory("SOL/USDC", 30);
-    expect(rows.map((r) => r.runId)).toEqual(["newest", "newer", "old"]);
-  });
+  const rows = await store.getHistory("SOL/USDC", 30);
+  expect(rows.map((r) => r.runId)).toEqual(["newest", "newer", "old"]);
+});
 
-  it("getHistory respects the limit argument", async () => {
-    await store.insertInsight(makeInput(validRequest({ runId: "a" }), 1_700_000_000_000));
-    await store.insertInsight(makeInput(validRequest({ runId: "b" }), 1_700_000_001_000));
-    await store.insertInsight(makeInput(validRequest({ runId: "c" }), 1_700_000_002_000));
+it("getHistory respects the limit argument", async () => {
+  await store.insertInsight(makeInput(validRequest({ runId: "a" }), 1_700_000_000_000));
+  await store.insertInsight(makeInput(validRequest({ runId: "b" }), 1_700_000_001_000));
+  await store.insertInsight(makeInput(validRequest({ runId: "c" }), 1_700_000_002_000));
 
-    const rows = await store.getHistory("SOL/USDC", 2);
-    expect(rows.map((r) => r.runId)).toEqual(["c", "b"]);
-  });
+  const rows = await store.getHistory("SOL/USDC", 2);
+  expect(rows.map((r) => r.runId)).toEqual(["c", "b"]);
+});
 
-  it("getHistory tie-breaks by id DESC when receivedAtUnixMs is equal", async () => {
-    await store.insertInsight(makeInput(validRequest({ runId: "first" }), 1_700_000_000_000));
-    await store.insertInsight(makeInput(validRequest({ runId: "second" }), 1_700_000_000_000));
+it("getHistory tie-breaks by id DESC when receivedAtUnixMs is equal", async () => {
+  await store.insertInsight(makeInput(validRequest({ runId: "first" }), 1_700_000_000_000));
+  await store.insertInsight(makeInput(validRequest({ runId: "second" }), 1_700_000_000_000));
 
-    const rows = await store.getHistory("SOL/USDC", 30);
-    expect(rows.map((r) => r.runId)).toEqual(["second", "first"]);
-  });
+  const rows = await store.getHistory("SOL/USDC", 30);
+  expect(rows.map((r) => r.runId)).toEqual(["second", "first"]);
+});
 
-  it("getHistory returns empty array when table empty", async () => {
-    expect(await store.getHistory("SOL/USDC", 30)).toEqual([]);
-  });
+it("getHistory returns empty array when table empty", async () => {
+  expect(await store.getHistory("SOL/USDC", 30)).toEqual([]);
+});
 ```
 
 - [ ] **Step 2: Run tests, see them fail**
@@ -1262,38 +1285,39 @@ git commit -m "m25: getHistory orders by receivedAt desc with id tie-breaker"
 ## Task 12: `rowToInsightWire` mapping
 
 **Files:**
+
 - Modify: `src/ledger/insightsStore.ts`
 - Modify: `src/ledger/__tests__/insightsStore.test.ts`
 
 - [ ] **Step 1: Append failing test**
 
 ```ts
-  it("rowToInsightWire reconstructs the wire shape including JSONB fields", async () => {
-    const req = validRequest();
-    const inserted = await store.insertInsight(makeInput(req));
-    const { rowToInsightWire } = await import("../insightsStore.js");
+it("rowToInsightWire reconstructs the wire shape including JSONB fields", async () => {
+  const req = validRequest();
+  const inserted = await store.insertInsight(makeInput(req));
+  const { rowToInsightWire } = await import("../insightsStore.js");
 
-    const wire = rowToInsightWire(inserted.row);
+  const wire = rowToInsightWire(inserted.row);
 
-    expect(wire).toEqual({
-      schemaVersion: req.schemaVersion,
-      pair: req.pair,
-      asOf: req.asOf,
-      source: req.source,
-      runId: req.runId,
-      marketRegime: req.marketRegime,
-      fundamentalRegime: req.fundamentalRegime,
-      recommendedAction: req.recommendedAction,
-      confidence: req.confidence,
-      riskLevel: req.riskLevel,
-      dataQuality: req.dataQuality,
-      clmmPolicy: req.clmmPolicy,
-      levels: req.levels,
-      reasoning: req.reasoning,
-      sourceRefs: req.sourceRefs,
-      expiresAt: req.expiresAt
-    });
+  expect(wire).toEqual({
+    schemaVersion: req.schemaVersion,
+    pair: req.pair,
+    asOf: req.asOf,
+    source: req.source,
+    runId: req.runId,
+    marketRegime: req.marketRegime,
+    fundamentalRegime: req.fundamentalRegime,
+    recommendedAction: req.recommendedAction,
+    confidence: req.confidence,
+    riskLevel: req.riskLevel,
+    dataQuality: req.dataQuality,
+    clmmPolicy: req.clmmPolicy,
+    levels: req.levels,
+    reasoning: req.reasoning,
+    sourceRefs: req.sourceRefs,
+    expiresAt: req.expiresAt
   });
+});
 ```
 
 - [ ] **Step 2: Run test, see it fail**
@@ -1350,6 +1374,7 @@ git commit -m "m25: rowToInsightWire reconstructs wire shape from typed columns"
 ## Task 13: Wire `insightsStore.test.ts` into `pnpm run test:pg`
 
 **Files:**
+
 - Modify: `package.json`
 
 - [ ] **Step 1: Edit the `test:pg` script**
@@ -1357,11 +1382,13 @@ git commit -m "m25: rowToInsightWire reconstructs wire shape from typed columns"
 Open `package.json` and locate the `test:pg` script. Append `src/ledger/__tests__/insightsStore.test.ts` to the list of paths:
 
 Before:
+
 ```
 "test:pg": "DATABASE_URL=postgres://test:test@localhost:5432/regime_engine_test PG_SSL=false vitest run src/ledger/pg/__tests__/ src/__tests__/pgStartup.test.ts src/http/__tests__/storeContext.e2e.test.ts src/ledger/__tests__/candleStore.test.ts",
 ```
 
 After:
+
 ```
 "test:pg": "DATABASE_URL=postgres://test:test@localhost:5432/regime_engine_test PG_SSL=false vitest run src/ledger/pg/__tests__/ src/__tests__/pgStartup.test.ts src/http/__tests__/storeContext.e2e.test.ts src/ledger/__tests__/candleStore.test.ts src/ledger/__tests__/insightsStore.test.ts",
 ```
@@ -1383,6 +1410,7 @@ git commit -m "m25: include insightsStore tests in test:pg script"
 ## Task 14: `POST /v1/insights/sol-usdc` handler
 
 **Files:**
+
 - Create: `src/http/handlers/insightsResponses.ts`
 - Create: `src/http/handlers/insightsIngest.ts`
 - Test: `src/http/__tests__/insightsIngest.e2e.test.ts`
@@ -1707,11 +1735,7 @@ export const createInsightsIngestHandler = (store: InsightsStore | null) => {
     }
 
     try {
-      requireSharedSecret(
-        request.headers,
-        "X-Insight-Ingest-Token",
-        "INSIGHT_INGEST_TOKEN"
-      );
+      requireSharedSecret(request.headers, "X-Insight-Ingest-Token", "INSIGHT_INGEST_TOKEN");
 
       const body = parseInsightIngestRequest(request.body);
       const { canonical, hash } = computeInsightCanonicalAndHash(body);
@@ -1812,6 +1836,7 @@ git commit -m "m25: POST /v1/insights/sol-usdc handler with auth, idempotency, c
 ## Task 15: `GET /v1/insights/sol-usdc/current` handler
 
 **Files:**
+
 - Create: `src/http/handlers/insightsCurrent.ts`
 - Test: `src/http/__tests__/insightsCurrent.e2e.test.ts`
 - Modify: `src/http/routes.ts`
@@ -1987,10 +2012,7 @@ Create `src/http/handlers/insightsCurrent.ts`:
 ```ts
 import type { FastifyReply, FastifyRequest } from "fastify";
 import { SCHEMA_VERSION } from "../../contract/v1/types.js";
-import {
-  rowToInsightWire,
-  type InsightsStore
-} from "../../ledger/insightsStore.js";
+import { rowToInsightWire, type InsightsStore } from "../../ledger/insightsStore.js";
 import { respondPostgresUnavailable } from "./insightsResponses.js";
 
 export const createInsightsCurrentHandler = (store: InsightsStore | null) => {
@@ -2066,6 +2088,7 @@ git commit -m "m25: GET /v1/insights/sol-usdc/current with FRESH/STALE envelope"
 ## Task 16: `GET /v1/insights/sol-usdc/history` handler
 
 **Files:**
+
 - Create: `src/http/handlers/insightsHistory.ts`
 - Test: `src/http/__tests__/insightsHistory.e2e.test.ts`
 - Modify: `src/http/routes.ts`
@@ -2268,10 +2291,7 @@ Create `src/http/handlers/insightsHistory.ts`:
 ```ts
 import type { FastifyReply, FastifyRequest } from "fastify";
 import { SCHEMA_VERSION } from "../../contract/v1/types.js";
-import {
-  rowToInsightWire,
-  type InsightsStore
-} from "../../ledger/insightsStore.js";
+import { rowToInsightWire, type InsightsStore } from "../../ledger/insightsStore.js";
 import { respondPostgresUnavailable } from "./insightsResponses.js";
 import { ContractValidationError } from "../errors.js";
 
@@ -2376,6 +2396,7 @@ git commit -m "m25: GET /v1/insights/sol-usdc/history with limit validation"
 ## Task 17: Add insights e2e tests to `pnpm run test:pg`
 
 **Files:**
+
 - Modify: `package.json`
 
 - [ ] **Step 1: Edit `test:pg` to include the three e2e files**
@@ -2409,6 +2430,7 @@ git commit -m "m25: include insights e2e tests in test:pg script"
 ## Task 18: Add insights operations to OpenAPI
 
 **Files:**
+
 - Modify: `src/http/openapi.ts`
 - Create: `src/http/__tests__/insightsOpenapi.test.ts`
 
@@ -2533,6 +2555,7 @@ git commit -m "m25: add insights operations to OpenAPI document"
 ## Task 19: Surface `INSIGHT_INGEST_TOKEN` in `.env.example`
 
 **Files:**
+
 - Modify: `.env.example`
 
 - [ ] **Step 1: Read the current line**
@@ -2608,11 +2631,13 @@ Expected: clean exit; `dist/` contains the new modules.
 - [ ] **Step 6: Smoke-test the dev server (optional but recommended)**
 
 In one terminal:
+
 ```bash
 DATABASE_URL=postgres://test:test@localhost:5432/regime_engine_test PG_SSL=false INSIGHT_INGEST_TOKEN=dev-token pnpm run dev
 ```
 
 In another:
+
 ```bash
 curl -sS http://localhost:8787/v1/insights/sol-usdc/current | jq .
 ```
@@ -2667,39 +2692,39 @@ EOF
 
 ### 1. Spec coverage
 
-| Spec section | Implementing task |
-| --- | --- |
-| §3 Locked-in decisions — table in `regime_engine`, JSONB | Task 1 |
-| §3 Pair-in-path routes | Tasks 14, 15, 16 |
-| §3 Idempotency via `ON CONFLICT DO NOTHING RETURNING` | Tasks 8, 9 |
-| §3 Hash from validated canonical only | Task 5 (`computeInsightCanonicalAndHash`), Task 7 (snapshot) |
-| §3 Source allowlist `["openclaw"]` | Task 5, Task 6 |
-| §3 `marketRegime`/`fundamentalRegime` snake_case | Task 5, Task 6 |
-| §3 Levels cross-field refine | Task 5, Task 6 |
-| §3 Routes always register; 503 short-circuit | Tasks 14–16, helper in Task 14 |
-| §4 New / touched files | All file-creation tasks |
-| §5 Drizzle table, indexes, conventions | Task 1, Task 2 |
-| §5.4 Migration + startup verification | Tasks 2, 3, 4 |
-| §6 Wire vs storage; canonical hash | Task 5, Task 7 |
-| §6.4 Response types | Task 5 |
-| §7.1 InsightsStore | Tasks 8–12 |
-| §7.2 Ingest handler | Task 14 |
-| §7.3 Current handler | Task 15 |
-| §7.4 History handler | Task 16 |
-| §7.5 Route registration | Tasks 14–16 |
-| §8.1 Error codes (incl. INSIGHT_RUN_CONFLICT) | Tasks 8, 14 |
-| §8.2 OpenAPI ops | Task 18 |
-| §8.3 `INSIGHT_INGEST_TOKEN` in `.env.example` | Task 19 |
-| §8.4 OpenAPI test | Task 18 |
-| §9.1 Validation matrix | Task 6 |
-| §9.2 Canonical/hash snapshot | Task 7 |
-| §9.3 Store tests (incl. concurrent + tie-breaker + JSONB round-trip) | Tasks 8–12 |
-| §9.4 Ingest e2e (incl. canonical determinism through API) | Task 14 |
-| §9.5 Current e2e | Task 15 |
-| §9.6 History e2e (incl. limit cap) | Task 16 |
-| §9.7 OpenAPI assertion | Task 18 |
-| §9.8 Required gates | Task 20 |
-| §10 Acceptance criteria | Task 20 verification |
+| Spec section                                                         | Implementing task                                            |
+| -------------------------------------------------------------------- | ------------------------------------------------------------ |
+| §3 Locked-in decisions — table in `regime_engine`, JSONB             | Task 1                                                       |
+| §3 Pair-in-path routes                                               | Tasks 14, 15, 16                                             |
+| §3 Idempotency via `ON CONFLICT DO NOTHING RETURNING`                | Tasks 8, 9                                                   |
+| §3 Hash from validated canonical only                                | Task 5 (`computeInsightCanonicalAndHash`), Task 7 (snapshot) |
+| §3 Source allowlist `["openclaw"]`                                   | Task 5, Task 6                                               |
+| §3 `marketRegime`/`fundamentalRegime` snake_case                     | Task 5, Task 6                                               |
+| §3 Levels cross-field refine                                         | Task 5, Task 6                                               |
+| §3 Routes always register; 503 short-circuit                         | Tasks 14–16, helper in Task 14                               |
+| §4 New / touched files                                               | All file-creation tasks                                      |
+| §5 Drizzle table, indexes, conventions                               | Task 1, Task 2                                               |
+| §5.4 Migration + startup verification                                | Tasks 2, 3, 4                                                |
+| §6 Wire vs storage; canonical hash                                   | Task 5, Task 7                                               |
+| §6.4 Response types                                                  | Task 5                                                       |
+| §7.1 InsightsStore                                                   | Tasks 8–12                                                   |
+| §7.2 Ingest handler                                                  | Task 14                                                      |
+| §7.3 Current handler                                                 | Task 15                                                      |
+| §7.4 History handler                                                 | Task 16                                                      |
+| §7.5 Route registration                                              | Tasks 14–16                                                  |
+| §8.1 Error codes (incl. INSIGHT_RUN_CONFLICT)                        | Tasks 8, 14                                                  |
+| §8.2 OpenAPI ops                                                     | Task 18                                                      |
+| §8.3 `INSIGHT_INGEST_TOKEN` in `.env.example`                        | Task 19                                                      |
+| §8.4 OpenAPI test                                                    | Task 18                                                      |
+| §9.1 Validation matrix                                               | Task 6                                                       |
+| §9.2 Canonical/hash snapshot                                         | Task 7                                                       |
+| §9.3 Store tests (incl. concurrent + tie-breaker + JSONB round-trip) | Tasks 8–12                                                   |
+| §9.4 Ingest e2e (incl. canonical determinism through API)            | Task 14                                                      |
+| §9.5 Current e2e                                                     | Task 15                                                      |
+| §9.6 History e2e (incl. limit cap)                                   | Task 16                                                      |
+| §9.7 OpenAPI assertion                                               | Task 18                                                      |
+| §9.8 Required gates                                                  | Task 20                                                      |
+| §10 Acceptance criteria                                              | Task 20 verification                                         |
 
 ### 2. Placeholder scan
 

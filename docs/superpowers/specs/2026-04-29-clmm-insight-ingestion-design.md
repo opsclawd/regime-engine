@@ -26,21 +26,21 @@ The `recommendedAction` field is interpretation, not authority. Tick math, liqui
 
 ## 3. Locked-in decisions
 
-| Topic | Decision |
-| --- | --- |
-| Persistence | Postgres via Drizzle. Table `clmm_insights` in `regime_engine` schema. JSONB for structured payload fields. |
-| Routes | `POST /v1/insights/sol-usdc`, `GET /v1/insights/sol-usdc/current`, `GET /v1/insights/sol-usdc/history`. Pair-in-path. |
-| Auth (ingest) | `X-Insight-Ingest-Token` header, validated via existing `requireSharedSecret`. Env var `INSIGHT_INGEST_TOKEN`. |
-| `/current` shape | 200 with same envelope for fresh and stale; top-level `status: "FRESH" | "STALE"` plus a `freshness` block. 404 only when no row exists for the pair. |
-| `/history` shape | `{ schemaVersion, pair, limit, items[] }` with full payload per row, default `limit=30`, max `limit=100`, newest-first by `received_at_unix_ms DESC, id DESC`. |
-| Idempotency | Unique `(source, run_id)`. Insertion via `INSERT ... ON CONFLICT DO NOTHING RETURNING`, then SELECT-and-compare. 201 created / 200 already_ingested / 409 `INSIGHT_RUN_CONFLICT`. |
-| Hashing | `payloadHash` is `sha256Hex(canonicalJson(validatedRequest))`. `receivedAt`/`id`/server fields are not in the hash. |
-| Source allowlist | `["openclaw"]` only for MVP. `manual` deferred. |
-| `marketRegime` / `fundamentalRegime` | Bounded lowercase snake_case strings (`/^[a-z][a-z0-9_]*$/`, max 64). Not enums — these are evolving generated labels. |
-| App-safe enums | `recommendedAction`, `confidence`, `riskLevel`, `dataQuality`, and all `clmmPolicy.*` fields are strict enums and safe for app branching. |
-| Levels | Allow empty `support` or empty `resistance`, but **not both** (`support.length + resistance.length >= 1`). |
-| Route registration | Routes always register. Handlers return 503 `POSTGRES_UNAVAILABLE` when the store is null. 500 `SERVER_MISCONFIGURATION` is reserved for missing `INSIGHT_INGEST_TOKEN`. |
-| PG CHECK constraints | None on enum-ish fields. Validation lives at the Zod boundary. |
+| Topic                                | Decision                                                                                                                                                                          |
+| ------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------- |
+| Persistence                          | Postgres via Drizzle. Table `clmm_insights` in `regime_engine` schema. JSONB for structured payload fields.                                                                       |
+| Routes                               | `POST /v1/insights/sol-usdc`, `GET /v1/insights/sol-usdc/current`, `GET /v1/insights/sol-usdc/history`. Pair-in-path.                                                             |
+| Auth (ingest)                        | `X-Insight-Ingest-Token` header, validated via existing `requireSharedSecret`. Env var `INSIGHT_INGEST_TOKEN`.                                                                    |
+| `/current` shape                     | 200 with same envelope for fresh and stale; top-level `status: "FRESH"                                                                                                            | "STALE"`plus a`freshness` block. 404 only when no row exists for the pair. |
+| `/history` shape                     | `{ schemaVersion, pair, limit, items[] }` with full payload per row, default `limit=30`, max `limit=100`, newest-first by `received_at_unix_ms DESC, id DESC`.                    |
+| Idempotency                          | Unique `(source, run_id)`. Insertion via `INSERT ... ON CONFLICT DO NOTHING RETURNING`, then SELECT-and-compare. 201 created / 200 already_ingested / 409 `INSIGHT_RUN_CONFLICT`. |
+| Hashing                              | `payloadHash` is `sha256Hex(canonicalJson(validatedRequest))`. `receivedAt`/`id`/server fields are not in the hash.                                                               |
+| Source allowlist                     | `["openclaw"]` only for MVP. `manual` deferred.                                                                                                                                   |
+| `marketRegime` / `fundamentalRegime` | Bounded lowercase snake*case strings (`/^[a-z]a-z0-9*]\*$/`, max 64). Not enums — these are evolving generated labels.                                                            |
+| App-safe enums                       | `recommendedAction`, `confidence`, `riskLevel`, `dataQuality`, and all `clmmPolicy.*` fields are strict enums and safe for app branching.                                         |
+| Levels                               | Allow empty `support` or empty `resistance`, but **not both** (`support.length + resistance.length >= 1`).                                                                        |
+| Route registration                   | Routes always register. Handlers return 503 `POSTGRES_UNAVAILABLE` when the store is null. 500 `SERVER_MISCONFIGURATION` is reserved for missing `INSIGHT_INGEST_TOKEN`.          |
+| PG CHECK constraints                 | None on enum-ish fields. Validation lives at the Zod boundary.                                                                                                                    |
 
 ## 4. Architecture & module layout
 
@@ -169,46 +169,57 @@ export const clmmInsights = regimeEngine.table(
 ```ts
 const ISO = z.string().datetime({ offset: true });
 const finitePositive = z.number().finite().positive();
-const snakeCaseLabel = z.string().regex(/^[a-z][a-z0-9_]*$/).max(64);
+const snakeCaseLabel = z
+  .string()
+  .regex(/^[a-z][a-z0-9_]*$/)
+  .max(64);
 
-export const insightIngestRequestSchema = z.object({
-  schemaVersion: z.literal("1.0"),
-  pair: z.literal("SOL/USDC"),
-  asOf: ISO,
-  source: z.enum(["openclaw"]),
-  runId: z.string().min(1).max(256),
-  marketRegime: snakeCaseLabel,
-  fundamentalRegime: snakeCaseLabel,
-  recommendedAction: z.enum([
-    "hold", "watch", "tighten_range", "widen_range",
-    "exit_range", "pause_rebalances"
-  ]),
-  confidence: z.enum(["low", "medium", "high"]),
-  riskLevel: z.enum(["normal", "elevated", "critical"]),
-  dataQuality: z.enum(["complete", "partial", "stale"]),
-  clmmPolicy: z.object({
-    posture: z.enum([
-      "aggressive", "moderately_aggressive", "neutral", "defensive", "paused"
+export const insightIngestRequestSchema = z
+  .object({
+    schemaVersion: z.literal("1.0"),
+    pair: z.literal("SOL/USDC"),
+    asOf: ISO,
+    source: z.enum(["openclaw"]),
+    runId: z.string().min(1).max(256),
+    marketRegime: snakeCaseLabel,
+    fundamentalRegime: snakeCaseLabel,
+    recommendedAction: z.enum([
+      "hold",
+      "watch",
+      "tighten_range",
+      "widen_range",
+      "exit_range",
+      "pause_rebalances"
     ]),
-    rangeBias: z.enum(["tight", "medium", "wide", "passive"]),
-    rebalanceSensitivity: z.enum(["low", "normal", "high", "paused"]),
-    maxCapitalDeploymentPercent: z.number().min(0).max(100)
-  }).strict(),
-  levels: z.object({
-    support: z.array(finitePositive).max(16),
-    resistance: z.array(finitePositive).max(16)
-  }).strict().refine(
-    (v) => v.support.length + v.resistance.length >= 1,
-    { message: "at least one support or resistance level is required" }
-  ),
-  reasoning: z.array(z.string().min(1).max(1024)).max(16),
-  sourceRefs: z.array(z.string().min(1).max(512)).max(16),
-  expiresAt: ISO
-}).strict()
-  .refine(
-    (v) => Date.parse(v.expiresAt) > Date.parse(v.asOf),
-    { path: ["expiresAt"], message: "expiresAt must be greater than asOf" }
-  );
+    confidence: z.enum(["low", "medium", "high"]),
+    riskLevel: z.enum(["normal", "elevated", "critical"]),
+    dataQuality: z.enum(["complete", "partial", "stale"]),
+    clmmPolicy: z
+      .object({
+        posture: z.enum(["aggressive", "moderately_aggressive", "neutral", "defensive", "paused"]),
+        rangeBias: z.enum(["tight", "medium", "wide", "passive"]),
+        rebalanceSensitivity: z.enum(["low", "normal", "high", "paused"]),
+        maxCapitalDeploymentPercent: z.number().min(0).max(100)
+      })
+      .strict(),
+    levels: z
+      .object({
+        support: z.array(finitePositive).max(16),
+        resistance: z.array(finitePositive).max(16)
+      })
+      .strict()
+      .refine((v) => v.support.length + v.resistance.length >= 1, {
+        message: "at least one support or resistance level is required"
+      }),
+    reasoning: z.array(z.string().min(1).max(1024)).max(16),
+    sourceRefs: z.array(z.string().min(1).max(512)).max(16),
+    expiresAt: ISO
+  })
+  .strict()
+  .refine((v) => Date.parse(v.expiresAt) > Date.parse(v.asOf), {
+    path: ["expiresAt"],
+    message: "expiresAt must be greater than asOf"
+  });
 
 export type InsightIngestRequest = z.infer<typeof insightIngestRequestSchema>;
 ```
@@ -253,9 +264,9 @@ type InsightCurrentResponse = InsightIngestRequest & {
   payloadHash: string;
   receivedAtIso: string;
   freshness: {
-    generatedAtIso: string;   // = asOf
-    expiresAtIso: string;     // = expiresAt
-    ageSeconds: number;       // floor((now - asOf) / 1000)
+    generatedAtIso: string; // = asOf
+    expiresAtIso: string; // = expiresAt
+    ageSeconds: number; // floor((now - asOf) / 1000)
     stale: boolean;
   };
 };
@@ -264,10 +275,12 @@ type InsightHistoryResponse = {
   schemaVersion: "1.0";
   pair: "SOL/USDC";
   limit: number;
-  items: Array<InsightIngestRequest & {
-    payloadHash: string;
-    receivedAtIso: string;
-  }>;
+  items: Array<
+    InsightIngestRequest & {
+      payloadHash: string;
+      receivedAtIso: string;
+    }
+  >;
 };
 ```
 
@@ -286,13 +299,16 @@ export const INSIGHT_ERROR_CODES = {
 
 export class InsightConflictError extends Error {
   public readonly code = INSIGHT_ERROR_CODES.RUN_CONFLICT;
-  public constructor(public source: string, public runId: string) {
+  public constructor(
+    public source: string,
+    public runId: string
+  ) {
     super(`Insight conflict for source="${source}", runId="${runId}"`);
   }
 }
 
 export interface InsightInsertInput {
-  request: InsightIngestRequest;   // validated wire object
+  request: InsightIngestRequest; // validated wire object
   payloadCanonical: string;
   payloadHash: string;
   receivedAtUnixMs: number;
@@ -306,27 +322,29 @@ export class InsightsStore {
   public constructor(private db: Db) {}
 
   public async insertInsight(input: InsightInsertInput): Promise<InsightInsertResult> {
-    const inserted = await this.db.insert(clmmInsights).values({
-      schemaVersion: input.request.schemaVersion,
-      pair: input.request.pair,
-      asOfUnixMs: Date.parse(input.request.asOf),
-      source: input.request.source,
-      runId: input.request.runId,
-      marketRegime: input.request.marketRegime,
-      fundamentalRegime: input.request.fundamentalRegime,
-      recommendedAction: input.request.recommendedAction,
-      confidence: input.request.confidence,
-      riskLevel: input.request.riskLevel,
-      dataQuality: input.request.dataQuality,
-      clmmPolicyJson: input.request.clmmPolicy,
-      levelsJson: input.request.levels,
-      reasoningJson: input.request.reasoning,
-      sourceRefsJson: input.request.sourceRefs,
-      payloadCanonical: input.payloadCanonical,
-      payloadHash: input.payloadHash,
-      expiresAtUnixMs: Date.parse(input.request.expiresAt),
-      receivedAtUnixMs: input.receivedAtUnixMs
-    })
+    const inserted = await this.db
+      .insert(clmmInsights)
+      .values({
+        schemaVersion: input.request.schemaVersion,
+        pair: input.request.pair,
+        asOfUnixMs: Date.parse(input.request.asOf),
+        source: input.request.source,
+        runId: input.request.runId,
+        marketRegime: input.request.marketRegime,
+        fundamentalRegime: input.request.fundamentalRegime,
+        recommendedAction: input.request.recommendedAction,
+        confidence: input.request.confidence,
+        riskLevel: input.request.riskLevel,
+        dataQuality: input.request.dataQuality,
+        clmmPolicyJson: input.request.clmmPolicy,
+        levelsJson: input.request.levels,
+        reasoningJson: input.request.reasoning,
+        sourceRefsJson: input.request.sourceRefs,
+        payloadCanonical: input.payloadCanonical,
+        payloadHash: input.payloadHash,
+        expiresAtUnixMs: Date.parse(input.request.expiresAt),
+        receivedAtUnixMs: input.receivedAtUnixMs
+      })
       .onConflictDoNothing({ target: [clmmInsights.source, clmmInsights.runId] })
       .returning();
 
@@ -334,11 +352,15 @@ export class InsightsStore {
       return { status: "created", row: inserted[0] };
     }
 
-    const [existing] = await this.db.select().from(clmmInsights)
-      .where(and(
-        eq(clmmInsights.source, input.request.source),
-        eq(clmmInsights.runId, input.request.runId)
-      ))
+    const [existing] = await this.db
+      .select()
+      .from(clmmInsights)
+      .where(
+        and(
+          eq(clmmInsights.source, input.request.source),
+          eq(clmmInsights.runId, input.request.runId)
+        )
+      )
       .limit(1);
 
     if (!existing) {
@@ -352,8 +374,12 @@ export class InsightsStore {
     throw new InsightConflictError(input.request.source, input.request.runId);
   }
 
-  public async getCurrent(pair: string): Promise<InsightRow | null> { /* ... */ }
-  public async getHistory(pair: string, limit: number): Promise<InsightRow[]> { /* ... */ }
+  public async getCurrent(pair: string): Promise<InsightRow | null> {
+    /* ... */
+  }
+  public async getHistory(pair: string, limit: number): Promise<InsightRow[]> {
+    /* ... */
+  }
 }
 ```
 
@@ -364,9 +390,7 @@ export class InsightsStore {
 ### 7.2 Handler — `insightsIngest.ts`
 
 ```ts
-export const createInsightsIngestHandler = (
-  store: InsightsStore | null
-) => {
+export const createInsightsIngestHandler = (store: InsightsStore | null) => {
   return async (request: FastifyRequest, reply: FastifyReply) => {
     if (!store) return respondPostgresUnavailable(reply);
     try {
@@ -376,8 +400,10 @@ export const createInsightsIngestHandler = (
       const receivedAtUnixMs = Date.now();
 
       const result = await store.insertInsight({
-        request: body, payloadCanonical: canonical,
-        payloadHash: hash, receivedAtUnixMs
+        request: body,
+        payloadCanonical: canonical,
+        payloadHash: hash,
+        receivedAtUnixMs
       });
 
       if (result.status === "already_ingested") {
@@ -397,7 +423,8 @@ export const createInsightsIngestHandler = (
       });
     } catch (error) {
       if (error instanceof AuthError) return reply.code(error.statusCode).send(error.response);
-      if (error instanceof ContractValidationError) return reply.code(error.statusCode).send(error.response);
+      if (error instanceof ContractValidationError)
+        return reply.code(error.statusCode).send(error.response);
       if (error instanceof InsightConflictError) {
         return reply.code(409).send({
           schemaVersion: SCHEMA_VERSION,
@@ -417,33 +444,32 @@ export const createInsightsIngestHandler = (
 ### 7.3 Handler — `insightsCurrent.ts`
 
 ```ts
-export const createInsightsCurrentHandler = (
-  store: InsightsStore | null
-) => async (_req, reply) => {
-  if (!store) return respondPostgresUnavailable(reply);
-  const row = await store.getCurrent("SOL/USDC");
-  if (!row) {
-    return reply.code(404).send({
-      schemaVersion: SCHEMA_VERSION,
-      error: { code: "NOT_FOUND", message: "No insight available for SOL/USDC.", details: [] }
-    });
-  }
-  const now = Date.now();
-  const stale = now > row.expiresAtUnixMs;
-  const wire = rowToInsightWire(row);
-  return reply.code(200).send({
-    ...wire,
-    status: stale ? "STALE" : "FRESH",
-    payloadHash: row.payloadHash,
-    receivedAtIso: new Date(row.receivedAtUnixMs).toISOString(),
-    freshness: {
-      generatedAtIso: wire.asOf,
-      expiresAtIso: wire.expiresAt,
-      ageSeconds: Math.floor((now - row.asOfUnixMs) / 1000),
-      stale
+export const createInsightsCurrentHandler =
+  (store: InsightsStore | null) => async (_req, reply) => {
+    if (!store) return respondPostgresUnavailable(reply);
+    const row = await store.getCurrent("SOL/USDC");
+    if (!row) {
+      return reply.code(404).send({
+        schemaVersion: SCHEMA_VERSION,
+        error: { code: "NOT_FOUND", message: "No insight available for SOL/USDC.", details: [] }
+      });
     }
-  });
-};
+    const now = Date.now();
+    const stale = now > row.expiresAtUnixMs;
+    const wire = rowToInsightWire(row);
+    return reply.code(200).send({
+      ...wire,
+      status: stale ? "STALE" : "FRESH",
+      payloadHash: row.payloadHash,
+      receivedAtIso: new Date(row.receivedAtUnixMs).toISOString(),
+      freshness: {
+        generatedAtIso: wire.asOf,
+        expiresAtIso: wire.expiresAt,
+        ageSeconds: Math.floor((now - row.asOfUnixMs) / 1000),
+        stale
+      }
+    });
+  };
 ```
 
 ### 7.4 Handler — `insightsHistory.ts`
@@ -452,27 +478,26 @@ export const createInsightsCurrentHandler = (
 const HISTORY_DEFAULT_LIMIT = 30;
 const HISTORY_MAX_LIMIT = 100;
 
-export const createInsightsHistoryHandler = (
-  store: InsightsStore | null
-) => async (request, reply) => {
-  if (!store) return respondPostgresUnavailable(reply);
-  const raw = (request.query as Record<string, unknown>).limit;
-  const parsed = parseHistoryLimit(raw);
-  if (parsed instanceof ContractValidationError) {
-    return reply.code(parsed.statusCode).send(parsed.response);
-  }
-  const rows = await store.getHistory("SOL/USDC", parsed);
-  return reply.code(200).send({
-    schemaVersion: SCHEMA_VERSION,
-    pair: "SOL/USDC",
-    limit: parsed,
-    items: rows.map((r) => ({
-      ...rowToInsightWire(r),
-      payloadHash: r.payloadHash,
-      receivedAtIso: new Date(r.receivedAtUnixMs).toISOString()
-    }))
-  });
-};
+export const createInsightsHistoryHandler =
+  (store: InsightsStore | null) => async (request, reply) => {
+    if (!store) return respondPostgresUnavailable(reply);
+    const raw = (request.query as Record<string, unknown>).limit;
+    const parsed = parseHistoryLimit(raw);
+    if (parsed instanceof ContractValidationError) {
+      return reply.code(parsed.statusCode).send(parsed.response);
+    }
+    const rows = await store.getHistory("SOL/USDC", parsed);
+    return reply.code(200).send({
+      schemaVersion: SCHEMA_VERSION,
+      pair: "SOL/USDC",
+      limit: parsed,
+      items: rows.map((r) => ({
+        ...rowToInsightWire(r),
+        payloadHash: r.payloadHash,
+        receivedAtIso: new Date(r.receivedAtUnixMs).toISOString()
+      }))
+    });
+  };
 
 const parseHistoryLimit = (raw: unknown): number | ContractValidationError => {
   if (raw === undefined) return HISTORY_DEFAULT_LIMIT;
@@ -489,9 +514,9 @@ const parseHistoryLimit = (raw: unknown): number | ContractValidationError => {
 ```ts
 const insightsStore = storeContext ? new InsightsStore(storeContext.pg) : null;
 
-app.post("/v1/insights/sol-usdc",         createInsightsIngestHandler(insightsStore));
-app.get ("/v1/insights/sol-usdc/current", createInsightsCurrentHandler(insightsStore));
-app.get ("/v1/insights/sol-usdc/history", createInsightsHistoryHandler(insightsStore));
+app.post("/v1/insights/sol-usdc", createInsightsIngestHandler(insightsStore));
+app.get("/v1/insights/sol-usdc/current", createInsightsCurrentHandler(insightsStore));
+app.get("/v1/insights/sol-usdc/history", createInsightsHistoryHandler(insightsStore));
 ```
 
 `respondPostgresUnavailable(reply)` is a small shared helper in `insightsIngest.ts` (or a peer module) that emits `503 POSTGRES_UNAVAILABLE` with the standard error envelope. Routes always register. Handlers short-circuit to that response when `store` is `null` — whether `DATABASE_URL` is unset or whether store construction failed.
@@ -502,24 +527,24 @@ app.get ("/v1/insights/sol-usdc/history", createInsightsHistoryHandler(insightsS
 
 The standard envelope is unchanged: `{ schemaVersion, error: { code, message, details: [] } }`.
 
-| Code | HTTP | When |
-| --- | --- | --- |
-| `UNAUTHORIZED` | 401 | Missing/bad `X-Insight-Ingest-Token`. |
-| `SERVER_MISCONFIGURATION` | 500 | `INSIGHT_INGEST_TOKEN` env not set on POST. |
-| `POSTGRES_UNAVAILABLE` | 503 | The insights `InsightsStore` is null (whether `DATABASE_URL` unset or store construction failed). |
-| `VALIDATION_ERROR` | 400 | Zod parse failure on POST body or `?limit` query. |
-| `INSIGHT_RUN_CONFLICT` | 409 | Same `(source, runId)` posted with a different canonical payload. |
-| `NOT_FOUND` | 404 | `/current` with no row for the pair. |
+| Code                      | HTTP | When                                                                                              |
+| ------------------------- | ---- | ------------------------------------------------------------------------------------------------- |
+| `UNAUTHORIZED`            | 401  | Missing/bad `X-Insight-Ingest-Token`.                                                             |
+| `SERVER_MISCONFIGURATION` | 500  | `INSIGHT_INGEST_TOKEN` env not set on POST.                                                       |
+| `POSTGRES_UNAVAILABLE`    | 503  | The insights `InsightsStore` is null (whether `DATABASE_URL` unset or store construction failed). |
+| `VALIDATION_ERROR`        | 400  | Zod parse failure on POST body or `?limit` query.                                                 |
+| `INSIGHT_RUN_CONFLICT`    | 409  | Same `(source, runId)` posted with a different canonical payload.                                 |
+| `NOT_FOUND`               | 404  | `/current` with no row for the pair.                                                              |
 
 `INSIGHT_RUN_CONFLICT` is the only new code. It is surfaced as `INSIGHT_ERROR_CODES.RUN_CONFLICT` from `src/ledger/insightsStore.ts` (mirrors `LEDGER_ERROR_CODES` from `srLevelsWriter`).
 
 ### 8.2 OpenAPI — `src/http/openapi.ts`
 
-| Operation ID | Method/path | Request | 2xx response | Error responses |
-| --- | --- | --- | --- | --- |
-| `ingestClmmInsight` | POST `/v1/insights/sol-usdc` | `InsightIngestRequest` | 201 `InsightIngestCreated` / 200 `InsightIngestAlreadyIngested` | 400, 401, 409, 500, 503 |
-| `getCurrentClmmInsight` | GET `/v1/insights/sol-usdc/current` | — | 200 `InsightCurrentResponse` | 404, 503 |
-| `getClmmInsightHistory` | GET `/v1/insights/sol-usdc/history` | `?limit` | 200 `InsightHistoryResponse` | 400, 503 |
+| Operation ID            | Method/path                         | Request                | 2xx response                                                    | Error responses         |
+| ----------------------- | ----------------------------------- | ---------------------- | --------------------------------------------------------------- | ----------------------- |
+| `ingestClmmInsight`     | POST `/v1/insights/sol-usdc`        | `InsightIngestRequest` | 201 `InsightIngestCreated` / 200 `InsightIngestAlreadyIngested` | 400, 401, 409, 500, 503 |
+| `getCurrentClmmInsight` | GET `/v1/insights/sol-usdc/current` | —                      | 200 `InsightCurrentResponse`                                    | 404, 503                |
+| `getClmmInsightHistory` | GET `/v1/insights/sol-usdc/history` | `?limit`               | 200 `InsightHistoryResponse`                                    | 400, 503                |
 
 Schemas added under `components.schemas`:
 
@@ -530,7 +555,7 @@ Schemas added under `components.schemas`:
 
 ### 8.3 Configuration
 
-- **`INSIGHT_INGEST_TOKEN`** — required for POST. Currently present as the commented line `# INSIGHT_INGEST_TOKEN=` in `.env.example`. Implementation will surface (uncomment) the line in `.env.example`. `OPENCLAW_INGEST_TOKEN` (used by SR-levels) is *not* reused — separate authorities, independent rotation.
+- **`INSIGHT_INGEST_TOKEN`** — required for POST. Currently present as the commented line `# INSIGHT_INGEST_TOKEN=` in `.env.example`. Implementation will surface (uncomment) the line in `.env.example`. `OPENCLAW_INGEST_TOKEN` (used by SR-levels) is _not_ reused — separate authorities, independent rotation.
 - **`DATABASE_URL`** — required. No new addition; already used by `StoreContext`.
 - **`PG_SSL`, `PG_MAX_CONNECTIONS`** — unchanged. Already handled by `createDb`.
 
