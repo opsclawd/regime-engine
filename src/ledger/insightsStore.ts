@@ -3,15 +3,14 @@ import { clmmInsights } from "./pg/schema/index.js";
 import type { ClmmInsightRow } from "./pg/schema/index.js";
 import type { Db } from "./pg/db.js";
 import type { InsightIngestRequest } from "../contract/v1/insights.js";
+import { parseInsightRowEnums } from "../contract/v1/insights.js";
 
 export const INSIGHT_ERROR_CODES = {
   RUN_CONFLICT: "INSIGHT_RUN_CONFLICT"
 } as const;
 
-type InsightErrorCode = (typeof INSIGHT_ERROR_CODES)[keyof typeof INSIGHT_ERROR_CODES];
-
 export class InsightConflictError extends Error {
-  public readonly code: InsightErrorCode = INSIGHT_ERROR_CODES.RUN_CONFLICT;
+  public readonly errorCode: string = INSIGHT_ERROR_CODES.RUN_CONFLICT;
 
   public constructor(public readonly source: string, public readonly runId: string) {
     super(`Insight conflict for source="${source}", runId="${runId}"`);
@@ -30,22 +29,11 @@ export type InsightInsertResult =
   | { status: "already_ingested"; row: ClmmInsightRow };
 
 export const rowToInsightWire = (row: ClmmInsightRow): InsightIngestRequest => {
+  const parsed = parseInsightRowEnums(row);
   return {
-    schemaVersion: row.schemaVersion as InsightIngestRequest["schemaVersion"],
-    pair: row.pair as InsightIngestRequest["pair"],
+    ...parsed,
     asOf: new Date(row.asOfUnixMs).toISOString(),
-    source: row.source as InsightIngestRequest["source"],
     runId: row.runId,
-    marketRegime: row.marketRegime,
-    fundamentalRegime: row.fundamentalRegime,
-    recommendedAction: row.recommendedAction as InsightIngestRequest["recommendedAction"],
-    confidence: row.confidence as InsightIngestRequest["confidence"],
-    riskLevel: row.riskLevel as InsightIngestRequest["riskLevel"],
-    dataQuality: row.dataQuality as InsightIngestRequest["dataQuality"],
-    clmmPolicy: row.clmmPolicyJson as InsightIngestRequest["clmmPolicy"],
-    levels: row.levelsJson as InsightIngestRequest["levels"],
-    reasoning: row.reasoningJson as InsightIngestRequest["reasoning"],
-    sourceRefs: row.sourceRefsJson as InsightIngestRequest["sourceRefs"],
     expiresAt: new Date(row.expiresAtUnixMs).toISOString()
   };
 };

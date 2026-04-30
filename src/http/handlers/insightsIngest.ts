@@ -7,15 +7,24 @@ import type {
 import { parseInsightIngestRequest, computeInsightCanonicalAndHash } from "../../contract/v1/insights.js";
 import { InsightsStore, InsightConflictError } from "../../ledger/insightsStore.js";
 import { AuthError, requireSharedSecret } from "../auth.js";
-import { ContractValidationError } from "../errors.js";
+import { ContractValidationError, ERROR_CODES } from "../errors.js";
 
 export const createInsightsIngestHandler = (insightsStore: InsightsStore | null) => {
   return async (request: FastifyRequest, reply: FastifyReply) => {
+    try {
+      requireSharedSecret(request.headers, "X-Insight-Ingest-Token", "INSIGHT_INGEST_TOKEN");
+    } catch (error) {
+      if (error instanceof AuthError) {
+        return reply.code(error.statusCode).send(error.response);
+      }
+      throw error;
+    }
+
     if (!insightsStore) {
       return reply.code(503).send({
         schemaVersion: SCHEMA_VERSION,
         error: {
-          code: "SERVICE_UNAVAILABLE",
+          code: ERROR_CODES.SERVICE_UNAVAILABLE,
           message: "Insights store is not available (no DATABASE_URL configured)",
           details: []
         }
@@ -23,8 +32,6 @@ export const createInsightsIngestHandler = (insightsStore: InsightsStore | null)
     }
 
     try {
-      requireSharedSecret(request.headers, "X-Insight-Ingest-Token", "INSIGHT_INGEST_TOKEN");
-
       const parsed = parseInsightIngestRequest(request.body);
       const { hash, canonical } = computeInsightCanonicalAndHash(parsed);
       const receivedAtUnixMs = Date.now();
@@ -55,9 +62,6 @@ export const createInsightsIngestHandler = (insightsStore: InsightsStore | null)
       };
       return reply.code(200).send(response);
     } catch (error) {
-      if (error instanceof AuthError) {
-        return reply.code(error.statusCode).send(error.response);
-      }
       if (error instanceof ContractValidationError) {
         return reply.code(error.statusCode).send(error.response);
       }
@@ -65,7 +69,7 @@ export const createInsightsIngestHandler = (insightsStore: InsightsStore | null)
         return reply.code(409).send({
           schemaVersion: SCHEMA_VERSION,
           error: {
-            code: "INSIGHT_RUN_CONFLICT",
+            code: ERROR_CODES.INSIGHT_RUN_CONFLICT,
             message: `Insight conflict for source="${error.source}", runId="${error.runId}"`,
             details: []
           }
@@ -74,7 +78,7 @@ export const createInsightsIngestHandler = (insightsStore: InsightsStore | null)
       request.log.error(error, "Unhandled error in POST /v1/insights/sol-usdc");
       return reply.code(500).send({
         schemaVersion: SCHEMA_VERSION,
-        error: { code: "INTERNAL_ERROR", message: "Internal server error", details: [] }
+        error: { code: ERROR_CODES.INTERNAL_ERROR, message: "Internal server error", details: [] }
       });
     }
   };

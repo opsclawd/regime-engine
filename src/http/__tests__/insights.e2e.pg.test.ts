@@ -40,6 +40,7 @@ try {
   const result = createDb(PG_CONNECTION_STRING);
   db = result.db;
   pgClient = result.client;
+  pgAvailable = true;
 } catch {
   pgAvailable = false;
 }

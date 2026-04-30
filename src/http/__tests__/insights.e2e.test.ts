@@ -36,11 +36,13 @@ describe("Insights endpoints without DATABASE_URL", () => {
   it("POST /v1/insights/sol-usdc returns 503 when DATABASE_URL is not configured", async () => {
     process.env.LEDGER_DB_PATH = ":memory:";
     delete process.env.DATABASE_URL;
+    process.env.INSIGHT_INGEST_TOKEN = "test-token";
     const app = buildApp();
 
     const res = await app.inject({
       method: "POST",
       url: "/v1/insights/sol-usdc",
+      headers: { "X-Insight-Ingest-Token": "test-token" },
       payload: makePayload()
     });
     expect(res.statusCode).toBe(503);

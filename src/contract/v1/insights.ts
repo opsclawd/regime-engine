@@ -123,6 +123,44 @@ export interface InsightIngestAlreadyIngestedResponse {
   payloadHash: string;
 }
 
+export const parseInsightRowEnums = (row: {
+  marketRegime: string;
+  fundamentalRegime: string;
+  recommendedAction: string;
+  confidence: string;
+  riskLevel: string;
+  dataQuality: string;
+  source: string;
+  clmmPolicyJson: unknown;
+  levelsJson: unknown;
+  reasoningJson: unknown;
+  sourceRefsJson: unknown;
+}): InsightIngestRequest => {
+  const clmmPolicy = clmmPolicySchema.parse(row.clmmPolicyJson);
+  const levels = levelsSchema.parse(row.levelsJson);
+  const reasoning = z.array(z.string().min(1).max(1024)).max(16).parse(row.reasoningJson);
+  const sourceRefs = z.array(z.string().min(1).max(512)).max(16).parse(row.sourceRefsJson);
+
+  return {
+    schemaVersion: SCHEMA_VERSION,
+    pair: "SOL/USDC",
+    asOf: "", // filled by caller from asOfUnixMs
+    source: z.enum(["openclaw"]).parse(row.source),
+    runId: "", // filled by caller
+    marketRegime: row.marketRegime,
+    fundamentalRegime: row.fundamentalRegime,
+    recommendedAction: z.enum(RECOMMENDED_ACTIONS).parse(row.recommendedAction),
+    confidence: z.enum(CONFIDENCES).parse(row.confidence),
+    riskLevel: z.enum(RISK_LEVELS).parse(row.riskLevel),
+    dataQuality: z.enum(DATA_QUALITIES).parse(row.dataQuality),
+    clmmPolicy,
+    levels,
+    reasoning,
+    sourceRefs,
+    expiresAt: "" // filled by caller from expiresAtUnixMs
+  };
+};
+
 export const parseInsightIngestRequest = (raw: unknown): InsightIngestRequest => {
   const probe = z.object({ schemaVersion: z.string() }).passthrough().safeParse(raw);
   if (probe.success && probe.data.schemaVersion !== SCHEMA_VERSION) {
