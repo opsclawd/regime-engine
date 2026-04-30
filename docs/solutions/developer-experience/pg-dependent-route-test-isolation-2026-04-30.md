@@ -47,7 +47,8 @@ const ctx: StoreContext = {
   pg: {} as never,
   pgClient: { end: pgClientEnd } as never,
   candleStore: {} as never,
-  insightsStore: {} as never
+  insightsStore: {} as never,
+  srThesesV2Store: {} as never
 };
 ```
 
@@ -56,7 +57,7 @@ const ctx: StoreContext = {
 Update both the `.toHaveLength(N)` count and the `expect.arrayContaining()` list when routes are added, in the same commit:
 
 ```typescript
-expect(paths).toHaveLength(14);
+expect(paths).toHaveLength(16);
 expect(paths).toEqual(
   expect.arrayContaining([
     "/health",
@@ -72,7 +73,9 @@ expect(paths).toEqual(
     "/v1/regime/current",
     "/v1/insights/sol-usdc",
     "/v1/insights/sol-usdc/current",
-    "/v1/insights/sol-usdc/history"
+    "/v1/insights/sol-usdc/history",
+    "/v2/sr-levels",
+    "/v2/sr-levels/current"
   ])
 );
 ```
@@ -220,20 +223,21 @@ const ctx: StoreContext = {
   pg: {} as never,
   pgClient: { end: async () => {} } as never,
   candleStore: {} as never,
-  insightsStore: {} as never
+  insightsStore: {} as never,
+  srThesesV2Store: {} as never
 };
 ```
 
 ### Before (broken — hardcoded count)
 
 ```typescript
-expect(paths).toHaveLength(11); // fails: actual is 14 after adding 3 insight routes
+expect(paths).toHaveLength(14); // fails: actual is 16 after adding 2 v2 routes
 ```
 
 ### After (fixed)
 
 ```typescript
-expect(paths).toHaveLength(14);
+expect(paths).toHaveLength(16);
 expect(paths).toEqual(
   expect.arrayContaining([
     "/health",
@@ -249,7 +253,9 @@ expect(paths).toEqual(
     "/v1/regime/current",
     "/v1/insights/sol-usdc",
     "/v1/insights/sol-usdc/current",
-    "/v1/insights/sol-usdc/history"
+    "/v1/insights/sol-usdc/history",
+    "/v2/sr-levels",
+    "/v2/sr-levels/current"
   ])
 );
 ```
@@ -259,4 +265,6 @@ expect(paths).toEqual(
 - [Health probe separation and coverage](../best-practices/health-probe-separation-and-coverage-2026-04-28.md) — Establishes the design decision that PG-down branches are covered by unit tests only; this doc provides the concrete `describe.skipIf` mechanism
 - [Smoke tests runbook](../documentation-gaps/regime-engine-deploy-docs-smoke-tests-runbook-2026-04-19.md) — Covers OpenAPI presence assertions; this doc extends with the `toHaveLength` pitfall
 - [Postgres schema isolation](../best-practices/postgres-schema-isolation-2026-04-28.md) — Defines `StoreContext` interface; this doc covers mock propagation when extending it
-- GitHub #20 — Add SOL/USDC CLMM insight ingestion and serving API (feature that triggered these patterns)
+- [Additive v2 S/R thesis storage](../best-practices/additive-v2-sr-thesis-storage-2026-04-30.md) — The v2 routes that triggered the path count update (14→16) and StoreContext extension
+- GitHub #20 — Add SOL/USDC CLMM insight ingestion and serving API
+- GitHub #21 — v2 S/R Levels — Raw Thesis Storage Endpoint
