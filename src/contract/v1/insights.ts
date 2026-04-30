@@ -184,7 +184,12 @@ export const parseInsightIngestRequest = (raw: unknown): InsightIngestRequest =>
 export const computeInsightCanonicalAndHash = (
   req: InsightIngestRequest
 ): { canonical: string; hash: string } => {
-  const canonical = toCanonicalJson(req);
+  const normalized = {
+    ...req,
+    asOf: new Date(req.asOf).toISOString(),
+    expiresAt: new Date(req.expiresAt).toISOString()
+  };
+  const canonical = toCanonicalJson(normalized);
   const hash = sha256Hex(canonical);
   return { canonical, hash };
 };

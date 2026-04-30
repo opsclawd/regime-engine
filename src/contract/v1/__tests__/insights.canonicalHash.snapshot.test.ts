@@ -71,4 +71,29 @@ describe("insight canonical JSON + payload hash", () => {
       computeInsightCanonicalAndHash(fixtureB as never).hash
     );
   });
+
+  it("produces same hash for semantically identical timestamps in different ISO formats", () => {
+    const noMillis = {
+      ...fixtureA,
+      asOf: "2026-04-27T13:00:00Z",
+      expiresAt: "2026-04-28T13:00:00Z"
+    } as const;
+    const withMillis = {
+      ...fixtureA,
+      asOf: "2026-04-27T13:00:00.000Z",
+      expiresAt: "2026-04-28T13:00:00.000Z"
+    } as const;
+    const withOffset = {
+      ...fixtureA,
+      asOf: "2026-04-27T13:00:00+00:00",
+      expiresAt: "2026-04-28T13:00:00+00:00"
+    } as const;
+
+    const hashNoMillis = computeInsightCanonicalAndHash(noMillis as never).hash;
+    const hashWithMillis = computeInsightCanonicalAndHash(withMillis as never).hash;
+    const hashWithOffset = computeInsightCanonicalAndHash(withOffset as never).hash;
+
+    expect(hashNoMillis).toBe(hashWithMillis);
+    expect(hashNoMillis).toBe(hashWithOffset);
+  });
 });
