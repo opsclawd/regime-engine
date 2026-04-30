@@ -67,6 +67,8 @@ describe("GET /v1/openapi.json", () => {
         "/v1/sr-levels/current"
       ])
     );
+    // Avoid toHaveLength(N) — it breaks every time a route is added.
+    // See PG-dependent test isolation doc for the full pattern.
   });
 });
 ```
@@ -237,5 +239,6 @@ Links to `docs/runbooks/railway-deploy.md` for the full 8-check curl sequence pl
 ## Related
 
 - [`docs/solutions/best-practices/fastify-sqlite-ingestion-endpoint-patterns-2026-04-18.md`](../best-practices/fastify-sqlite-ingestion-endpoint-patterns-2026-04-18.md) — Cross-cutting auth/idempotency/transaction patterns for the ingestion endpoints that this deploy readiness doc expects operators to curl
+- [`docs/solutions/developer-experience/pg-dependent-route-test-isolation-2026-04-30.md`](../developer-experience/pg-dependent-route-test-isolation-2026-04-30.md) — Extends this doc's OpenAPI test guidance: covers the `toHaveLength(N)` pitfall and `describe.skipIf` for PG-dependent e2e tests
 - [`docs/runbooks/railway-deploy.md`](../../runbooks/railway-deploy.md) — The concrete deploy runbook produced by this work
 - [`architecture.md`](../../architecture.md) — Updated architecture reflecting the shipped surface
