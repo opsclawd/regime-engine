@@ -14,7 +14,8 @@ describe("StoreContext", () => {
       pgClient: {
         end: async () => {}
       } as never,
-      candleStore: {} as never
+      candleStore: {} as never,
+      insightsStore: {} as never
     };
 
     expect(ctx.ledger).toBeDefined();
@@ -35,7 +36,8 @@ describe("StoreContext", () => {
       },
       pg: {} as never,
       pgClient: { end: pgClientEnd } as never,
-      candleStore: {} as never
+      candleStore: {} as never,
+      insightsStore: {} as never
     };
 
     await closeStoreContext(ctx);
@@ -58,7 +60,8 @@ describe("StoreContext", () => {
       },
       pg: {} as never,
       pgClient: { end: pgClientEnd } as never,
-      candleStore: {} as never
+      candleStore: {} as never,
+      insightsStore: {} as never
     };
 
     await expect(closeStoreContext(ctx)).rejects.toThrow("ledger close failed");

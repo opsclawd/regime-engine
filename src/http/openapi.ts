@@ -235,6 +235,74 @@ export const buildOpenApiDocument = () => {
             }
           }
         }
+      },
+      "/v1/insights/sol-usdc": {
+        post: {
+          summary: "Ingest a CLMM insight for SOL/USDC",
+          responses: {
+            "201": {
+              description: "Insight created successfully"
+            },
+            "200": {
+              description: "Idempotent replay of already-ingested insight"
+            },
+            "400": {
+              description: "Validation error"
+            },
+            "401": {
+              description: "Invalid or missing X-Insight-Ingest-Token"
+            },
+            "409": {
+              description: "Insight conflict (same source+runId, different payload)"
+            },
+            "500": {
+              description: "INSIGHT_INGEST_TOKEN environment variable not set"
+            },
+            "503": {
+              description: "Insights store not available (no DATABASE_URL configured)"
+            }
+          }
+        }
+      },
+      "/v1/insights/sol-usdc/current": {
+        get: {
+          summary: "Get the most recent CLMM insight for SOL/USDC",
+          responses: {
+            "200": {
+              description: "Current insight with freshness metadata"
+            },
+            "404": {
+              description: "No insight found for SOL/USDC"
+            },
+            "503": {
+              description: "Insights store not available (no DATABASE_URL configured)"
+            }
+          }
+        }
+      },
+      "/v1/insights/sol-usdc/history": {
+        get: {
+          summary: "Get historical CLMM insights for SOL/USDC",
+          parameters: [
+            {
+              name: "limit",
+              in: "query",
+              required: false,
+              schema: { type: "integer", minimum: 1, maximum: 200, default: 50 }
+            }
+          ],
+          responses: {
+            "200": {
+              description: "List of insights ordered by receivedAt descending"
+            },
+            "400": {
+              description: "Invalid limit parameter"
+            },
+            "503": {
+              description: "Insights store not available (no DATABASE_URL configured)"
+            }
+          }
+        }
       }
     }
   } as const;

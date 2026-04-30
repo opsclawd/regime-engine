@@ -207,7 +207,7 @@ it("returns 200 with postgres=not_configured, sqlite=ok", async () => {
 });
 ```
 
-**Design decision:** PG-down branches are covered by unit tests only. Real in-memory SQLite covers the sqlite branches at both unit and HTTP level. This avoids requiring a running Postgres for CI while still testing all logic.
+**Design decision:** PG-down branches are covered by unit tests only. Real in-memory SQLite covers the sqlite branches at both unit and HTTP level. This avoids requiring a running Postgres for CI while still testing all logic. For PG-dependent e2e tests, use `describe.skipIf(!pgAvailable)` with synchronous module-level PG detection so suites skip gracefully instead of crashing — see [PG-dependent test isolation](../developer-experience/pg-dependent-route-test-isolation-2026-04-30.md) for the concrete pattern.
 
 ### 7. Test try/finally cleanup in StoreContext
 

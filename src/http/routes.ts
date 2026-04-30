@@ -16,6 +16,9 @@ import { createRegimeCurrentHandler } from "./handlers/regimeCurrent.js";
 
 import { createSrLevelsIngestHandler } from "./handlers/srLevelsIngest.js";
 import { createSrLevelsCurrentHandler } from "./handlers/srLevelsCurrent.js";
+import { createInsightsIngestHandler } from "./handlers/insightsIngest.js";
+import { createInsightsCurrentHandler } from "./handlers/insightsCurrent.js";
+import { createInsightsHistoryHandler } from "./handlers/insightsHistory.js";
 
 export const registerRoutes = (app: FastifyInstance): StoreContext | null => {
   const databasePath =
@@ -43,6 +46,7 @@ export const registerRoutes = (app: FastifyInstance): StoreContext | null => {
 
   const ledger = storeContext?.ledger ?? standaloneLedger!;
   const pg = storeContext?.pg ?? null;
+  const insightsStore = storeContext?.insightsStore ?? null;
 
   app.get("/health", async (_req, reply: FastifyReply) => {
     const sqlite = checkSqliteHealth(ledger);
@@ -85,6 +89,9 @@ export const registerRoutes = (app: FastifyInstance): StoreContext | null => {
   app.get("/v1/sr-levels/current", createSrLevelsCurrentHandler(ledger));
   app.post("/v1/candles", createCandlesIngestHandler(ledger, storeContext?.candleStore));
   app.get("/v1/regime/current", createRegimeCurrentHandler(ledger, storeContext?.candleStore));
+  app.post("/v1/insights/sol-usdc", createInsightsIngestHandler(insightsStore));
+  app.get("/v1/insights/sol-usdc/current", createInsightsCurrentHandler(insightsStore));
+  app.get("/v1/insights/sol-usdc/history", createInsightsHistoryHandler(insightsStore));
 
   return storeContext;
 };
