@@ -303,6 +303,67 @@ export const buildOpenApiDocument = () => {
             }
           }
         }
+      },
+      "/v2/sr-levels": {
+        post: {
+          summary: "Ingest S/R thesis brief (v2)",
+          responses: {
+            "201": {
+              description: "S/R thesis brief ingested"
+            },
+            "200": {
+              description: "Idempotent replay of already-ingested brief"
+            },
+            "400": {
+              description: "Validation error or unsupported schema version"
+            },
+            "401": {
+              description: "Invalid or missing X-Ingest-Token"
+            },
+            "409": {
+              description: "S/R thesis v2 conflict (same identity, different payload)"
+            },
+            "500": {
+              description: "OPENCLAW_INGEST_TOKEN environment variable not set"
+            },
+            "503": {
+              description: "S/R thesis v2 store not available (no DATABASE_URL configured)"
+            }
+          }
+        }
+      },
+      "/v2/sr-levels/current": {
+        get: {
+          summary: "Get current S/R thesis brief for symbol and source (v2)",
+          parameters: [
+            {
+              name: "symbol",
+              in: "query",
+              required: true,
+              schema: { type: "string" }
+            },
+            {
+              name: "source",
+              in: "query",
+              required: true,
+              schema: { type: "string" }
+            }
+          ],
+          responses: {
+            "200": {
+              description: "Current S/R thesis brief"
+            },
+            "400": {
+              description: "Missing required query parameters"
+            },
+            "404": {
+              description: "No S/R thesis brief found"
+            },
+            "503": {
+              description: "S/R thesis v2 store not available (no DATABASE_URL configured)"
+            }
+          }
+        }
       }
     }
   } as const;

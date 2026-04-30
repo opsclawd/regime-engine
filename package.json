@@ -15,7 +15,7 @@
     "lint": "eslint . --max-warnings 0",
     "test": "vitest run",
     "test:watch": "vitest",
-    "test:pg": "DATABASE_URL=postgres://test:test@localhost:5432/regime_engine_test PG_SSL=false vitest run src/ledger/pg/__tests__/ src/__tests__/pgStartup.test.ts src/http/__tests__/storeContext.e2e.test.ts src/ledger/__tests__/candleStore.test.ts src/ledger/__tests__/insightsStore.test.ts src/http/__tests__/insights.e2e.pg.test.ts",
+    "test:pg": "DATABASE_URL=postgres://test:test@localhost:5432/regime_engine_test PG_SSL=false vitest run src/ledger/pg/__tests__/ src/__tests__/pgStartup.test.ts src/http/__tests__/storeContext.e2e.test.ts src/ledger/__tests__/candleStore.test.ts src/ledger/__tests__/insightsStore.test.ts src/http/__tests__/insights.e2e.pg.test.ts src/ledger/__tests__/srThesesV2Store.test.ts src/http/__tests__/srLevelsV2.e2e.pg.test.ts",
     "format": "prettier --check .",
     "harness": "tsx scripts/harness.ts",
     "db:migrate": "drizzle-kit migrate",

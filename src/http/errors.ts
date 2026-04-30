@@ -72,7 +72,7 @@ const pathToString = (path: Array<string | number>): string => {
   return formatted;
 };
 
-const stableSortDetails = (details: ErrorDetail[]): ErrorDetail[] => {
+export const stableSortDetails = (details: ErrorDetail[]): ErrorDetail[] => {
   return [...details].sort((left, right) => {
     if (left.path !== right.path) {
       return left.path.localeCompare(right.path);
@@ -84,7 +84,7 @@ const stableSortDetails = (details: ErrorDetail[]): ErrorDetail[] => {
   });
 };
 
-const zodIssueToDetails = (issue: ZodIssue): ErrorDetail[] => {
+export const zodIssueToDetails = (issue: ZodIssue): ErrorDetail[] => {
   if (issue.code === "unrecognized_keys") {
     return issue.keys.map((key) => ({
       path: pathToString([...issue.path, key]),
