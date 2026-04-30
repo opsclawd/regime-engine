@@ -16,13 +16,13 @@ After the m022 Postgres integration, several residual issues exist in the `/heal
 
 ## Design Decisions
 
-| Decision | Choice | Rationale |
-|----------|--------|-----------|
-| Where health probes live | `src/ledger/health.ts` (single module) | Both are storage-layer concerns; neither is complex enough for its own file. Routes imports from one place. |
-| `busy_timeout` location | `createLedgerStore` in `store.ts` | Must apply regardless of standalone vs StoreContext usage. Set immediately after `new DatabaseSync()`. |
-| PG health probe timeout | Rely on postgres.js `connect_timeout: 10` | Already configured in `createDb`. No extra `Promise.race` complexity needed — health check inherits the same timeout semantics as every other query. |
-| Schema verification | Separate `verifyPgSchema` function | Clear separation: `verifyPgConnection` = "can I talk to Postgres?", `verifyPgSchema` = "does our schema exist?". Startup fails fast with a specific error if missing. |
-| Test strategy | HTTP-level tests with mocked stores using Fastify `inject()` | Consistent with existing test pattern. Tests the full HTTP + health logic path without needing real DB connections. |
+| Decision                 | Choice                                                       | Rationale                                                                                                                                                             |
+| ------------------------ | ------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Where health probes live | `src/ledger/health.ts` (single module)                       | Both are storage-layer concerns; neither is complex enough for its own file. Routes imports from one place.                                                           |
+| `busy_timeout` location  | `createLedgerStore` in `store.ts`                            | Must apply regardless of standalone vs StoreContext usage. Set immediately after `new DatabaseSync()`.                                                                |
+| PG health probe timeout  | Rely on postgres.js `connect_timeout: 10`                    | Already configured in `createDb`. No extra `Promise.race` complexity needed — health check inherits the same timeout semantics as every other query.                  |
+| Schema verification      | Separate `verifyPgSchema` function                           | Clear separation: `verifyPgConnection` = "can I talk to Postgres?", `verifyPgSchema` = "does our schema exist?". Startup fails fast with a specific error if missing. |
+| Test strategy            | HTTP-level tests with mocked stores using Fastify `inject()` | Consistent with existing test pattern. Tests the full HTTP + health logic path without needing real DB connections.                                                   |
 
 ## Specification
 
@@ -41,7 +41,7 @@ export const checkPgHealth = async (
 ```
 
 - `checkSqliteHealth` wraps `ledger.db.prepare("SELECT 1").get()` in try/catch. Returns `{ ok: true, status: "ok" }` on success, `{ ok: false, status: "unavailable" }` on error.
-- `checkPgHealth` takes a nullable `Db`. If null, returns `{ ok: true, status: "not_configured" }`. If present, wraps `pg.execute(sql\`SELECT 1\`)` in try/catch, returning `{ ok: true, status: "ok" }` or `{ ok: false, status: "unavailable" }`.
+- `checkPgHealth` takes a nullable `Db`. If null, returns `{ ok: true, status: "not_configured" }`. If present, wraps `pg.execute(sql\`SELECT 1\`)`in try/catch, returning`{ ok: true, status: "ok" }`or`{ ok: false, status: "unavailable" }`.
 - Timeout protection comes from postgres.js's `connect_timeout: 10` already configured in `createDb` — no additional `Promise.race` needed.
 
 **Change in `routes.ts`:** The `/health` handler calls `checkSqliteHealth(ledger)` and `await checkPgHealth(pg)`, removing all inline SQL from the HTTP layer.
@@ -81,14 +81,14 @@ The 2000ms value gives concurrent access a reasonable retry window instead of fa
 
 Tests use Fastify `inject()` with mocked store dependencies:
 
-| Test case | Setup | Expected response | Expected status |
-|-----------|------|-------------------|-----------------|
-| Both healthy | Normal stores | `{ ok: true, postgres: "ok", sqlite: "ok" }` | 200 |
-| SQLite down | `ledger.db.prepare` throws | `{ ok: false, postgres: "ok", sqlite: "unavailable" }` | 503 |
-| PG down | `pg.execute` rejects | `{ ok: false, postgres: "unavailable", sqlite: "ok" }` | 503 |
-| PG not configured | No DATABASE_URL | `{ ok: true, postgres: "not_configured", sqlite: "ok" }` | 200 |
-| Both down | Both probes fail | `{ ok: false, postgres: "unavailable", sqlite: "unavailable" }` | 503 |
-| `closeStoreContext` cleanup | Mock `ledger.close` and `pgClient.end` | Both called, even if one throws | n/a |
+| Test case                   | Setup                                  | Expected response                                               | Expected status |
+| --------------------------- | -------------------------------------- | --------------------------------------------------------------- | --------------- |
+| Both healthy                | Normal stores                          | `{ ok: true, postgres: "ok", sqlite: "ok" }`                    | 200             |
+| SQLite down                 | `ledger.db.prepare` throws             | `{ ok: false, postgres: "ok", sqlite: "unavailable" }`          | 503             |
+| PG down                     | `pg.execute` rejects                   | `{ ok: false, postgres: "unavailable", sqlite: "ok" }`          | 503             |
+| PG not configured           | No DATABASE_URL                        | `{ ok: true, postgres: "not_configured", sqlite: "ok" }`        | 200             |
+| Both down                   | Both probes fail                       | `{ ok: false, postgres: "unavailable", sqlite: "unavailable" }` | 503             |
+| `closeStoreContext` cleanup | Mock `ledger.close` and `pgClient.end` | Both called, even if one throws                                 | n/a             |
 
 Mocking approach: spy on `ledger.db.prepare` to throw for SQLite failures; use a mock `Db` object with an `execute` method that rejects for PG failures.
 

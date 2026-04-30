@@ -12,24 +12,25 @@
 
 ## File Structure
 
-| File | Action | Responsibility |
-|------|--------|---------------|
-| `src/ledger/health.ts` | Create | `checkSqliteHealth` and `checkPgHealth` functions |
-| `src/ledger/__tests__/health.test.ts` | Create | Unit tests for health probe functions |
-| `src/http/__tests__/health.probe.test.ts` | Create | HTTP-level integration tests for SQLite `/health` branches |
-| `src/ledger/pg/db.ts` | Modify | Add `verifyPgSchema` function |
-| `src/ledger/pg/__tests__/db.test.ts` | Modify | Add test for `verifyPgSchema` |
-| `src/ledger/store.ts` | Modify | Add `PRAGMA busy_timeout = 2000` |
-| `src/ledger/__tests__/store.test.ts` | Modify | Add test for busy_timeout |
-| `src/http/routes.ts` | Modify | Replace inline SQL with `checkSqliteHealth` / `checkPgHealth` |
-| `src/server.ts` | Modify | Add `verifyPgSchema` call after `verifyPgConnection` |
-| `src/ledger/__tests__/storeContext.test.ts` | Modify | Add behavior test for `closeStoreContext` cleanup |
+| File                                        | Action | Responsibility                                                |
+| ------------------------------------------- | ------ | ------------------------------------------------------------- |
+| `src/ledger/health.ts`                      | Create | `checkSqliteHealth` and `checkPgHealth` functions             |
+| `src/ledger/__tests__/health.test.ts`       | Create | Unit tests for health probe functions                         |
+| `src/http/__tests__/health.probe.test.ts`   | Create | HTTP-level integration tests for SQLite `/health` branches    |
+| `src/ledger/pg/db.ts`                       | Modify | Add `verifyPgSchema` function                                 |
+| `src/ledger/pg/__tests__/db.test.ts`        | Modify | Add test for `verifyPgSchema`                                 |
+| `src/ledger/store.ts`                       | Modify | Add `PRAGMA busy_timeout = 2000`                              |
+| `src/ledger/__tests__/store.test.ts`        | Modify | Add test for busy_timeout                                     |
+| `src/http/routes.ts`                        | Modify | Replace inline SQL with `checkSqliteHealth` / `checkPgHealth` |
+| `src/server.ts`                             | Modify | Add `verifyPgSchema` call after `verifyPgConnection`          |
+| `src/ledger/__tests__/storeContext.test.ts` | Modify | Add behavior test for `closeStoreContext` cleanup             |
 
 ---
 
 ### Task 1: Create `src/ledger/health.ts` — health probe functions
 
 **Files:**
+
 - Create: `src/ledger/health.ts`
 
 - [ ] **Step 1: Write the module**
@@ -88,6 +89,7 @@ git commit -m "feat(health): add checkSqliteHealth and checkPgHealth modules"
 ### Task 2: Unit tests for health probe functions
 
 **Files:**
+
 - Create: `src/ledger/__tests__/health.test.ts`
 
 - [ ] **Step 1: Write the failing test**
@@ -173,6 +175,7 @@ git commit -m "test(health): add unit tests for checkSqliteHealth and checkPgHea
 ### Task 3: Add `PRAGMA busy_timeout = 2000` to `createLedgerStore`
 
 **Files:**
+
 - Modify: `src/ledger/store.ts:21-23`
 
 - [ ] **Step 1: Write the failing test**
@@ -245,6 +248,7 @@ git commit -m "feat(store): set PRAGMA busy_timeout = 2000 on SQLite connections
 ### Task 4: Add `verifyPgSchema` to `src/ledger/pg/db.ts`
 
 **Files:**
+
 - Modify: `src/ledger/pg/db.ts`
 - Modify: `src/ledger/pg/__tests__/db.test.ts`
 
@@ -316,6 +320,7 @@ git commit -m "feat(db): add verifyPgSchema for startup schema existence check"
 ### Task 5: Wire `verifyPgSchema` into `src/server.ts` startup
 
 **Files:**
+
 - Modify: `src/server.ts`
 
 - [ ] **Step 1: Update the import and startup sequence**
@@ -330,27 +335,28 @@ import { createDb, verifyPgConnection, verifyPgSchema } from "./ledger/pg/db.js"
 And in the `start` function, after `await verifyPgConnection(pg);` add:
 
 ```ts
-      await verifyPgSchema(pg);
+await verifyPgSchema(pg);
 ```
 
 The full startup verification block becomes:
 
 ```ts
-  if (pgConnectionString) {
-    const { db: pg, client } = createDb(pgConnectionString);
-    try {
-      await verifyPgConnection(pg);
-      await verifyPgSchema(pg);
-    } catch (error) {
-      console.error("FATAL: Postgres connection failed at startup.", {
-        url: redactUrl(pgConnectionString),
-        message: error instanceof Error ? error.message.replace(/:\/\/[^@]+@/, "://***@") : String(error)
-      });
-      await client.end().catch(() => {});
-      process.exit(1);
-    }
-    await client.end();
+if (pgConnectionString) {
+  const { db: pg, client } = createDb(pgConnectionString);
+  try {
+    await verifyPgConnection(pg);
+    await verifyPgSchema(pg);
+  } catch (error) {
+    console.error("FATAL: Postgres connection failed at startup.", {
+      url: redactUrl(pgConnectionString),
+      message:
+        error instanceof Error ? error.message.replace(/:\/\/[^@]+@/, "://***@") : String(error)
+    });
+    await client.end().catch(() => {});
+    process.exit(1);
   }
+  await client.end();
+}
 ```
 
 - [ ] **Step 2: Run typecheck**
@@ -375,6 +381,7 @@ git commit -m "feat(server): add verifyPgSchema to startup sequence"
 ### Task 6: Wire `/health` route to use `checkSqliteHealth` and `checkPgHealth`
 
 **Files:**
+
 - Modify: `src/http/routes.ts`
 
 - [ ] **Step 1: Replace inline SQL with health module calls**
@@ -382,11 +389,13 @@ git commit -m "feat(server): add verifyPgSchema to startup sequence"
 Replace the `/health` handler in `routes.ts`. The full diff:
 
 Remove these imports (no longer needed in routes.ts):
+
 ```ts
 import { sql } from "drizzle-orm/sql";
 ```
 
 Add this import:
+
 ```ts
 import { checkSqliteHealth, checkPgHealth } from "../ledger/health.js";
 ```
@@ -394,21 +403,21 @@ import { checkSqliteHealth, checkPgHealth } from "../ledger/health.js";
 Replace the `/health` handler (lines 42-71) with:
 
 ```ts
-  app.get("/health", async (_req, reply: FastifyReply) => {
-    const sqlite = checkSqliteHealth(ledger);
-    const postgres = await checkPgHealth(pg);
+app.get("/health", async (_req, reply: FastifyReply) => {
+  const sqlite = checkSqliteHealth(ledger);
+  const postgres = await checkPgHealth(pg);
 
-    const ok = sqlite.ok && postgres.ok;
-    if (!ok) {
-      reply.code(503);
-    }
+  const ok = sqlite.ok && postgres.ok;
+  if (!ok) {
+    reply.code(503);
+  }
 
-    return {
-      ok,
-      postgres: postgres.status,
-      sqlite: sqlite.status
-    };
-  });
+  return {
+    ok,
+    postgres: postgres.status,
+    sqlite: sqlite.status
+  };
+});
 ```
 
 - [ ] **Step 2: Run typecheck**
@@ -433,6 +442,7 @@ git commit -m "refactor(routes): extract health probes to ledger/health module"
 ### Task 7: HTTP-level health probe tests — SQLite branches
 
 **Files:**
+
 - Create: `src/http/__tests__/health.probe.test.ts`
 
 Only SQLite-only branches are tested at the HTTP level. PG-down branches are covered by unit tests in Task 2 since they require a running Postgres. This file creates a Fastify app with real in-memory SQLite (no PG) to test the two SQLite branches using `inject()`.
@@ -492,6 +502,7 @@ git commit -m "test(health): add HTTP-level tests for sqlite=ok and sqlite=unava
 ### Task 8: `closeStoreContext` cleanup test
 
 **Files:**
+
 - Modify: `src/ledger/__tests__/storeContext.test.ts` (full file replacement — replaces the existing type-only test)
 
 - [ ] **Step 1: Replace the existing file with the complete content below**

@@ -1,9 +1,6 @@
 import type { FastifyReply, FastifyRequest } from "fastify";
 import { parseRegimeCurrentQuery } from "../../contract/v1/validation.js";
-import {
-  candlesNotFoundError,
-  ContractValidationError
-} from "../errors.js";
+import { candlesNotFoundError, ContractValidationError } from "../errors.js";
 import type { LedgerStore } from "../../ledger/store.js";
 import { getLatestCandlesForFeed } from "../../ledger/candlesWriter.js";
 import type { CandleStore } from "../../ledger/candleStore.js";
@@ -16,10 +13,7 @@ import { buildRegimeCurrent } from "../../engine/marketRegime/buildRegimeCurrent
 
 const READ_BUFFER = 50;
 
-export const createRegimeCurrentHandler = (
-  store: LedgerStore,
-  candleStore?: CandleStore
-) => {
+export const createRegimeCurrentHandler = (store: LedgerStore, candleStore?: CandleStore) => {
   return async (request: FastifyRequest, reply: FastifyReply) => {
     try {
       const query = parseRegimeCurrentQuery(request.query);
@@ -31,8 +25,8 @@ export const createRegimeCurrentHandler = (
         config.timeframeMs,
         config.freshness.closedCandleDelayMs
       );
-      const limit = Math.max(config.indicators.volLongWindow, config.suitability.minCandles)
-        + READ_BUFFER;
+      const limit =
+        Math.max(config.indicators.volLongWindow, config.suitability.minCandles) + READ_BUFFER;
 
       const candles = candleStore
         ? await candleStore.getLatestCandlesForFeed({
@@ -44,21 +38,23 @@ export const createRegimeCurrentHandler = (
             closedCandleCutoffUnixMs: cutoff,
             limit
           })
-        : await Promise.resolve(getLatestCandlesForFeed(store, {
-            symbol: query.symbol,
-            source: query.source,
-            network: query.network,
-            poolAddress: query.poolAddress,
-            timeframe: query.timeframe,
-            closedCandleCutoffUnixMs: cutoff,
-            limit
-          }));
+        : await Promise.resolve(
+            getLatestCandlesForFeed(store, {
+              symbol: query.symbol,
+              source: query.source,
+              network: query.network,
+              poolAddress: query.poolAddress,
+              timeframe: query.timeframe,
+              closedCandleCutoffUnixMs: cutoff,
+              limit
+            })
+          );
 
       if (candles.length === 0) {
         throw candlesNotFoundError(
           `No closed candles found for symbol="${query.symbol}", source="${query.source}", ` +
-          `network="${query.network}", poolAddress="${query.poolAddress}", ` +
-          `timeframe="${query.timeframe}".`
+            `network="${query.network}", poolAddress="${query.poolAddress}", ` +
+            `timeframe="${query.timeframe}".`
         );
       }
 

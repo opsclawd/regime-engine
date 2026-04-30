@@ -18,9 +18,9 @@ disk and disappear on every deploy, silently).
 - Railway project hosting `clmm-superpowers-v2` already exists.
 - You have push access to the regime-engine GitHub repo and admin access to the Railway project.
 - Two shared secrets generated out-of-band (keep them in a password manager):
-   - `OPENCLAW_INGEST_TOKEN` — shared with whoever operates the OpenClaw ingest.
-   - `CLMM_INTERNAL_TOKEN` — shared with the CLMM backend service (reference variable, not copied by hand).
-   - `CANDLES_INGEST_TOKEN` — shared with the candle collector service, sent via `X-Candles-Ingest-Token`.
+  - `OPENCLAW_INGEST_TOKEN` — shared with whoever operates the OpenClaw ingest.
+  - `CLMM_INTERNAL_TOKEN` — shared with the CLMM backend service (reference variable, not copied by hand).
+  - `CANDLES_INGEST_TOKEN` — shared with the candle collector service, sent via `X-Candles-Ingest-Token`.
 
 ## Step 1 — Create the persistent volume FIRST
 
@@ -40,18 +40,18 @@ The service "works" until the next restart, at which point the ledger is gone. T
 
 On the regime-engine service, set:
 
-| Variable                | Value                             | Notes                                                     |
-| ----------------------- | --------------------------------- | --------------------------------------------------------- |
-| `HOST`                  | `::`                              | Dual-stack bind for Railway private networking.           |
-| `PORT`                  | _(leave unset — Railway injects)_ | Fastify reads `process.env.PORT`.                         |
-| `LEDGER_DB_PATH`        | `/data/ledger.sqlite`             | Must be on the mounted volume.                            |
-| `NODE_ENV`              | `production`                      |                                                           |
-| `OPENCLAW_INGEST_TOKEN` | strong random string              | Share with OpenClaw operator.                             |
-| `CLMM_INTERNAL_TOKEN`   | strong random string              | Referenced from CLMM service (see Step 5).                |
-| `CANDLES_INGEST_TOKEN`  | strong random string              | Required for `POST /v1/candles`. Sent via `X-Candles-Ingest-Token`. |
-| `DATABASE_URL`           | `${{Postgres.DATABASE_URL}}`        | Postgres connection string. Reference the shared Postgres service. Mandatory in production. |
-| `RAILWAY_RUN_UID`       | `0`                               | Required — volume is root-owned; container user is `app`. |
-| `COMMIT_SHA`            | `${{RAILWAY_GIT_COMMIT_SHA}}`     | Optional; surfaces in `/version`.                         |
+| Variable                | Value                             | Notes                                                                                       |
+| ----------------------- | --------------------------------- | ------------------------------------------------------------------------------------------- |
+| `HOST`                  | `::`                              | Dual-stack bind for Railway private networking.                                             |
+| `PORT`                  | _(leave unset — Railway injects)_ | Fastify reads `process.env.PORT`.                                                           |
+| `LEDGER_DB_PATH`        | `/data/ledger.sqlite`             | Must be on the mounted volume.                                                              |
+| `NODE_ENV`              | `production`                      |                                                                                             |
+| `OPENCLAW_INGEST_TOKEN` | strong random string              | Share with OpenClaw operator.                                                               |
+| `CLMM_INTERNAL_TOKEN`   | strong random string              | Referenced from CLMM service (see Step 5).                                                  |
+| `CANDLES_INGEST_TOKEN`  | strong random string              | Required for `POST /v1/candles`. Sent via `X-Candles-Ingest-Token`.                         |
+| `DATABASE_URL`          | `${{Postgres.DATABASE_URL}}`      | Postgres connection string. Reference the shared Postgres service. Mandatory in production. |
+| `RAILWAY_RUN_UID`       | `0`                               | Required — volume is root-owned; container user is `app`.                                   |
+| `COMMIT_SHA`            | `${{RAILWAY_GIT_COMMIT_SHA}}`     | Optional; surfaces in `/version`.                                                           |
 
 `DATABASE_URL` is mandatory in production. The service hard-fails at startup if Postgres is unreachable.
 Do NOT omit `DATABASE_URL` — the `preDeployCommand` runs `npm run db:migrate` and will fail without it.

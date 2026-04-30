@@ -35,6 +35,7 @@ Open the regime-engine repo and locate `srLevelBriefRequestSchema`. Copy the exp
 **Note:** `rank` is an optional free-form string in the regime-engine schema. The projection convention is `"primary"` for high-reliability sources, `"secondary"` for medium, and `"minor"` for low or missing. Use only these three values — do not use `"key"`.
 
 Also confirm:
+
 - Auth header name: `X-Ingest-Token`
 - Response codes: 201 on insert, 200 on idempotent duplicate, 400 on validation error, 401 on auth failure, 409 on conflict (same `briefId` with differing payload), 500 on server misconfiguration
 - 5xx responses should be retried; 4xx responses should NOT be retried
@@ -83,24 +84,24 @@ The script's responsibilities:
 
 **Schema mapping reference** (confirmed from actual `schemas/thesis.schema.json`):
 
-| Thesis field | Type | Usage |
-|---|---|---|
-| `sourceHandle` | `string` | Source identifier (e.g., `"morecryptoonline"`, `"Morecryptoonl"`). Maps to `source` in regime-engine payload via canonicalization (see source abbreviation rules below). The original `sourceHandle` is preserved in `notes` for traceability. |
-| `asset` | `string` (`enum: btc/eth/sol`) | Filter: must match `'SOL'` (case-insensitive). |
-| `bias` | `string` (`enum: bullish/bearish/neutral/mixed`) | Included in `notes` field. Not a filter — neutral/mixed theses with S/R levels are included. |
-| `timeframe` | `string` (`enum: intraday/swing/macro/unknown`) | Pass through to `timeframe` on level rows. |
-| `setupType` | `string` (`enum: breakout/breakdown/range/trend continuation/mean reversion/reclaim/rejection/unknown`) | Used in `notes` field. |
-| `sourceReliability` | `string` (`enum: low/medium/high`) | Maps to `rank`: `"primary"` if `high`, `"secondary"` if `medium`, `"minor"` if `low` or missing. |
-| `supportLevels` | `string[]` | Parse each string to a number → emit `support` level rows. |
-| `resistanceLevels` | `string[]` | Parse each string to a number → emit `resistance` level rows. |
-| `targets` | `string[]` | **Skip entirely.** These are take-profit levels, not S/R. |
-| `trigger` | `string | null` | Condition description for `notes`. |
-| `invalidation` | `string | null` | Condition description for `notes`. |
-| `entryZone` | `string | null` | **Excluded from v0.** Could be a price zone, but semantics are ambiguous. |
-| `sourceKind` | `string` (`enum: x/youtube/rss/official`) | **Excluded from v0.** Not needed for the S/R payload. |
-| `sourceChannel` | `string | null` | **Excluded from v0.** Not needed for the S/R payload. |
-| `collectedAt` | `string` | Used as fallback for `sourceRecordedAtIso` (see Step 4). |
-| `publishedAt` | `string | null` | Preferred value for `sourceRecordedAtIso`. |
+| Thesis field        | Type                                                                                                    | Usage                                                                                                                                                                                                                                          |
+| ------------------- | ------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------- |
+| `sourceHandle`      | `string`                                                                                                | Source identifier (e.g., `"morecryptoonline"`, `"Morecryptoonl"`). Maps to `source` in regime-engine payload via canonicalization (see source abbreviation rules below). The original `sourceHandle` is preserved in `notes` for traceability. |
+| `asset`             | `string` (`enum: btc/eth/sol`)                                                                          | Filter: must match `'SOL'` (case-insensitive).                                                                                                                                                                                                 |
+| `bias`              | `string` (`enum: bullish/bearish/neutral/mixed`)                                                        | Included in `notes` field. Not a filter — neutral/mixed theses with S/R levels are included.                                                                                                                                                   |
+| `timeframe`         | `string` (`enum: intraday/swing/macro/unknown`)                                                         | Pass through to `timeframe` on level rows.                                                                                                                                                                                                     |
+| `setupType`         | `string` (`enum: breakout/breakdown/range/trend continuation/mean reversion/reclaim/rejection/unknown`) | Used in `notes` field.                                                                                                                                                                                                                         |
+| `sourceReliability` | `string` (`enum: low/medium/high`)                                                                      | Maps to `rank`: `"primary"` if `high`, `"secondary"` if `medium`, `"minor"` if `low` or missing.                                                                                                                                               |
+| `supportLevels`     | `string[]`                                                                                              | Parse each string to a number → emit `support` level rows.                                                                                                                                                                                     |
+| `resistanceLevels`  | `string[]`                                                                                              | Parse each string to a number → emit `resistance` level rows.                                                                                                                                                                                  |
+| `targets`           | `string[]`                                                                                              | **Skip entirely.** These are take-profit levels, not S/R.                                                                                                                                                                                      |
+| `trigger`           | `string                                                                                                 | null`                                                                                                                                                                                                                                          | Condition description for `notes`.                                        |
+| `invalidation`      | `string                                                                                                 | null`                                                                                                                                                                                                                                          | Condition description for `notes`.                                        |
+| `entryZone`         | `string                                                                                                 | null`                                                                                                                                                                                                                                          | **Excluded from v0.** Could be a price zone, but semantics are ambiguous. |
+| `sourceKind`        | `string` (`enum: x/youtube/rss/official`)                                                               | **Excluded from v0.** Not needed for the S/R payload.                                                                                                                                                                                          |
+| `sourceChannel`     | `string                                                                                                 | null`                                                                                                                                                                                                                                          | **Excluded from v0.** Not needed for the S/R payload.                     |
+| `collectedAt`       | `string`                                                                                                | Used as fallback for `sourceRecordedAtIso` (see Step 4).                                                                                                                                                                                       |
+| `publishedAt`       | `string                                                                                                 | null`                                                                                                                                                                                                                                          | Preferred value for `sourceRecordedAtIso`.                                |
 
 ### `sourceRecordedAtIso`
 
@@ -141,15 +142,16 @@ The `sourceHandle` values in real data are **not stable** — the same analyst a
 Both the `source` field in the payload and the `briefId` prefix use the same abbreviated slug. The canonicalization map:
 
 | Raw `sourceHandle` (case-insensitive match) | Canonical abbreviation |
-|---|---|
-| `morecryptoonline` | `mco` |
-| `Morecryptoonl` | `mco` |
+| ------------------------------------------- | ---------------------- |
+| `morecryptoonline`                          | `mco`                  |
+| `Morecryptoonl`                             | `mco`                  |
 
 For any other `sourceHandle`, derive the slug by: lowercase → strip non-alphanumeric characters → take the result as-is. If the result is an empty string, `canonicalizeSource` returns `null` and `projectThesesToRequests` skips theses from that source. Log a warning like `"sourceHandle '!!!' normalized to empty, skipping"`.
 
 `briefId` format: `{canonicalAbbreviation}-sol-{YYYY-MM-DD}`
 
 Examples:
+
 - `sourceHandle = "morecryptoonline"` → `source = "mco"`, `briefId = "mco-sol-2026-04-23"`
 - `sourceHandle = "Morecryptoonl"` → `source = "mco"`, `briefId = "mco-sol-2026-04-23"` (same canonical ID — deduplicated)
 - `sourceHandle = "some_other_source"` → `source = "someothersource"`, `briefId = "someothersource-sol-2026-04-23"`
@@ -227,12 +229,12 @@ Do not summarize.
 
 **Reschedule existing jobs** to preserve the 20-minute spacing rule:
 
-| Job | Before | After |
-|---|---|---|
-| `update-thesis-ledger` | 6:00 | 6:00 (unchanged) |
-| `emit-sr-levels` | (new) | **6:20** |
-| `render-market-map-input` | 6:20 | **6:40** |
-| `morning-market-map` | 6:40 | **7:00** |
+| Job                       | Before | After            |
+| ------------------------- | ------ | ---------------- |
+| `update-thesis-ledger`    | 6:00   | 6:00 (unchanged) |
+| `emit-sr-levels`          | (new)  | **6:20**         |
+| `render-market-map-input` | 6:20   | **6:40**         |
+| `morning-market-map`      | 6:40   | **7:00**         |
 
 Do NOT make the final market map synthesis depend on this step. If the POST to regime-engine fails, the user-facing brief should still be produced and delivered. The emit step is a sibling, not a prerequisite.
 
@@ -328,6 +330,7 @@ After everything is wired:
 ## Estimated effort
 
 5-6 hours total:
+
 - Step 3-5 (script + price parser + projection + notes): ~2.5h
 - Step 6-7 (cron wiring + prompt file + scripts): ~30min
 - Step 8 (test infrastructure + tests): ~1.5h
@@ -337,24 +340,24 @@ After everything is wired:
 
 ## Appendix: Decision log
 
-| Decision | Rationale |
-|---|---|
-| Midpoint for price ranges | Keeps level counts predictable; regime-engine expects discrete prices, not ranges. |
-| Strip parentheticals before parsing prices | Prevents accidental extraction of numbers inside parenthetical labels like `"(100% C-wave extension)"`. |
-| Include `neutral`/`mixed` bias | S/R levels are useful regardless of directional bias. Bias is recorded in `notes` for context. |
-| Skip `targets` array | Targets are take-profit levels, not support/resistance. Out of scope. |
-| Skip `entryZone`, `sourceKind`, `sourceChannel` | Not needed for the S/R payload in v0. May be added later. |
-| `rank` as `"primary"`/`"secondary"`/`"minor"` | Maps `sourceReliability` (high/medium/low) to intuitive rank labels. Schema accepts any optional string. |
-| `SOL/USDC` symbol format | Matches CLMM read-path convention. The regime-engine S/R level docs, fixture, and curl examples all use `SOL/USDC`. |
-| Source canonicalization map | Real data has `"morecryptoonline"` and `"Morecryptoonl"` for the same analyst. Without canonicalization, these would produce duplicate briefs. |
-| `level.invalidation` excluded in v0 | Thesis `invalidation` field is prose (condition description), not a numeric price. |
-| Empty normalized slug → skip source | Prevents POSTing with empty `source` or `briefId`, which would fail validation or create unqueryable records. |
-| Empty levels → skip POST | The regime-engine contract requires `.min(1)` on levels. Sending empty arrays would fail validation. |
-| `sourceRecordedAtIso` = latest `publishedAt ?? collectedAt` per source group | A brief covers multiple theses from one source; use the most recent timestamp as canonical. `collectedAt` is always present (required field). |
-| `brief.summary` omitted in v0 | No aggregate summary field exists in the thesis schema. Synthesizing one from multiple theses would be fragile and out of scope. |
-| Export pure helpers for testability | `parsePriceString`, `canonicalizeSource`, `projectThesesToRequests`, `buildNotes` exported as pure functions. CLI/network/exit behavior stays in `main()`. |
-| `canonicalizeSource` returns `string | null` | A pure function returning empty string for "skip" is a footgun. `null` makes the contract explicit: `null` means skip the source, any string means use it. |
-| URL-encode slash in query strings | The stored `symbol` value is `SOL/USDC` but query parameters must encode the slash as `%2F` to avoid ambiguity in URLs and shells. |
-| Mock `globalThis.fetch` with `vi.fn()` | No `nock` dependency needed. Node's built-in fetch is used directly by the script. |
-| Add vitest as test infrastructure | No test runner exists in crypto-aggregator. A new dependency is required. |
-| Cron uses timed steps, not dependency syntax | The OpenClaw cron system uses timed scheduling with 20-minute spacing between jobs. Reschedule `render-market-map-input` to 6:40 and `morning-market-map` to 7:00 to accommodate the new 6:20 slot. |
+| Decision                                                                     | Rationale                                                                                                                                                                                           |
+| ---------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Midpoint for price ranges                                                    | Keeps level counts predictable; regime-engine expects discrete prices, not ranges.                                                                                                                  |
+| Strip parentheticals before parsing prices                                   | Prevents accidental extraction of numbers inside parenthetical labels like `"(100% C-wave extension)"`.                                                                                             |
+| Include `neutral`/`mixed` bias                                               | S/R levels are useful regardless of directional bias. Bias is recorded in `notes` for context.                                                                                                      |
+| Skip `targets` array                                                         | Targets are take-profit levels, not support/resistance. Out of scope.                                                                                                                               |
+| Skip `entryZone`, `sourceKind`, `sourceChannel`                              | Not needed for the S/R payload in v0. May be added later.                                                                                                                                           |
+| `rank` as `"primary"`/`"secondary"`/`"minor"`                                | Maps `sourceReliability` (high/medium/low) to intuitive rank labels. Schema accepts any optional string.                                                                                            |
+| `SOL/USDC` symbol format                                                     | Matches CLMM read-path convention. The regime-engine S/R level docs, fixture, and curl examples all use `SOL/USDC`.                                                                                 |
+| Source canonicalization map                                                  | Real data has `"morecryptoonline"` and `"Morecryptoonl"` for the same analyst. Without canonicalization, these would produce duplicate briefs.                                                      |
+| `level.invalidation` excluded in v0                                          | Thesis `invalidation` field is prose (condition description), not a numeric price.                                                                                                                  |
+| Empty normalized slug → skip source                                          | Prevents POSTing with empty `source` or `briefId`, which would fail validation or create unqueryable records.                                                                                       |
+| Empty levels → skip POST                                                     | The regime-engine contract requires `.min(1)` on levels. Sending empty arrays would fail validation.                                                                                                |
+| `sourceRecordedAtIso` = latest `publishedAt ?? collectedAt` per source group | A brief covers multiple theses from one source; use the most recent timestamp as canonical. `collectedAt` is always present (required field).                                                       |
+| `brief.summary` omitted in v0                                                | No aggregate summary field exists in the thesis schema. Synthesizing one from multiple theses would be fragile and out of scope.                                                                    |
+| Export pure helpers for testability                                          | `parsePriceString`, `canonicalizeSource`, `projectThesesToRequests`, `buildNotes` exported as pure functions. CLI/network/exit behavior stays in `main()`.                                          |
+| `canonicalizeSource` returns `string                                         | null`                                                                                                                                                                                               | A pure function returning empty string for "skip" is a footgun. `null` makes the contract explicit: `null` means skip the source, any string means use it. |
+| URL-encode slash in query strings                                            | The stored `symbol` value is `SOL/USDC` but query parameters must encode the slash as `%2F` to avoid ambiguity in URLs and shells.                                                                  |
+| Mock `globalThis.fetch` with `vi.fn()`                                       | No `nock` dependency needed. Node's built-in fetch is used directly by the script.                                                                                                                  |
+| Add vitest as test infrastructure                                            | No test runner exists in crypto-aggregator. A new dependency is required.                                                                                                                           |
+| Cron uses timed steps, not dependency syntax                                 | The OpenClaw cron system uses timed scheduling with 20-minute spacing between jobs. Reschedule `render-market-map-input` to 6:40 and `morning-market-map` to 7:00 to accommodate the new 6:20 slot. |

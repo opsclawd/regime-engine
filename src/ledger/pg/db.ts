@@ -44,7 +44,9 @@ export const verifyCandleRevisionsTable = async (db: Db): Promise<void> => {
     sql`SELECT tablename FROM pg_tables WHERE schemaname = 'regime_engine' AND tablename = 'candle_revisions'`
   );
   if (result.length === 0) {
-    throw new Error("FATAL: candle_revisions table not found in regime_engine schema — run migrations first");
+    throw new Error(
+      "FATAL: candle_revisions table not found in regime_engine schema — run migrations first"
+    );
   }
 };
 

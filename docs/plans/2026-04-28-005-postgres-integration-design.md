@@ -40,8 +40,8 @@ context object:
 // src/ledger/storeContext.ts
 
 interface StoreContext {
-  ledger: LedgerStore;     // SQLite — append-only receipts, unchanged
-  pg: Db;                  // Drizzle + postgres.js — new feature tables
+  ledger: LedgerStore; // SQLite — append-only receipts, unchanged
+  pg: Db; // Drizzle + postgres.js — new feature tables
 }
 ```
 
@@ -100,8 +100,8 @@ connection is unambiguous, testable, and driver-agnostic.
 ```ts
 const client = postgres(connectionString, {
   onconnect: async (conn) => {
-    await conn.unsafe('SET search_path=regime_engine');
-  },
+    await conn.unsafe("SET search_path=regime_engine");
+  }
 });
 ```
 
@@ -118,16 +118,16 @@ CREATE SCHEMA IF NOT EXISTS regime_engine;
 
 ```ts
 // drizzle.config.ts
-import { defineConfig } from 'drizzle-kit';
+import { defineConfig } from "drizzle-kit";
 
 export default defineConfig({
-  schema: './src/ledger/pg/schema/index.ts',
-  out: './drizzle',
-  dialect: 'postgresql',
+  schema: "./src/ledger/pg/schema/index.ts",
+  out: "./drizzle",
+  dialect: "postgresql",
   dbCredentials: {
     url: process.env.DATABASE_URL!,
-    ssl: { rejectUnauthorized: false }, // Railway requires SSL
-  },
+    ssl: { rejectUnauthorized: false } // Railway requires SSL
+  }
 });
 ```
 
@@ -136,6 +136,7 @@ export default defineConfig({
 **Decision: Separate `npm run db:migrate` command, not app-startup auto-migrate.**
 
 Rationale:
+
 - Explicit migration step is safer for production deploys.
 - Matches Railway's pre-deploy hook pattern.
 - Avoids race conditions if multiple instances start simultaneously.
@@ -188,6 +189,7 @@ On Postgres connection failure:
 **Decision: Hard fail on Postgres unreachable at startup.**
 
 Rationale:
+
 - Regime Engine is moving toward Postgres as a primary data store.
 - Serving degraded responses silently is worse than failing loudly.
 - Railway will restart the container; transient connection issues self-heal.
@@ -197,13 +199,13 @@ Rationale:
 
 ## Environment Variables
 
-| Variable | Purpose | Example |
-|---|---|---|
-| `DATABASE_URL` | Postgres connection string (Railway provides this) | `postgres://user:pass@host:5432/railway` |
-| `LEDGER_DB_PATH` | SQLite path (existing, unchanged) | `/data/ledger.sqlite` |
-| `INSIGHT_INGEST_TOKEN` | Auth token for CLMM insights ingestion (#21) | (secret) |
-| `OPENCLAW_INGEST_TOKEN` | Auth token for S/R levels ingestion (existing) | (secret) |
-| `CLMM_INTERNAL_TOKEN` | Auth token for CLMM execution events (existing) | (secret) |
+| Variable                | Purpose                                            | Example                                  |
+| ----------------------- | -------------------------------------------------- | ---------------------------------------- |
+| `DATABASE_URL`          | Postgres connection string (Railway provides this) | `postgres://user:pass@host:5432/railway` |
+| `LEDGER_DB_PATH`        | SQLite path (existing, unchanged)                  | `/data/ledger.sqlite`                    |
+| `INSIGHT_INGEST_TOKEN`  | Auth token for CLMM insights ingestion (#21)       | (secret)                                 |
+| `OPENCLAW_INGEST_TOKEN` | Auth token for S/R levels ingestion (existing)     | (secret)                                 |
+| `CLMM_INTERNAL_TOKEN`   | Auth token for CLMM execution events (existing)    | (secret)                                 |
 
 ---
 
@@ -212,6 +214,7 @@ Rationale:
 #22 must be strictly limited to infrastructure. No endpoint logic.
 
 Deliverables:
+
 1. `src/ledger/pg/db.ts` — `createDb()` + `Db` type
 2. `src/ledger/pg/schema/index.ts` — empty schema shell (re-exports nothing yet)
 3. `src/ledger/storeContext.ts` — `StoreContext` type + factory
@@ -225,6 +228,7 @@ Deliverables:
 11. README section on multi-schema architecture
 
 NOT in scope for #22:
+
 - `sr_theses_v2` table or `/v2/sr-levels` endpoints (#20)
 - `clmm_insights` table or `/internal/insights/*` endpoints (#21)
 - Any SQLite data migration
@@ -258,6 +262,7 @@ NOT in scope for #22:
 **Decision: Use postgres.js defaults (10 connections). Don't tune yet.**
 
 Rationale:
+
 - `postgres.js` built-in pooling defaults to 10, adequate for Railway's 1-2 vCPU.
 - Regime Engine is a lightweight service — not a high-throughput API gateway.
 - Add `PG_MAX_CONNECTIONS` env var as an escape hatch, but don't wire it up
@@ -267,12 +272,12 @@ Rationale:
 
 ## Testing Strategy
 
-| Layer | Approach |
-|---|---|
-| Contract/validation | Unit tests with Vitest, no DB needed |
-| SQLite ledger | In-memory `:memory:` (existing pattern) |
-| Postgres integration | Real Postgres via `docker-compose.test.yml` in CI |
-| Drizzle schema | Drizzle's own `db:push` for dev; `db:migrate` for CI/prod |
+| Layer                | Approach                                                  |
+| -------------------- | --------------------------------------------------------- |
+| Contract/validation  | Unit tests with Vitest, no DB needed                      |
+| SQLite ledger        | In-memory `:memory:` (existing pattern)                   |
+| Postgres integration | Real Postgres via `docker-compose.test.yml` in CI         |
+| Drizzle schema       | Drizzle's own `db:push` for dev; `db:migrate` for CI/prod |
 
 **No in-memory Postgres substitute.** Array operators (`@>`) and JSONB queries must be
 tested against a real Postgres to be trustworthy.
@@ -280,6 +285,7 @@ tested against a real Postgres to be trustworthy.
 **Decision: docker-compose.test.yml, not testcontainers.**
 
 Rationale:
+
 - `testcontainers` introduces Docker-in-Docker complexity on some CI runners.
 - A `docker-compose.test.yml` is dead simple: start, wait, test, tear down.
 - Matches clmm-v2's approach.
@@ -310,11 +316,11 @@ CI flow: `docker compose -f docker-compose.test.yml up -d` -> `npm run db:push`
 
 ## New Dependencies
 
-| Package | Type | Version | Purpose |
-|---|---|---|---|
-| `drizzle-orm` | runtime | `^0.36.0` | ORM (parity with clmm-v2) |
-| `postgres` | runtime | `^3.4.0` | postgres.js driver (parity with clmm-v2) |
-| `drizzle-kit` | dev | `^0.31.10` | Migration tooling (parity with clmm-v2) |
+| Package       | Type    | Version    | Purpose                                  |
+| ------------- | ------- | ---------- | ---------------------------------------- |
+| `drizzle-orm` | runtime | `^0.36.0`  | ORM (parity with clmm-v2)                |
+| `postgres`    | runtime | `^3.4.0`   | postgres.js driver (parity with clmm-v2) |
+| `drizzle-kit` | dev     | `^0.31.10` | Migration tooling (parity with clmm-v2)  |
 
 No new runtime dependencies beyond these two.
 

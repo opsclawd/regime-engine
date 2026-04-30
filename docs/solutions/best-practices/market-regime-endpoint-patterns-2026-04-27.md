@@ -58,16 +58,28 @@ for (const candle of validatedCandles) {
   const canonicalJson = toCanonicalJson(candle);
 
   if (!existing) {
-    insertCandle(db, { feedHash, slotUnixMs: candle.unixMs, ingestId, revision: 1, candleJson: canonicalJson });
+    insertCandle(db, {
+      feedHash,
+      slotUnixMs: candle.unixMs,
+      ingestId,
+      revision: 1,
+      candleJson: canonicalJson
+    });
     result.inserted++;
   } else if (existing.candleJson === canonicalJson) {
     result.idempotent++; // exact match, skip
   } else if (existing.revision < MAX_REVISION) {
-    insertCandle(db, { feedHash, slotUnixMs: candle.unixMs, ingestId, revision: existing.revision + 1, candleJson: canonicalJson });
+    insertCandle(db, {
+      feedHash,
+      slotUnixMs: candle.unixMs,
+      ingestId,
+      revision: existing.revision + 1,
+      candleJson: canonicalJson
+    });
     result.revised++;
   } else {
     result.rejected++;
-    result.rejections.push({ unixMs: candle.unixMs, reason: 'CANDLE_STALE_REVISION' });
+    result.rejections.push({ unixMs: candle.unixMs, reason: "CANDLE_STALE_REVISION" });
   }
 }
 ```
@@ -104,19 +116,19 @@ Once you know which candles are closed, classify how fresh the latest one is:
 
 ```typescript
 // src/engine/marketRegime/freshness.ts
-type Freshness = 'fresh' | 'soft-stale' | 'hard-stale';
+type Freshness = "fresh" | "soft-stale" | "hard-stale";
 
 function computeFreshness(
   latestClosedUnixMs: number,
   asOfUnixMs: number,
-  timeframe: Timeframe,
+  timeframe: Timeframe
 ): Freshness {
   const ageMs = asOfUnixMs - latestClosedUnixMs;
   const timeframeMs = timeframe * 60 * 1000;
 
-  if (ageMs < 2 * timeframeMs) return 'fresh';       // < 2h for 1h
-  if (ageMs < 4 * timeframeMs) return 'soft-stale';  // 2-4h for 1h
-  return 'hard-stale';                                 // > 4h for 1h
+  if (ageMs < 2 * timeframeMs) return "fresh"; // < 2h for 1h
+  if (ageMs < 4 * timeframeMs) return "soft-stale"; // 2-4h for 1h
+  return "hard-stale"; // > 4h for 1h
 }
 ```
 
@@ -128,8 +140,8 @@ Suitability uses a precedence-ordered four-band model. The highest-severity band
 
 ```typescript
 // src/engine/marketRegime/evaluateMarketClmmSuitability.ts
-type SuitabilityBand = 'ALLOWED' | 'CAUTION' | 'BLOCKED' | 'UNKNOWN';
-const BAND_PRECEDENCE: SuitabilityBand[] = ['UNKNOWN', 'BLOCKED', 'CAUTION', 'ALLOWED'];
+type SuitabilityBand = "ALLOWED" | "CAUTION" | "BLOCKED" | "UNKNOWN";
+const BAND_PRECEDENCE: SuitabilityBand[] = ["UNKNOWN", "BLOCKED", "CAUTION", "ALLOWED"];
 
 // Each condition pushes a reason into the appropriate band
 // Then the first non-empty band in precedence order wins
@@ -169,9 +181,9 @@ The trade-off: every request does a DB read + indicator computation. For a micro
 // src/engine/marketRegime/classifyMarketRegime.ts
 function classifyMarketRegime(indicators: Indicators, config: MarketRegimeConfig): Regime {
   return classifyRegime(indicators, {
-    state: undefined,     // always stateless — no hysteresis carryover
-    confirmBars: 1,       // immediate classification
-    minHoldBars: 0,       // no minimum hold — market regime can flip on next call
+    state: undefined, // always stateless — no hysteresis carryover
+    confirmBars: 1, // immediate classification
+    minHoldBars: 0 // no minimum hold — market regime can flip on next call
   });
 }
 ```
@@ -185,14 +197,14 @@ The full `/v1/plan` pipeline uses hysteresis (state + confirm + hold) because po
 
 ## Why This Matters
 
-| Pattern | If you skip it | What it prevents |
-|---------|---------------|------------------|
-| Per-slot decision tree | Batch either all-succeeds or all-fails | Partial success is the normal case — clients need per-item feedback |
-| Grace-window cutoff | Using raw `asOf - timeframe` | Half-formed candles skew regime classification |
-| Freshness classification | Not surfacing data staleness | Stale decisions presented as confident |
-| Four-band precedence | Summing scores or majority-voting | A single hard block must override all allows — safety-first |
-| Stateless read-through | Caching regime state in DB | Stale regimes after classification logic updates |
-| Market-only classification | Reusing full plan classification | Confirm/hold hysteresis delays regime visibility for read-only consumers |
+| Pattern                    | If you skip it                         | What it prevents                                                         |
+| -------------------------- | -------------------------------------- | ------------------------------------------------------------------------ |
+| Per-slot decision tree     | Batch either all-succeeds or all-fails | Partial success is the normal case — clients need per-item feedback      |
+| Grace-window cutoff        | Using raw `asOf - timeframe`           | Half-formed candles skew regime classification                           |
+| Freshness classification   | Not surfacing data staleness           | Stale decisions presented as confident                                   |
+| Four-band precedence       | Summing scores or majority-voting      | A single hard block must override all allows — safety-first              |
+| Stateless read-through     | Caching regime state in DB             | Stale regimes after classification logic updates                         |
+| Market-only classification | Reusing full plan classification       | Confirm/hold hysteresis delays regime visibility for read-only consumers |
 
 ## When to Apply
 
@@ -211,7 +223,7 @@ The full `/v1/plan` pipeline uses hysteresis (state + confirm + hold) because po
 // The brief writer inserts one row per request
 // No per-item decisions, no batch semantics
 const existing = selectBrief(db, briefHash);
-if (existing) throw new LedgerWriteError('BRIEF_ALREADY_EXISTS');
+if (existing) throw new LedgerWriteError("BRIEF_ALREADY_EXISTS");
 insertBrief(db, brief);
 ```
 

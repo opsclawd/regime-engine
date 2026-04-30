@@ -62,6 +62,7 @@ The `CandleStore` class is the new PG-native data access layer. Handler injectio
 SQLite's `BEGIN IMMEDIATE` acquires a database-wide write lock. Postgres advisory locks are scoped to a single `bigint` key, allowing concurrent writes to different feeds while serializing writes to the same feed.
 
 Advisory lock key derivation:
+
 - Compute from `(symbol, source, network, poolAddress, timeframe)` — the five fields that uniquely identify a logical feed.
 - Use `pg_advisory_xact_lock(hashbigint)` where `hashbigint` is derived deterministically from the concatenation of the five feed fields.
 - `pg_advisory_xact_lock` is transaction-scoped: auto-released on `COMMIT` or `ROLLBACK`. No explicit unlock needed.
@@ -85,7 +86,16 @@ Advisory lock key derivation:
 ### 5.1 New file: `src/ledger/pg/schema/candleRevisions.ts`
 
 ```ts
-import { pgTable, serial, varchar, bigint, doublePrecision, text, index, uniqueIndex } from "drizzle-orm/pg-core";
+import {
+  pgTable,
+  serial,
+  varchar,
+  bigint,
+  doublePrecision,
+  text,
+  index,
+  uniqueIndex
+} from "drizzle-orm/pg-core";
 
 export const candleRevisions = pgTable(
   "candle_revisions",
@@ -106,28 +116,42 @@ export const candleRevisions = pgTable(
     volume: doublePrecision("volume").notNull(),
     ohlcvCanonical: text("ohlcv_canonical").notNull(),
     ohlcvHash: varchar("ohlcv_hash", { length: 64 }).notNull(),
-    receivedAtUnixMs: bigint("received_at_unix_ms", { mode: "number" }).notNull(),
+    receivedAtUnixMs: bigint("received_at_unix_ms", { mode: "number" }).notNull()
   },
   (table) => [
     uniqueIndex("ux_candle_revisions_slot_hash").on(
-      table.symbol, table.source, table.network,
-      table.poolAddress, table.timeframe, table.unixMs,
+      table.symbol,
+      table.source,
+      table.network,
+      table.poolAddress,
+      table.timeframe,
+      table.unixMs,
       table.ohlcvHash
     ),
     index("idx_candle_revisions_slot_latest").on(
-      table.symbol, table.source, table.network,
-      table.poolAddress, table.timeframe, table.unixMs,
-      table.sourceRecordedAtUnixMs, table.id
+      table.symbol,
+      table.source,
+      table.network,
+      table.poolAddress,
+      table.timeframe,
+      table.unixMs,
+      table.sourceRecordedAtUnixMs,
+      table.id
     ),
     index("idx_candle_revisions_feed_window").on(
-      table.symbol, table.source, table.network,
-      table.poolAddress, table.timeframe, table.unixMs
-    ),
+      table.symbol,
+      table.source,
+      table.network,
+      table.poolAddress,
+      table.timeframe,
+      table.unixMs
+    )
   ]
 );
 ```
 
 Column types map to PG as:
+
 - `serial` → `SERIAL` (auto-increment PK)
 - `varchar` with length → `VARCHAR(n)`
 - `bigint` with `mode: "number"` → `BIGINT` stored as 8-byte integer, read/written as JS `number`
@@ -303,6 +327,7 @@ async writeCandles(
 ```
 
 Key points:
+
 - Advisory lock is acquired inside the transaction via `tx.execute(sql\`SELECT pg_advisory_xact_lock(${lockKey})\`)`. This is transaction-scoped, meaning it auto-releases on COMMIT or ROLLBACK — no explicit unlock needed.
 - The lock key is a deterministic `bigint` derived from the feed identity fields (see §6.4).
 - The same per-slot decision tree as SQLite: insert / idempotent / revise / reject.
@@ -354,6 +379,7 @@ async getLatestCandlesForFeed(
 The read query uses Drizzle's `sql` template tag for the CTE with `ROW_NUMBER() OVER`, since Drizzle doesn't natively support window functions yet. The query is semantically identical to the SQLite version.
 
 **Important implementation notes:**
+
 - The table reference `regime_engine.candle_revisions` is schema-qualified because `db.execute()` raw SQL bypasses Drizzle's automatic schema qualification. The connection's `search_path` alone is insufficient for raw SQL table references.
 - `Number()` coercion is applied to all result columns because `db.execute()` returns untyped `{ [column: string]: any }` rows. PG `bigint` columns come back as strings from the postgres-js driver, and `double precision` columns may also need explicit coercion. The `Number()` calls are a safety measure against driver-specific type handling.
 - Snake_case columns from PG are mapped to camelCase in the returned `CandleRow[]`.
@@ -362,8 +388,11 @@ The read query uses Drizzle's `sql` template tag for the CTE with `ROW_NUMBER() 
 
 ```ts
 function feedHash(feed: {
-  symbol: string; source: string; network: string;
-  poolAddress: string; timeframe: string;
+  symbol: string;
+  source: string;
+  network: string;
+  poolAddress: string;
+  timeframe: string;
 }): bigint {
   const combined = `${feed.symbol}\0${feed.source}\0${feed.network}\0${feed.poolAddress}\0${feed.timeframe}`;
   const hex = sha256Hex(combined);
@@ -391,7 +420,7 @@ export interface StoreContext {
   ledger: LedgerStore;
   pg: Db;
   pgClient: { end: () => Promise<void> };
-  candleStore: CandleStore;  // new
+  candleStore: CandleStore; // new
 }
 
 export const createStoreContext = (
@@ -424,10 +453,7 @@ Both handlers gain an optional second parameter `candleStore?: CandleStore`.
 ### 7.3 `src/http/handlers/candlesIngest.ts`
 
 ```ts
-export const createCandlesIngestHandler = (
-  store: LedgerStore,
-  candleStore?: CandleStore
-) => {
+export const createCandlesIngestHandler = (store: LedgerStore, candleStore?: CandleStore) => {
   return async (request: FastifyRequest, reply: FastifyReply) => {
     try {
       requireSharedSecret(request.headers, "X-Candles-Ingest-Token", "CANDLES_INGEST_TOKEN");
@@ -555,6 +581,7 @@ All tests run against a real PG instance (not mocked), using the same approach a
 ### 9.4 Handler integration tests (`src/http/__tests__/`)
 
 Existing route tests extended:
+
 - `candlesIngest.route.test.ts` — when `candleStore` is provided, handler delegates to it.
 - `regimeCurrent.route.test.ts` — when `candleStore` is provided, handler delegates to it.
 - Both: when `candleStore` is undefined, handler falls back to SQLite functions.
@@ -574,6 +601,7 @@ Existing route tests extended:
 ### 10.1 Rollback
 
 If PG candle storage has issues:
+
 1. Remove `DATABASE_URL` environment variable.
 2. Redeploy. System falls back to SQLite candle I/O.
 3. No data loss in SQLite — it was never modified and continues working.
@@ -582,14 +610,14 @@ If PG candle storage has issues:
 
 ## 11. Acceptance criteria mapping
 
-| Issue #23 criterion | Section |
-|---|---|
-| Drizzle schema for `candle_revisions` in `regime_engine` schema | §5 |
-| `CandleStore` class with `writeCandles` and `getLatestCandlesForFeed` | §6 |
-| Advisory lock per feed for write concurrency | §4.1, §6.2, §6.4 |
-| Same write-decision tree (insert/idempotent/revise/reject) | §6.2 |
-| Same read query semantics (CTE with ROW_NUMBER) | §6.3 |
-| Handler injection — PG-first with SQLite fallback | §7 |
-| No backfill — PG starts empty | §10 |
-| Existing tests pass unchanged (SQLite path still works) | §9.4, §9.5 |
-| Migration via `drizzle-kit migrate` | §5.3 |
+| Issue #23 criterion                                                   | Section          |
+| --------------------------------------------------------------------- | ---------------- |
+| Drizzle schema for `candle_revisions` in `regime_engine` schema       | §5               |
+| `CandleStore` class with `writeCandles` and `getLatestCandlesForFeed` | §6               |
+| Advisory lock per feed for write concurrency                          | §4.1, §6.2, §6.4 |
+| Same write-decision tree (insert/idempotent/revise/reject)            | §6.2             |
+| Same read query semantics (CTE with ROW_NUMBER)                       | §6.3             |
+| Handler injection — PG-first with SQLite fallback                     | §7               |
+| No backfill — PG starts empty                                         | §10              |
+| Existing tests pass unchanged (SQLite path still works)               | §9.4, §9.5       |
+| Migration via `drizzle-kit migrate`                                   | §5.3             |

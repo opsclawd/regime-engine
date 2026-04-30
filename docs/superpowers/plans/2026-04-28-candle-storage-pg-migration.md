@@ -13,6 +13,7 @@
 ## File Structure
 
 **New files:**
+
 - `src/ledger/pg/schema/candleRevisions.ts` — Drizzle table definition + indexes
 - `src/ledger/candleStore.ts` — `CandleStore` class (writeCandles, getLatestCandlesForFeed, feedHash helper)
 - `src/ledger/__tests__/candleStore.test.ts` — Unit tests for CandleStore (requires PG)
@@ -21,6 +22,7 @@
 - `drizzle/0001_create_candle_revisions.sql` — Generated migration (created by `drizzle-kit generate`)
 
 **Modified files:**
+
 - `src/ledger/pg/schema/index.ts` — Add re-export of `candleRevisions`
 - `src/ledger/storeContext.ts` — Add `candleStore: CandleStore` field
 - `src/http/routes.ts` — Pass `storeContext?.candleStore` to candle and regime-current handlers
@@ -28,6 +30,7 @@
 - `src/http/handlers/regimeCurrent.ts` — Add optional `CandleStore` parameter, delegate when present
 
 **Unchanged files:**
+
 - `src/ledger/candlesWriter.ts` — Preserved as SQLite fallback
 - `src/ledger/schema.sql` — SQLite schema remains
 - `src/engine/` — Pure core, no changes
@@ -38,6 +41,7 @@
 ### Task 1: Drizzle Schema for candle_revisions
 
 **Files:**
+
 - Create: `src/ledger/pg/schema/candleRevisions.ts`
 - Modify: `src/ledger/pg/schema/index.ts`
 - Test: `npm run typecheck`
@@ -45,7 +49,16 @@
 - [ ] **Step 1: Create `src/ledger/pg/schema/candleRevisions.ts`**
 
 ```ts
-import { pgTable, serial, varchar, bigint, doublePrecision, text, index, uniqueIndex } from "drizzle-orm/pg-core";
+import {
+  pgTable,
+  serial,
+  varchar,
+  bigint,
+  doublePrecision,
+  text,
+  index,
+  uniqueIndex
+} from "drizzle-orm/pg-core";
 
 export const candleRevisions = pgTable(
   "candle_revisions",
@@ -66,23 +79,36 @@ export const candleRevisions = pgTable(
     volume: doublePrecision("volume").notNull(),
     ohlcvCanonical: text("ohlcv_canonical").notNull(),
     ohlcvHash: varchar("ohlcv_hash", { length: 64 }).notNull(),
-    receivedAtUnixMs: bigint("received_at_unix_ms", { mode: "number" }).notNull(),
+    receivedAtUnixMs: bigint("received_at_unix_ms", { mode: "number" }).notNull()
   },
   (table) => [
     uniqueIndex("ux_candle_revisions_slot_hash").on(
-      table.symbol, table.source, table.network,
-      table.poolAddress, table.timeframe, table.unixMs,
+      table.symbol,
+      table.source,
+      table.network,
+      table.poolAddress,
+      table.timeframe,
+      table.unixMs,
       table.ohlcvHash
     ),
     index("idx_candle_revisions_slot_latest").on(
-      table.symbol, table.source, table.network,
-      table.poolAddress, table.timeframe, table.unixMs,
-      table.sourceRecordedAtUnixMs, table.id
+      table.symbol,
+      table.source,
+      table.network,
+      table.poolAddress,
+      table.timeframe,
+      table.unixMs,
+      table.sourceRecordedAtUnixMs,
+      table.id
     ),
     index("idx_candle_revisions_feed_window").on(
-      table.symbol, table.source, table.network,
-      table.poolAddress, table.timeframe, table.unixMs
-    ),
+      table.symbol,
+      table.source,
+      table.network,
+      table.poolAddress,
+      table.timeframe,
+      table.unixMs
+    )
   ]
 );
 ```
@@ -90,10 +116,13 @@ export const candleRevisions = pgTable(
 - [ ] **Step 2: Update `src/ledger/pg/schema/index.ts` to re-export candleRevisions**
 
 Change the file from:
+
 ```ts
-export {}
+export {};
 ```
+
 to:
+
 ```ts
 export { candleRevisions } from "./candleRevisions.js";
 ```
@@ -111,6 +140,7 @@ Expected: Creates `drizzle/0001_create_candle_revisions.sql` with CREATE TABLE a
 - [ ] **Step 5: Verify the generated migration SQL**
 
 Read `drizzle/0001_create_candle_revisions.sql` and confirm it contains:
+
 - `CREATE TABLE IF NOT EXISTS "regime_engine"."candle_revisions"` with all columns using `double precision` for OHLCV (not `real`)
 - `CREATE UNIQUE INDEX IF NOT EXISTS` for `ux_candle_revisions_slot_hash`
 - `CREATE INDEX IF NOT EXISTS` for `idx_candle_revisions_slot_latest`
@@ -129,6 +159,7 @@ git commit -m "m23: add Drizzle schema for candle_revisions table and generate m
 ### Task 2: CandleStore class — `writeCandles` method
 
 **Files:**
+
 - Create: `src/ledger/candleStore.ts`
 - Test: manual verification via typecheck
 
@@ -165,21 +196,30 @@ export interface CandleRow {
   volume: number;
 }
 
-const computeOhlcv = (candle: { open: number; high: number; low: number; close: number; volume: number }) => {
+const computeOhlcv = (candle: {
+  open: number;
+  high: number;
+  low: number;
+  close: number;
+  volume: number;
+}) => {
   const ohlcvCanonical = toCanonicalJson({
     open: candle.open,
     high: candle.high,
     low: candle.low,
     close: candle.close,
-    volume: candle.volume,
+    volume: candle.volume
   });
   const ohlcvHash = sha256Hex(ohlcvCanonical);
   return { ohlcvCanonical, ohlcvHash };
 };
 
 const feedHash = (feed: {
-  symbol: string; source: string; network: string;
-  poolAddress: string; timeframe: string;
+  symbol: string;
+  source: string;
+  network: string;
+  poolAddress: string;
+  timeframe: string;
 }): bigint => {
   const combined = `${feed.symbol}\0${feed.source}\0${feed.network}\0${feed.poolAddress}\0${feed.timeframe}`;
   const hex = sha256Hex(combined);
@@ -203,7 +243,7 @@ export class CandleStore {
       source: input.source,
       network: input.network,
       poolAddress: input.poolAddress,
-      timeframe: input.timeframe,
+      timeframe: input.timeframe
     };
 
     const lockKey = feedHash(feed);
@@ -224,21 +264,20 @@ export class CandleStore {
           .select({
             sourceRecordedAtUnixMs: candleRevisions.sourceRecordedAtUnixMs,
             sourceRecordedAtIso: candleRevisions.sourceRecordedAtIso,
-            ohlcvHash: candleRevisions.ohlcvHash,
+            ohlcvHash: candleRevisions.ohlcvHash
           })
           .from(candleRevisions)
-          .where(and(
-            eq(candleRevisions.symbol, feed.symbol),
-            eq(candleRevisions.source, feed.source),
-            eq(candleRevisions.network, feed.network),
-            eq(candleRevisions.poolAddress, feed.poolAddress),
-            eq(candleRevisions.timeframe, feed.timeframe),
-            eq(candleRevisions.unixMs, candle.unixMs),
-          ))
-          .orderBy(
-            desc(candleRevisions.sourceRecordedAtUnixMs),
-            desc(candleRevisions.id)
+          .where(
+            and(
+              eq(candleRevisions.symbol, feed.symbol),
+              eq(candleRevisions.source, feed.source),
+              eq(candleRevisions.network, feed.network),
+              eq(candleRevisions.poolAddress, feed.poolAddress),
+              eq(candleRevisions.timeframe, feed.timeframe),
+              eq(candleRevisions.unixMs, candle.unixMs)
+            )
           )
+          .orderBy(desc(candleRevisions.sourceRecordedAtUnixMs), desc(candleRevisions.id))
           .limit(1);
 
         if (existing.length === 0) {
@@ -254,7 +293,7 @@ export class CandleStore {
             volume: candle.volume,
             ohlcvCanonical,
             ohlcvHash,
-            receivedAtUnixMs,
+            receivedAtUnixMs
           });
           insertedCount += 1;
           continue;
@@ -279,7 +318,7 @@ export class CandleStore {
             volume: candle.volume,
             ohlcvCanonical,
             ohlcvHash,
-            receivedAtUnixMs,
+            receivedAtUnixMs
           });
           revisedCount += 1;
           continue;
@@ -289,7 +328,7 @@ export class CandleStore {
         rejections.push({
           unixMs: candle.unixMs,
           reason: "STALE_REVISION",
-          existingSourceRecordedAtIso: row.sourceRecordedAtIso,
+          existingSourceRecordedAtIso: row.sourceRecordedAtIso
         });
       }
     });
@@ -318,6 +357,7 @@ git commit -m "m23: add CandleStore.writeCandles with advisory locking"
 ### Task 3: CandleStore class — `getLatestCandlesForFeed` method
 
 **Files:**
+
 - Modify: `src/ledger/candleStore.ts`
 
 - [ ] **Step 1: Add `getLatestCandlesForFeed` method to CandleStore**
@@ -382,6 +422,7 @@ git commit -m "m23: add CandleStore.getLatestCandlesForFeed with CTE query"
 ### Task 4: Wire CandleStore into StoreContext and route handlers
 
 **Files:**
+
 - Modify: `src/ledger/storeContext.ts`
 - Modify: `src/http/routes.ts`
 - Modify: `src/http/handlers/candlesIngest.ts`
@@ -443,10 +484,7 @@ import type { CandleStore } from "../../ledger/candleStore.js";
 import { AuthError, requireSharedSecret } from "../auth.js";
 import { ContractValidationError } from "../errors.js";
 
-export const createCandlesIngestHandler = (
-  store: LedgerStore,
-  candleStore?: CandleStore
-) => {
+export const createCandlesIngestHandler = (store: LedgerStore, candleStore?: CandleStore) => {
   return async (request: FastifyRequest, reply: FastifyReply) => {
     try {
       requireSharedSecret(request.headers, "X-Candles-Ingest-Token", "CANDLES_INGEST_TOKEN");
@@ -487,10 +525,7 @@ Replace the entire file with:
 ```ts
 import type { FastifyReply, FastifyRequest } from "fastify";
 import { parseRegimeCurrentQuery } from "../../contract/v1/validation.js";
-import {
-  candlesNotFoundError,
-  ContractValidationError
-} from "../errors.js";
+import { candlesNotFoundError, ContractValidationError } from "../errors.js";
 import type { LedgerStore } from "../../ledger/store.js";
 import { getLatestCandlesForFeed } from "../../ledger/candlesWriter.js";
 import type { CandleStore } from "../../ledger/candleStore.js";
@@ -503,10 +538,7 @@ import { buildRegimeCurrent } from "../../engine/marketRegime/buildRegimeCurrent
 
 const READ_BUFFER = 50;
 
-export const createRegimeCurrentHandler = (
-  store: LedgerStore,
-  candleStore?: CandleStore
-) => {
+export const createRegimeCurrentHandler = (store: LedgerStore, candleStore?: CandleStore) => {
   return async (request: FastifyRequest, reply: FastifyReply) => {
     try {
       const query = parseRegimeCurrentQuery(request.query);
@@ -518,8 +550,8 @@ export const createRegimeCurrentHandler = (
         config.timeframeMs,
         config.freshness.closedCandleDelayMs
       );
-      const limit = Math.max(config.indicators.volLongWindow, config.suitability.minCandles)
-        + READ_BUFFER;
+      const limit =
+        Math.max(config.indicators.volLongWindow, config.suitability.minCandles) + READ_BUFFER;
 
       const candles = candleStore
         ? await candleStore.getLatestCandlesForFeed({
@@ -544,8 +576,8 @@ export const createRegimeCurrentHandler = (
       if (candles.length === 0) {
         throw candlesNotFoundError(
           `No closed candles found for symbol="${query.symbol}", source="${query.source}", ` +
-          `network="${query.network}", poolAddress="${query.poolAddress}", ` +
-          `timeframe="${query.timeframe}".`
+            `network="${query.network}", poolAddress="${query.poolAddress}", ` +
+            `timeframe="${query.timeframe}".`
         );
       }
 
@@ -584,19 +616,23 @@ export const createRegimeCurrentHandler = (
 Replace lines 81-82 (the two candle handler registrations) and add the `CandleStore` import:
 
 Add import at the top:
+
 ```ts
 import type { CandleStore } from "../ledger/candleStore.js";
 ```
 
 Change these two lines:
+
 ```ts
-  app.post("/v1/candles", createCandlesIngestHandler(ledger));
-  app.get("/v1/regime/current", createRegimeCurrentHandler(ledger));
+app.post("/v1/candles", createCandlesIngestHandler(ledger));
+app.get("/v1/regime/current", createRegimeCurrentHandler(ledger));
 ```
+
 to:
+
 ```ts
-  app.post("/v1/candles", createCandlesIngestHandler(ledger, storeContext?.candleStore));
-  app.get("/v1/regime/current", createRegimeCurrentHandler(ledger, storeContext?.candleStore));
+app.post("/v1/candles", createCandlesIngestHandler(ledger, storeContext?.candleStore));
+app.get("/v1/regime/current", createRegimeCurrentHandler(ledger, storeContext?.candleStore));
 ```
 
 - [ ] **Step 5: Verify the storeContext.e2e.test.ts still references StoreContext**
@@ -625,6 +661,7 @@ git commit -m "m23: wire CandleStore into StoreContext and route handlers with o
 ### Task 5: Unit tests for CandleStore (PG integration tests)
 
 **Files:**
+
 - Create: `src/ledger/__tests__/candleStore.test.ts`
 
 This task creates PG integration tests that mirror the existing `candlesWriter.test.ts` but use `CandleStore` against a real Postgres. These tests require `DATABASE_URL` and are run via `npm run test:pg`.
@@ -649,7 +686,7 @@ const makeRequest = (overrides: Partial<CandleIngestRequest> = {}): CandleIngest
   timeframe: "1h",
   sourceRecordedAtIso: "2026-04-26T12:00:00.000Z",
   candles: [
-    { unixMs: 1 * ONE_HOUR_MS, open: 100, high: 110, low: 90,  close: 105, volume: 1 },
+    { unixMs: 1 * ONE_HOUR_MS, open: 100, high: 110, low: 90, close: 105, volume: 1 },
     { unixMs: 2 * ONE_HOUR_MS, open: 105, high: 115, low: 100, close: 110, volume: 2 },
     { unixMs: 3 * ONE_HOUR_MS, open: 110, high: 120, low: 105, close: 115, volume: 3 }
   ],
@@ -708,7 +745,7 @@ describe.skipIf(!process.env.DATABASE_URL)("CandleStore (PG)", () => {
     const newer = makeRequest({
       sourceRecordedAtIso: "2026-04-26T13:00:00.000Z",
       candles: [
-        { unixMs: 1 * ONE_HOUR_MS, open: 101, high: 111, low: 91,  close: 106, volume: 11 },
+        { unixMs: 1 * ONE_HOUR_MS, open: 101, high: 111, low: 91, close: 106, volume: 11 },
         { unixMs: 2 * ONE_HOUR_MS, open: 106, high: 116, low: 101, close: 111, volume: 22 },
         { unixMs: 3 * ONE_HOUR_MS, open: 111, high: 121, low: 106, close: 116, volume: 33 }
       ]
@@ -725,9 +762,13 @@ describe.skipIf(!process.env.DATABASE_URL)("CandleStore (PG)", () => {
     });
 
     const latest = await store.getLatestCandlesForFeed({
-      symbol: "SOL/USDC", source: "birdeye", network: "solana-mainnet",
-      poolAddress: "Pool111", timeframe: "1h",
-      closedCandleCutoffUnixMs: 10 * ONE_HOUR_MS, limit: 100
+      symbol: "SOL/USDC",
+      source: "birdeye",
+      network: "solana-mainnet",
+      poolAddress: "Pool111",
+      timeframe: "1h",
+      closedCandleCutoffUnixMs: 10 * ONE_HOUR_MS,
+      limit: 100
     });
     expect(latest.map((c) => c.close)).toEqual([106, 111, 116]);
   });
@@ -740,9 +781,7 @@ describe.skipIf(!process.env.DATABASE_URL)("CandleStore (PG)", () => {
 
     const stale = makeRequest({
       sourceRecordedAtIso: "2026-04-26T12:00:00.000Z",
-      candles: [
-        { unixMs: 1 * ONE_HOUR_MS, open: 200, high: 210, low: 190, close: 205, volume: 1 }
-      ]
+      candles: [{ unixMs: 1 * ONE_HOUR_MS, open: 200, high: 210, low: 190, close: 205, volume: 1 }]
     });
 
     const result = await store.writeCandles(stale, 1_700_000_001_000);
@@ -773,7 +812,7 @@ describe.skipIf(!process.env.DATABASE_URL)("CandleStore (PG)", () => {
     const mixed = makeRequest({
       sourceRecordedAtIso: "2026-04-26T12:00:00.000Z",
       candles: [
-        { unixMs: 1 * ONE_HOUR_MS, open: 100, high: 110, low: 90,  close: 105, volume: 1 },
+        { unixMs: 1 * ONE_HOUR_MS, open: 100, high: 110, low: 90, close: 105, volume: 1 },
         { unixMs: 2 * ONE_HOUR_MS, open: 999, high: 999, low: 999, close: 999, volume: 9 },
         { unixMs: 3 * ONE_HOUR_MS, open: 110, high: 120, low: 105, close: 115, volume: 3 }
       ]
@@ -791,9 +830,13 @@ describe.skipIf(!process.env.DATABASE_URL)("CandleStore (PG)", () => {
 
   it("getLatestCandlesForFeed returns empty array when no data exists", async () => {
     const result = await store.getLatestCandlesForFeed({
-      symbol: "SOL/USDC", source: "birdeye", network: "solana-mainnet",
-      poolAddress: "Pool111", timeframe: "1h",
-      closedCandleCutoffUnixMs: 10 * ONE_HOUR_MS, limit: 100
+      symbol: "SOL/USDC",
+      source: "birdeye",
+      network: "solana-mainnet",
+      poolAddress: "Pool111",
+      timeframe: "1h",
+      closedCandleCutoffUnixMs: 10 * ONE_HOUR_MS,
+      limit: 100
     });
     expect(result).toEqual([]);
   });
@@ -811,8 +854,11 @@ describe.skipIf(!process.env.DATABASE_URL)("CandleStore (PG)", () => {
     );
 
     const result = await store.getLatestCandlesForFeed({
-      symbol: "SOL/USDC", source: "birdeye", network: "solana-mainnet",
-      poolAddress: "Pool111", timeframe: "1h",
+      symbol: "SOL/USDC",
+      source: "birdeye",
+      network: "solana-mainnet",
+      poolAddress: "Pool111",
+      timeframe: "1h",
       closedCandleCutoffUnixMs: 5 * ONE_HOUR_MS,
       limit: 100
     });
@@ -826,15 +872,22 @@ describe.skipIf(!process.env.DATABASE_URL)("CandleStore (PG)", () => {
       makeRequest({
         candles: Array.from({ length: 20 }, (_, i) => ({
           unixMs: (i + 1) * ONE_HOUR_MS,
-          open: 100 + i, high: 110 + i, low: 90 + i, close: 105 + i, volume: i + 1
+          open: 100 + i,
+          high: 110 + i,
+          low: 90 + i,
+          close: 105 + i,
+          volume: i + 1
         }))
       }),
       1_700_000_000_000
     );
 
     const result = await store.getLatestCandlesForFeed({
-      symbol: "SOL/USDC", source: "birdeye", network: "solana-mainnet",
-      poolAddress: "Pool111", timeframe: "1h",
+      symbol: "SOL/USDC",
+      source: "birdeye",
+      network: "solana-mainnet",
+      poolAddress: "Pool111",
+      timeframe: "1h",
       closedCandleCutoffUnixMs: 25 * ONE_HOUR_MS,
       limit: 5
     });
@@ -868,15 +921,19 @@ Note: These tests will only run when `DATABASE_URL` is set (they use `describe.s
 ### Task 6: Update the test:pg script to include new PG tests
 
 **Files:**
+
 - Modify: `package.json`
 
 - [ ] **Step 1: Update the `test:pg` script in `package.json`**
 
 Change the `test:pg` script from:
+
 ```json
 "test:pg": "DATABASE_URL=postgres://test:test@localhost:5432/regime_engine_test PG_SSL=false vitest run src/ledger/pg/__tests__/ src/__tests__/pgStartup.test.ts src/http/__tests__/storeContext.e2e.test.ts"
 ```
+
 to:
+
 ```json
 "test:pg": "DATABASE_URL=postgres://test:test@localhost:5432/regime_engine_test PG_SSL=false vitest run src/ledger/pg/__tests__/ src/__tests__/pgStartup.test.ts src/http/__tests__/storeContext.e2e.test.ts src/ledger/__tests__/candleStore.test.ts"
 ```
@@ -893,6 +950,7 @@ git commit -m "m23: add CandleStore tests to test:pg script"
 ### Task 7: PG schema verification test
 
 **Files:**
+
 - Create: `src/ledger/pg/__tests__/candleRevisions.test.ts`
 
 - [ ] **Step 1: Create `src/ledger/pg/__tests__/candleRevisions.test.ts`**
@@ -912,7 +970,7 @@ describe.skipIf(!process.env.DATABASE_URL)("candle_revisions schema (PG)", () =>
       sql: `SELECT column_name, data_type, is_nullable
               FROM information_schema.columns
              WHERE table_schema = 'regime_engine' AND table_name = 'candle_revisions'
-             ORDER BY ordinal_position`,
+             ORDER BY ordinal_position`
     });
 
     const columns = result.map((row: any) => row.column_name);
@@ -946,7 +1004,7 @@ describe.skipIf(!process.env.DATABASE_URL)("candle_revisions schema (PG)", () =>
 
     const result = await db.execute({
       sql: `SELECT indexname FROM pg_indexes
-             WHERE schemaname = 'regime_engine' AND tablename = 'candle_revisions'`,
+             WHERE schemaname = 'regime_engine' AND tablename = 'candle_revisions'`
     });
 
     const indexNames = result.map((row: any) => row.indexname);
@@ -976,6 +1034,7 @@ git commit -m "m23: add PG schema verification test for candle_revisions"
 ### Task 8: Fallback handler tests
 
 **Files:**
+
 - Create: `src/http/__tests__/candleFallback.e2e.test.ts`
 
 - [ ] **Step 1: Create `src/http/__tests__/candleFallback.e2e.test.ts`**
@@ -1019,9 +1078,7 @@ const makePayload = (overrides: Record<string, unknown> = {}) => ({
   symbol: "SOL/USDC",
   timeframe: "1h",
   sourceRecordedAtIso: "2026-04-26T12:00:00.000Z",
-  candles: [
-    { unixMs: ONE_HOUR_MS, open: 100, high: 110, low: 95, close: 105, volume: 1 }
-  ],
+  candles: [{ unixMs: ONE_HOUR_MS, open: 100, high: 110, low: 95, close: 105, volume: 1 }],
   ...overrides
 });
 
@@ -1078,6 +1135,7 @@ git commit -m "m23: add fallback handler tests for SQLite-only path"
 ### Task 9: Run full quality gate and verify migration
 
 **Files:**
+
 - None (verification only)
 
 - [ ] **Step 1: Run the full quality gate**
@@ -1108,25 +1166,25 @@ git commit -m "m23: finalize candle PG migration — quality gate clean"
 
 ### 1. Spec coverage
 
-| Spec section | Plan task |
-|---|---|
-| §5 Drizzle schema | Task 1 |
-| §5.4 Unique index on slot+hash | Task 1 |
-| §6.2 `writeCandles` with advisory lock | Task 2 |
-| §6.3 `getLatestCandlesForFeed` with CTE | Task 3 |
-| §6.4 `feedHash` helper (sha256Hex-based) | Task 2 (included in CandleStore) |
-| §7.1 StoreContext update | Task 4 |
-| §7.2 Routes update | Task 4 |
-| §7.3 CandlesIngest handler | Task 4 |
-| §7.4 RegimeCurrent handler | Task 4 |
-| §7.5 Fallback behavior | Task 4 (inherent in optional param) |
-| §9.1 Drizzle schema test | Task 7 |
-| §9.2 CandleStore write tests | Task 5 |
-| §9.3 CandleStore read tests | Task 5 |
-| §9.4 Handler integration tests | Task 8 |
-| §9.5 Fallback tests | Task 8 |
-| No backfill | No task needed (documented) |
-| Migration via drizzle-kit | Task 1 (generated) |
+| Spec section                             | Plan task                           |
+| ---------------------------------------- | ----------------------------------- |
+| §5 Drizzle schema                        | Task 1                              |
+| §5.4 Unique index on slot+hash           | Task 1                              |
+| §6.2 `writeCandles` with advisory lock   | Task 2                              |
+| §6.3 `getLatestCandlesForFeed` with CTE  | Task 3                              |
+| §6.4 `feedHash` helper (sha256Hex-based) | Task 2 (included in CandleStore)    |
+| §7.1 StoreContext update                 | Task 4                              |
+| §7.2 Routes update                       | Task 4                              |
+| §7.3 CandlesIngest handler               | Task 4                              |
+| §7.4 RegimeCurrent handler               | Task 4                              |
+| §7.5 Fallback behavior                   | Task 4 (inherent in optional param) |
+| §9.1 Drizzle schema test                 | Task 7                              |
+| §9.2 CandleStore write tests             | Task 5                              |
+| §9.3 CandleStore read tests              | Task 5                              |
+| §9.4 Handler integration tests           | Task 8                              |
+| §9.5 Fallback tests                      | Task 8                              |
+| No backfill                              | No task needed (documented)         |
+| Migration via drizzle-kit                | Task 1 (generated)                  |
 
 ### 2. Placeholder scan
 

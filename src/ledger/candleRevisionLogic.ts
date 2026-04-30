@@ -2,14 +2,18 @@ import { toCanonicalJson } from "../contract/v1/canonical.js";
 import { sha256Hex } from "../contract/v1/hash.js";
 
 export const computeOhlcv = (candle: {
-  open: number; high: number; low: number; close: number; volume: number;
+  open: number;
+  high: number;
+  low: number;
+  close: number;
+  volume: number;
 }) => {
   const ohlcvCanonical = toCanonicalJson({
     open: candle.open,
     high: candle.high,
     low: candle.low,
     close: candle.close,
-    volume: candle.volume,
+    volume: candle.volume
   });
   const ohlcvHash = sha256Hex(ohlcvCanonical);
   return { ohlcvCanonical, ohlcvHash };

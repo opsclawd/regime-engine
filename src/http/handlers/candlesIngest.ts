@@ -7,10 +7,7 @@ import type { CandleStore } from "../../ledger/candleStore.js";
 import { AuthError, requireSharedSecret } from "../auth.js";
 import { ContractValidationError } from "../errors.js";
 
-export const createCandlesIngestHandler = (
-  store: LedgerStore,
-  candleStore?: CandleStore
-) => {
+export const createCandlesIngestHandler = (store: LedgerStore, candleStore?: CandleStore) => {
   return async (request: FastifyRequest, reply: FastifyReply) => {
     try {
       requireSharedSecret(request.headers, "X-Candles-Ingest-Token", "CANDLES_INGEST_TOKEN");

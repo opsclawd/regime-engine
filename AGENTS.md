@@ -40,18 +40,18 @@ Hard boundary:
 
 These commands must exist and stay accurate:
 
-- `npm run dev`: start local server (must serve `/health`)
-- `npm run build`: production build (tsup/tsc + bundler as chosen)
-- `npm run typecheck`: strict TypeScript checks without emitting
-- `npm run lint`: ESLint across repo with zero warnings allowed
-- `npm run test`: Vitest once (CI mode)
-- `npm run test:watch`: Vitest in watch mode (optional)
-- `npm run format`: Prettier check/write (optional but recommended)
-- `npm run harness`: run fixtures end-to-end and emit report artifacts
+- `pnpm run dev`: start local server (must serve `/health`)
+- `pnpm run build`: production build (tsup/tsc + bundler as chosen)
+- `pnpm run typecheck`: strict TypeScript checks without emitting
+- `pnpm run lint`: ESLint across repo with zero warnings allowed
+- `pnpm run test`: Vitest once (CI mode)
+- `pnpm run test:watch`: Vitest in watch mode (optional)
+- `pnpm run format`: Prettier check/write (optional but recommended)
+- `pnpm run harness`: run fixtures end-to-end and emit report artifacts
 
 Quality gate (must pass before PR):
 
-- `npm run typecheck && npm run test && npm run lint && npm run build`
+- `pnpm run typecheck && pnpm run test && pnpm run lint && pnpm run build`
 
 ## Coding Style & Naming Conventions
 

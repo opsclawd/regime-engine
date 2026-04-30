@@ -3,8 +3,11 @@ FROM node:22-slim AS builder
 
 WORKDIR /app
 
-COPY package.json package-lock.json ./
-RUN npm ci --ignore-scripts
+RUN corepack enable && corepack prepare pnpm@10.33.0
+
+COPY package.json pnpm-lock.yaml ./
+COPY .npmrc ./
+RUN pnpm install --frozen-lockfile
 
 COPY tsconfig.json tsconfig.build.json ./
 COPY src/ src/
@@ -12,17 +15,20 @@ COPY scripts/ scripts/
 COPY drizzle/ drizzle/
 COPY drizzle.config.ts drizzle.config.ts
 
-RUN npm run build
+RUN pnpm run build
 
 # ---- Production stage ----
 FROM node:22-slim AS production
 
 WORKDIR /app
 
+RUN corepack enable && corepack prepare pnpm@10.33.0
+
 RUN groupadd --system app && useradd --system --gid app app
 
-COPY package.json package-lock.json ./
-RUN npm ci --omit=dev --ignore-scripts && npm cache clean --force
+COPY package.json pnpm-lock.yaml ./
+COPY .npmrc ./
+RUN pnpm install --frozen-lockfile --prod && pnpm store prune
 
 COPY --from=builder /app/dist ./dist
 COPY --from=builder /app/drizzle ./drizzle

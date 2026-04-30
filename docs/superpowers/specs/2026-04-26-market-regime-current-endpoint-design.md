@@ -80,17 +80,20 @@ Two new endpoints. One new ingest token. One new persistence surface. One classi
 ```ts
 type CandleIngestRequest = {
   schemaVersion: "1.0";
-  source: string;                 // e.g. "birdeye", "pyth_aggregated"
-  network: string;                // e.g. "solana-mainnet"
-  poolAddress: string;            // base58 pool identity
-  symbol: string;                 // exact match, case-sensitive (e.g. "SOL/USDC")
-  timeframe: "1h";                // MVP allowlist
-  sourceRecordedAtIso: string;    // ISO-8601, ordering key for revisions
+  source: string; // e.g. "birdeye", "pyth_aggregated"
+  network: string; // e.g. "solana-mainnet"
+  poolAddress: string; // base58 pool identity
+  symbol: string; // exact match, case-sensitive (e.g. "SOL/USDC")
+  timeframe: "1h"; // MVP allowlist
+  sourceRecordedAtIso: string; // ISO-8601, ordering key for revisions
   candles: Array<{
-    unixMs: number;               // integer, aligned to timeframeMs
-    open: number; high: number; low: number; close: number;
+    unixMs: number; // integer, aligned to timeframeMs
+    open: number;
+    high: number;
+    low: number;
+    close: number;
     volume: number;
-  }>;                             // length 1..1000
+  }>; // length 1..1000
 };
 ```
 
@@ -101,11 +104,12 @@ One batch represents one logical feed (one `(source, network, poolAddress, symbo
 ```ts
 type CandleIngestResponse = {
   schemaVersion: "1.0";
-  insertedCount: number;     // brand-new logical slots
-  revisedCount: number;      // existing slots, newer revision appended
-  idempotentCount: number;   // existing slots, byte-identical canonical OHLCV
-  rejectedCount: number;     // existing slots, older sourceRecordedAtIso w/ different OHLCV
-  rejections: Array<{        // always present; empty array when rejectedCount === 0
+  insertedCount: number; // brand-new logical slots
+  revisedCount: number; // existing slots, newer revision appended
+  idempotentCount: number; // existing slots, byte-identical canonical OHLCV
+  rejectedCount: number; // existing slots, older sourceRecordedAtIso w/ different OHLCV
+  rejections: Array<{
+    // always present; empty array when rejectedCount === 0
     unixMs: number;
     reason: "STALE_REVISION";
     existingSourceRecordedAtIso: string;
@@ -119,17 +123,18 @@ Stale-revision rejections are **per-slot** within an otherwise-valid batch: 200 
 
 **Errors:**
 
-| HTTP | Code | When |
-|---|---|---|
-| 400 | `SCHEMA_VERSION_UNSUPPORTED` | `schemaVersion` ≠ `"1.0"` |
-| 400 | `VALIDATION_ERROR` | Missing/wrong-typed fields, unsupported timeframe, malformed `sourceRecordedAtIso` |
-| 400 | `BATCH_TOO_LARGE` | `candles.length > 1000` |
-| 400 | `MALFORMED_CANDLE` | OHLCV invariant violation; payload identifies offending index |
-| 400 | `DUPLICATE_CANDLE_IN_BATCH` | Two entries share `unixMs` within the same request |
-| 401 | `UNAUTHORIZED` | Missing/bad ingest token |
-| 500 | `SERVER_MISCONFIGURATION` | `CANDLES_INGEST_TOKEN` env unset (route-level only) |
+| HTTP | Code                         | When                                                                               |
+| ---- | ---------------------------- | ---------------------------------------------------------------------------------- |
+| 400  | `SCHEMA_VERSION_UNSUPPORTED` | `schemaVersion` ≠ `"1.0"`                                                          |
+| 400  | `VALIDATION_ERROR`           | Missing/wrong-typed fields, unsupported timeframe, malformed `sourceRecordedAtIso` |
+| 400  | `BATCH_TOO_LARGE`            | `candles.length > 1000`                                                            |
+| 400  | `MALFORMED_CANDLE`           | OHLCV invariant violation; payload identifies offending index                      |
+| 400  | `DUPLICATE_CANDLE_IN_BATCH`  | Two entries share `unixMs` within the same request                                 |
+| 401  | `UNAUTHORIZED`               | Missing/bad ingest token                                                           |
+| 500  | `SERVER_MISCONFIGURATION`    | `CANDLES_INGEST_TOKEN` env unset (route-level only)                                |
 
 OHLCV invariants enforced at validation:
+
 - `open`, `high`, `low`, `close` finite and `> 0`.
 - `volume` finite and `>= 0`.
 - `high >= max(open, close, low)`.
@@ -147,35 +152,41 @@ OHLCV invariants enforced at validation:
 
 **Required query parameters** (any missing → 400 `VALIDATION_ERROR`):
 
-| Param | Notes |
-|---|---|
-| `symbol` | Exact match, case-sensitive |
-| `source` | Matches a `source` previously written via `POST /v1/candles` |
-| `network` | e.g. `solana-mainnet` |
-| `poolAddress` | base58 pool identity |
-| `timeframe` | Must be `"1h"` for MVP |
+| Param         | Notes                                                        |
+| ------------- | ------------------------------------------------------------ |
+| `symbol`      | Exact match, case-sensitive                                  |
+| `source`      | Matches a `source` previously written via `POST /v1/candles` |
+| `network`     | e.g. `solana-mainnet`                                        |
+| `poolAddress` | base58 pool identity                                         |
+| `timeframe`   | Must be `"1h"` for MVP                                       |
 
 **Response (200):**
 
 ```ts
 type RegimeCurrentResponse = {
   schemaVersion: "1.0";
-  symbol: string; source: string; network: string;
-  poolAddress: string; timeframe: "1h";
+  symbol: string;
+  source: string;
+  network: string;
+  poolAddress: string;
+  timeframe: "1h";
 
   regime: "UP" | "DOWN" | "CHOP";
 
   telemetry: {
-    realizedVolShort: number; realizedVolLong: number;
-    volRatio: number; trendStrength: number; compression: number;
+    realizedVolShort: number;
+    realizedVolLong: number;
+    volRatio: number;
+    trendStrength: number;
+    compression: number;
   };
 
   clmmSuitability: {
     status: "ALLOWED" | "CAUTION" | "BLOCKED" | "UNKNOWN";
-    reasons: Array<{ code: string; severity: "INFO"|"WARN"|"ERROR"; message: string }>;
+    reasons: Array<{ code: string; severity: "INFO" | "WARN" | "ERROR"; message: string }>;
   };
 
-  marketReasons: Array<{ code: string; severity: "INFO"|"WARN"|"ERROR"; message: string }>;
+  marketReasons: Array<{ code: string; severity: "INFO" | "WARN" | "ERROR"; message: string }>;
 
   freshness: {
     generatedAtIso: string;
@@ -191,7 +202,7 @@ type RegimeCurrentResponse = {
   metadata: {
     engineVersion: string;
     configVersion: string;
-    candleCount: number;        // closed candles considered
+    candleCount: number; // closed candles considered
   };
 };
 ```
@@ -200,10 +211,10 @@ type RegimeCurrentResponse = {
 
 **Errors:**
 
-| HTTP | Code | When |
-|---|---|---|
-| 400 | `VALIDATION_ERROR` | Missing selector, unsupported timeframe, malformed value |
-| 404 | `CANDLES_NOT_FOUND` | Zero closed candles for the logical slot |
+| HTTP | Code                | When                                                     |
+| ---- | ------------------- | -------------------------------------------------------- |
+| 400  | `VALIDATION_ERROR`  | Missing selector, unsupported timeframe, malformed value |
+| 404  | `CANDLES_NOT_FOUND` | Zero closed candles for the logical slot                 |
 
 `clmmSuitability.status = "UNKNOWN"` returns 200 — not an error — when at least one closed candle exists but data quality is insufficient (hard-stale or below `minCandles`). The frontend renders "we have a feed but not enough data yet" without a separate code path.
 
@@ -316,7 +327,7 @@ The closed-candle cutoff `unix_ms <= ?` is computed by the handler:
 closedCandleCutoffUnixMs = floor((now - closedCandleDelayMs) / timeframeMs) * timeframeMs - timeframeMs
 ```
 
-The `floor(...) * timeframeMs` snaps to a bar boundary; subtracting one additional `timeframeMs` is intentional — it excludes the bar that *just* closed within `closedCandleDelayMs`, leaving a grace window for late revisions before the slot becomes eligible for classification. So "closed" here means "closed for at least `closedCandleDelayMs`," not "closed at all."
+The `floor(...) * timeframeMs` snaps to a bar boundary; subtracting one additional `timeframeMs` is intentional — it excludes the bar that _just_ closed within `closedCandleDelayMs`, leaving a grace window for late revisions before the slot becomes eligible for classification. So "closed" here means "closed for at least `closedCandleDelayMs`," not "closed at all."
 
 ## 7. Configuration
 
@@ -375,8 +386,8 @@ export const MARKET_REGIME_CONFIG: Record<"1h", MarketTimeframeConfig> = {
     },
 
     regime: {
-      confirmBars: 1,                 // stateless market read
-      minHoldBars: 0,                 // stateless market read
+      confirmBars: 1, // stateless market read
+      minHoldBars: 0, // stateless market read
       enterUpTrend: 0.6,
       exitUpTrend: 0.35,
       enterDownTrend: -0.6,
@@ -385,16 +396,16 @@ export const MARKET_REGIME_CONFIG: Record<"1h", MarketTimeframeConfig> = {
     },
 
     suitability: {
-      allowedVolRatioMax: 1.30,       // placeholder, calibrated later
-      extremeVolRatio: 1.60,          // placeholder, calibrated later
-      extremeCompression: 0.18,       // placeholder, calibrated later
+      allowedVolRatioMax: 1.3, // placeholder, calibrated later
+      extremeVolRatio: 1.6, // placeholder, calibrated later
+      extremeCompression: 0.18, // placeholder, calibrated later
       minCandles: 30
     },
 
     freshness: {
-      closedCandleDelayMs: 5 * 60 * 1000,    // 5 min
-      softStaleMs: 75 * 60 * 1000,           // 75 min
-      hardStaleMs: 90 * 60 * 1000            // 90 min
+      closedCandleDelayMs: 5 * 60 * 1000, // 5 min
+      softStaleMs: 75 * 60 * 1000, // 75 min
+      hardStaleMs: 90 * 60 * 1000 // 90 min
     }
   }
 };
@@ -421,7 +432,7 @@ type MarketClmmSuitabilityInput = {
 
 type MarketClmmSuitability = {
   status: "ALLOWED" | "CAUTION" | "BLOCKED" | "UNKNOWN";
-  reasons: Array<{ code: string; severity: "INFO"|"WARN"|"ERROR"; message: string }>;
+  reasons: Array<{ code: string; severity: "INFO" | "WARN" | "ERROR"; message: string }>;
 };
 ```
 
@@ -594,6 +605,7 @@ Following AGENTS.md "required coverage" — contract validation, determinism sna
 ### 10.1 Contract validation (`src/contract/v1/__tests__/`)
 
 `candles.validation.test.ts`:
+
 - Happy path: minimal valid 1-candle batch.
 - `schemaVersion` missing/wrong → `SCHEMA_VERSION_UNSUPPORTED`.
 - Timeframe not in allowlist → `VALIDATION_ERROR`.
@@ -606,6 +618,7 @@ Following AGENTS.md "required coverage" — contract validation, determinism sna
 - Duplicate `unixMs` in batch → `DUPLICATE_CANDLE_IN_BATCH`.
 
 `regimeCurrent.validation.test.ts`:
+
 - Missing each of the 5 selectors → `VALIDATION_ERROR`.
 - Timeframe outside `["1h"]` → `VALIDATION_ERROR`.
 
@@ -640,10 +653,12 @@ Following AGENTS.md "required coverage" — contract validation, determinism sna
 ### 10.4 HTTP route tests (`src/http/__tests__/`)
 
 `candlesIngest.route.test.ts`:
+
 - 401 missing/bad token; 500 missing env; 200 happy path; 400 each validation code.
 - Stale subset → 200 with `rejectedCount > 0` and `rejections.length === rejectedCount`. Empty-rejections case → 200 with `rejectedCount === 0` and `rejections === []`.
 
 `regimeCurrent.route.test.ts`:
+
 - 200 fresh CHOP → ALLOWED.
 - 200 trending UP → BLOCKED.
 - 200 hard-stale, `candleCount >= minCandles` → UNKNOWN (covers UNKNOWN-by-staleness path independently of insufficient-samples).
@@ -671,14 +686,14 @@ Existing smoke test (`src/__tests__/smoke.test.ts`) extended to assert both path
 New entries appended to the existing constant block (no renames, no removals):
 
 ```ts
-SCHEMA_VERSION_UNSUPPORTED  // already exists
-VALIDATION_ERROR            // already exists
-BATCH_TOO_LARGE             // new
-MALFORMED_CANDLE            // new
-DUPLICATE_CANDLE_IN_BATCH   // new
-CANDLES_NOT_FOUND           // new
-UNAUTHORIZED                // already exists
-SERVER_MISCONFIGURATION     // already exists
+SCHEMA_VERSION_UNSUPPORTED; // already exists
+VALIDATION_ERROR; // already exists
+BATCH_TOO_LARGE; // new
+MALFORMED_CANDLE; // new
+DUPLICATE_CANDLE_IN_BATCH; // new
+CANDLES_NOT_FOUND; // new
+UNAUTHORIZED; // already exists
+SERVER_MISCONFIGURATION; // already exists
 ```
 
 `CANDLE_STALE_REVISION` is **not** registered as an HTTP error code; it appears only in `rejections[].reason`.
@@ -693,18 +708,18 @@ New env var `CANDLES_INGEST_TOKEN` must be set on Railway before deploy. Missing
 
 Walking issue #17's checklist:
 
-| Issue criterion | Section |
-|---|---|
-| Contract types and validation for candle ingestion | §5.1, §9 |
-| SQLite persistence keyed by symbol+source+timeframe+unixMs (extended with network+poolAddress) | §6 |
-| Idempotent candle upsert behavior | §5.1, §6.1 |
-| `POST /v1/candles` with validation errors using existing taxonomy | §5.1, §11.2 |
-| `GET /v1/regime/current` | §5.2 |
-| GET computes/reads latest regime without portfolio/autopilot state | §4, §9 |
-| Response includes regime, telemetry, reasons, suitability, freshness, metadata | §5.2 |
-| Response marks stale data | §5.2 (`softStale` + `hardStale`) |
-| 404 when no candles exist for slot | §5.2, §9 |
-| 400 for missing/invalid params | §5.2, §10 |
-| OpenAPI includes both endpoints | §11.1 |
-| Tests cover happy/stale/missing/invalid/idempotent/deterministic | §10 |
-| No plan-ledger entry on GET | §9, §10.4 (route test asserts) |
+| Issue criterion                                                                                | Section                          |
+| ---------------------------------------------------------------------------------------------- | -------------------------------- |
+| Contract types and validation for candle ingestion                                             | §5.1, §9                         |
+| SQLite persistence keyed by symbol+source+timeframe+unixMs (extended with network+poolAddress) | §6                               |
+| Idempotent candle upsert behavior                                                              | §5.1, §6.1                       |
+| `POST /v1/candles` with validation errors using existing taxonomy                              | §5.1, §11.2                      |
+| `GET /v1/regime/current`                                                                       | §5.2                             |
+| GET computes/reads latest regime without portfolio/autopilot state                             | §4, §9                           |
+| Response includes regime, telemetry, reasons, suitability, freshness, metadata                 | §5.2                             |
+| Response marks stale data                                                                      | §5.2 (`softStale` + `hardStale`) |
+| 404 when no candles exist for slot                                                             | §5.2, §9                         |
+| 400 for missing/invalid params                                                                 | §5.2, §10                        |
+| OpenAPI includes both endpoints                                                                | §11.1                            |
+| Tests cover happy/stale/missing/invalid/idempotent/deterministic                               | §10                              |
+| No plan-ledger entry on GET                                                                    | §9, §10.4 (route test asserts)   |

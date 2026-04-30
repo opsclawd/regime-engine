@@ -92,9 +92,9 @@ Don't pass two stores separately through every function. Bundle them:
 
 ```typescript
 export interface StoreContext {
-  ledger: LedgerStore;       // SQLite — append-only receipts
-  pg: Db;                    // Postgres — feature/query tables
-  pgClient: { end: () => Promise<void> };  // for shutdown
+  ledger: LedgerStore; // SQLite — append-only receipts
+  pg: Db; // Postgres — feature/query tables
+  pgClient: { end: () => Promise<void> }; // for shutdown
 }
 ```
 
@@ -104,7 +104,7 @@ export interface StoreContext {
 
 ```typescript
 app.get("/health", async () => {
-  return { ok: true };  // lies
+  return { ok: true }; // lies
 });
 ```
 
@@ -113,11 +113,19 @@ app.get("/health", async () => {
 ```typescript
 app.get("/health", async () => {
   let sqliteOk = true;
-  try { ledger.db.prepare("SELECT 1").get(); } catch { sqliteOk = false; }
+  try {
+    ledger.db.prepare("SELECT 1").get();
+  } catch {
+    sqliteOk = false;
+  }
 
   let postgresStatus = pg ? "ok" : "not_configured";
   if (pg) {
-    try { await pg.execute(sql`SELECT 1`); } catch { postgresStatus = "unavailable"; }
+    try {
+      await pg.execute(sql`SELECT 1`);
+    } catch {
+      postgresStatus = "unavailable";
+    }
   }
 
   return {
