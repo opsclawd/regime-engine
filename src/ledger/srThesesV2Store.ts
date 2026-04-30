@@ -8,21 +8,10 @@ import {
   type SrLevelsV2CurrentResponse,
   type SrThesisV2
 } from "../contract/v2/srLevels.js";
-
-export const SR_THESIS_V2_ERROR_CODES = {
-  SR_THESIS_V2_CONFLICT: "SR_THESIS_V2_CONFLICT"
-} as const;
-
-export interface SrThesisV2ConflictKey {
-  source: string;
-  symbol: string;
-  briefId: string;
-  asset: string;
-  sourceHandle: string;
-}
+import { type SrThesisV2ConflictKey, V2_ERROR_CODES } from "../contract/v2/errors.js";
 
 export class SrThesisV2ConflictError extends Error {
-  public readonly errorCode = SR_THESIS_V2_ERROR_CODES.SR_THESIS_V2_CONFLICT;
+  public readonly errorCode = V2_ERROR_CODES.SR_THESIS_V2_CONFLICT;
   public readonly key: SrThesisV2ConflictKey;
 
   public constructor(key: SrThesisV2ConflictKey) {
@@ -33,6 +22,13 @@ export class SrThesisV2ConflictError extends Error {
   }
 }
 
+class SrThesesV2InvariantError extends Error {
+  public readonly errorCode = "SR_THESIS_V2_INVARIANT_VIOLATION" as const;
+  public constructor(message: string) {
+    super(message);
+  }
+}
+
 export type SrThesesV2InsertResult =
   | { status: "created"; insertedCount: number; idempotentCount: number }
   | { status: "already_ingested"; insertedCount: 0; idempotentCount: number };
@@ -40,6 +36,7 @@ export type SrThesesV2InsertResult =
 export interface SrThesesV2InsertInput {
   request: SrLevelsV2IngestRequest;
   capturedAtUnixMs: number;
+  receivedAtUnixMs?: number;
 }
 
 const rowToThesis = (row: SrThesesV2Row): SrThesisV2 => ({
@@ -70,7 +67,8 @@ export class SrThesesV2Store {
 
   public async insertBrief(input: SrThesesV2InsertInput): Promise<SrThesesV2InsertResult> {
     const { request, capturedAtUnixMs } = input;
-    const receivedAtUnixMs = Date.now();
+    const receivedAtUnixMs = input.receivedAtUnixMs ?? capturedAtUnixMs;
+    const capturedAtIso = new Date(capturedAtUnixMs).toISOString();
 
     return this.db.transaction(async (tx) => {
       let insertedCount = 0;
@@ -88,7 +86,7 @@ export class SrThesesV2Store {
             briefId: request.brief.briefId,
             sourceRecordedAtIso: request.brief.sourceRecordedAtIso,
             summary: request.brief.summary,
-            capturedAtIso: new Date(capturedAtUnixMs).toISOString(),
+            capturedAtIso,
             capturedAtUnixMs,
             asset: thesis.asset,
             timeframe: thesis.timeframe,
@@ -145,8 +143,8 @@ export class SrThesesV2Store {
 
         const row = existing[0];
         if (!row) {
-          throw new Error(
-            "append-only invariant violated: ON CONFLICT did not insert but no existing row found"
+          throw new SrThesesV2InvariantError(
+            "ON CONFLICT did not insert but no existing row found"
           );
         }
         if (row.payloadHash !== hash) {

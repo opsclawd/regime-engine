@@ -11,12 +11,13 @@ import { toCanonicalJson } from "../v1/canonical.js";
 import { sha256Hex } from "../v1/hash.js";
 
 const ISO = z.string().datetime({ offset: true });
-const requiredString = z.string().min(1);
+const requiredString64 = z.string().min(1).max(64);
+const requiredString256 = z.string().min(1).max(256);
 
 const thesisSchema = z
   .object({
-    asset: requiredString,
-    timeframe: requiredString,
+    asset: requiredString64,
+    timeframe: requiredString64,
     bias: z.string().nullable(),
     setupType: z.string().nullable(),
     supportLevels: z.array(z.string()),
@@ -26,9 +27,9 @@ const thesisSchema = z
     invalidation: z.string().nullable(),
     trigger: z.string().nullable(),
     chartReference: z.string().nullable(),
-    sourceHandle: requiredString,
+    sourceHandle: requiredString256,
     sourceChannel: z.string().nullable(),
-    sourceKind: requiredString,
+    sourceKind: requiredString64,
     sourceReliability: z.string().nullable(),
     rawThesisText: z.string().nullable(),
     collectedAt: ISO.nullable(),
@@ -40,7 +41,7 @@ const thesisSchema = z
 
 const briefSchema = z
   .object({
-    briefId: requiredString,
+    briefId: requiredString256,
     sourceRecordedAtIso: ISO.nullable(),
     summary: z.string().nullable()
   })
@@ -49,10 +50,10 @@ const briefSchema = z
 export const srLevelsV2IngestRequestSchema = z
   .object({
     schemaVersion: z.literal(V2_SCHEMA_VERSION),
-    source: requiredString,
-    symbol: requiredString,
+    source: requiredString64,
+    symbol: requiredString64,
     brief: briefSchema,
-    theses: z.array(thesisSchema).min(1)
+    theses: z.array(thesisSchema).min(1).max(100)
   })
   .strict();
 
@@ -113,10 +114,11 @@ export const parseSrLevelsV2IngestRequest = (raw: unknown): SrLevelsV2IngestRequ
     throw validationErrorV2FromZod("Invalid /v2/sr-levels request body", parsed.error.issues);
   }
 
+  const NUL = "\0";
   const seen = new Set<string>();
   for (let i = 0; i < parsed.data.theses.length; i += 1) {
     const t = parsed.data.theses[i];
-    const key = `${parsed.data.source} ${parsed.data.symbol} ${parsed.data.brief.briefId} ${t.asset} ${t.sourceHandle}`;
+    const key = `${parsed.data.source}${NUL}${parsed.data.symbol}${NUL}${parsed.data.brief.briefId}${NUL}${t.asset}${NUL}${t.sourceHandle}`;
     if (seen.has(key)) {
       throw duplicateThesisIdentityError(i);
     }

@@ -7,7 +7,7 @@ import {
   unauthorizedV2Error,
   serverMisconfigurationV2Error,
   srThesisV2NotFoundError,
-  srThesisV2ConflictError,
+  buildSrThesisV2ConflictEnvelope,
   internalErrorV2
 } from "../errors.js";
 import { z, ZodError } from "zod";
@@ -30,9 +30,7 @@ describe("v2 error envelopes", () => {
     expect(err.response.schemaVersion).toBe("2.0");
     expect(err.response.error.code).toBe("VALIDATION_ERROR");
     expect(err.response.error.details).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({ path: "$.foo", code: "REQUIRED" })
-      ])
+      expect.arrayContaining([expect.objectContaining({ path: "$.foo", code: "REQUIRED" })])
     );
   });
 
@@ -62,7 +60,7 @@ describe("v2 error envelopes", () => {
   });
 
   it("409 SR_THESIS_V2_CONFLICT envelope uses schemaVersion 2.0", () => {
-    const env = srThesisV2ConflictError({
+    const env = buildSrThesisV2ConflictEnvelope({
       source: "macro-charts",
       symbol: "SOL",
       briefId: "b-1",

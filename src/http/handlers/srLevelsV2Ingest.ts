@@ -10,7 +10,7 @@ import {
   serverMisconfigurationV2Error,
   serviceUnavailableV2Error,
   unauthorizedV2Error,
-  srThesisV2ConflictError,
+  buildSrThesisV2ConflictEnvelope,
   internalErrorV2
 } from "../../contract/v2/errors.js";
 import { SrThesesV2Store, SrThesisV2ConflictError } from "../../ledger/srThesesV2Store.js";
@@ -43,9 +43,11 @@ export const createSrLevelsV2IngestHandler = (store: SrThesesV2Store | null) => 
 
     try {
       const parsed = parseSrLevelsV2IngestRequest(request.body);
+      const now = Date.now();
       const result = await store.insertBrief({
         request: parsed,
-        capturedAtUnixMs: Date.now()
+        capturedAtUnixMs: now,
+        receivedAtUnixMs: now
       });
 
       if (result.status === "created") {
@@ -72,7 +74,7 @@ export const createSrLevelsV2IngestHandler = (store: SrThesesV2Store | null) => 
         return reply.code(error.statusCode).send(error.response);
       }
       if (error instanceof SrThesisV2ConflictError) {
-        return reply.code(409).send(srThesisV2ConflictError(error.key));
+        return reply.code(409).send(buildSrThesisV2ConflictEnvelope(error.key));
       }
       request.log.error(error, "Unhandled error in POST /v2/sr-levels");
       return reply.code(500).send(internalErrorV2());

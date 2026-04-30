@@ -1,11 +1,4 @@
-import {
-  bigint,
-  index,
-  serial,
-  text,
-  uniqueIndex,
-  varchar
-} from "drizzle-orm/pg-core";
+import { bigint, index, serial, text, uniqueIndex, varchar } from "drizzle-orm/pg-core";
 import { regimeEngine } from "./candleRevisions.js";
 
 export const srThesesV2 = regimeEngine.table(
@@ -26,19 +19,10 @@ export const srThesesV2 = regimeEngine.table(
     timeframe: varchar("timeframe", { length: 64 }).notNull(),
     bias: text("bias"),
     setupType: text("setup_type"),
-    supportLevels: text("support_levels")
-      .notNull()
-      .array()
-      .notNull(),
-    resistanceLevels: text("resistance_levels")
-      .notNull()
-      .array()
-      .notNull(),
+    supportLevels: text("support_levels").notNull().array().notNull(),
+    resistanceLevels: text("resistance_levels").notNull().array().notNull(),
     entryZone: text("entry_zone"),
-    targets: text("targets")
-      .notNull()
-      .array()
-      .notNull(),
+    targets: text("targets").notNull().array().notNull(),
     invalidation: text("invalidation"),
     triggerText: text("trigger_text"),
     chartReference: text("chart_reference"),
@@ -64,18 +48,8 @@ export const srThesesV2 = regimeEngine.table(
       t.asset,
       t.sourceHandle
     ),
-    index("idx_sr_theses_v2_symbol_received").on(
-      t.symbol,
-      t.source,
-      t.capturedAtUnixMs,
-      t.id
-    ),
-    index("idx_sr_theses_v2_source_brief").on(
-      t.source,
-      t.briefId,
-      t.capturedAtUnixMs,
-      t.id
-    )
+    index("idx_sr_theses_v2_symbol_received").on(t.symbol, t.source, t.capturedAtUnixMs, t.id),
+    index("idx_sr_theses_v2_source_brief").on(t.source, t.briefId, t.capturedAtUnixMs, t.id)
   ]
 );
 

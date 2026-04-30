@@ -132,7 +132,7 @@ export interface SrThesisV2ConflictKey {
   sourceHandle: string;
 }
 
-export const srThesisV2ConflictError = (key: SrThesisV2ConflictKey): V2ErrorEnvelope => ({
+export const buildSrThesisV2ConflictEnvelope = (key: SrThesisV2ConflictKey): V2ErrorEnvelope => ({
   schemaVersion: V2_SCHEMA_VERSION,
   error: {
     code: V2_ERROR_CODES.SR_THESIS_V2_CONFLICT,

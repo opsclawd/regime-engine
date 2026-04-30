@@ -22,8 +22,8 @@ export const createSrLevelsV2CurrentHandler = (store: SrThesesV2Store | null) =>
     const query = request.query as Record<string, string | string[] | undefined>;
     const symbolRaw = query["symbol"];
     const sourceRaw = query["source"];
-    const symbol = typeof symbolRaw === "string" ? symbolRaw : undefined;
-    const source = typeof sourceRaw === "string" ? sourceRaw : undefined;
+    const symbol = typeof symbolRaw === "string" ? symbolRaw.trim() : undefined;
+    const source = typeof sourceRaw === "string" ? sourceRaw.trim() : undefined;
 
     if (!symbol || !source) {
       const missing: Array<{ path: string; code: "REQUIRED"; message: string }> = [];
@@ -36,8 +36,7 @@ export const createSrLevelsV2CurrentHandler = (store: SrThesesV2Store | null) =>
       return reply
         .code(400)
         .send(
-          validationErrorV2("Query parameters 'symbol' and 'source' are required", missing)
-            .response
+          validationErrorV2("Query parameters 'symbol' and 'source' are required", missing).response
         );
     }
 

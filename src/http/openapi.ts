@@ -307,6 +307,70 @@ export const buildOpenApiDocument = () => {
       "/v2/sr-levels": {
         post: {
           summary: "Ingest S/R thesis brief (v2)",
+          requestBody: {
+            required: true,
+            content: {
+              "application/json": {
+                schema: {
+                  type: "object",
+                  required: ["schemaVersion", "source", "symbol", "brief", "theses"],
+                  properties: {
+                    schemaVersion: { type: "string", enum: ["2.0"] },
+                    source: { type: "string", maxLength: 64 },
+                    symbol: { type: "string", maxLength: 64 },
+                    brief: {
+                      type: "object",
+                      required: ["briefId"],
+                      properties: {
+                        briefId: { type: "string", maxLength: 256 },
+                        sourceRecordedAtIso: { type: "string", nullable: true },
+                        summary: { type: "string", nullable: true }
+                      }
+                    },
+                    theses: {
+                      type: "array",
+                      minItems: 1,
+                      maxItems: 64,
+                      items: {
+                        type: "object",
+                        required: [
+                          "asset",
+                          "timeframe",
+                          "sourceHandle",
+                          "sourceKind",
+                          "supportLevels",
+                          "resistanceLevels",
+                          "targets"
+                        ],
+                        properties: {
+                          asset: { type: "string", maxLength: 64 },
+                          timeframe: { type: "string", maxLength: 64 },
+                          bias: { type: "string", nullable: true },
+                          setupType: { type: "string", nullable: true },
+                          supportLevels: { type: "array", items: { type: "string" } },
+                          resistanceLevels: { type: "array", items: { type: "string" } },
+                          entryZone: { type: "string", nullable: true },
+                          targets: { type: "array", items: { type: "string" } },
+                          invalidation: { type: "string", nullable: true },
+                          trigger: { type: "string", nullable: true },
+                          chartReference: { type: "string", nullable: true },
+                          sourceHandle: { type: "string", maxLength: 256 },
+                          sourceChannel: { type: "string", nullable: true },
+                          sourceKind: { type: "string", maxLength: 64 },
+                          sourceReliability: { type: "string", nullable: true },
+                          rawThesisText: { type: "string", nullable: true },
+                          collectedAt: { type: "string", nullable: true },
+                          publishedAt: { type: "string", nullable: true },
+                          sourceUrl: { type: "string", nullable: true },
+                          notes: { type: "string", nullable: true }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
           responses: {
             "201": {
               description: "S/R thesis brief ingested"

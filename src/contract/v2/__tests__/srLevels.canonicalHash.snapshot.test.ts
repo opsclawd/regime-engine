@@ -135,10 +135,7 @@ describe("computeSrThesisV2CanonicalAndHash", () => {
 
   it("produces different hashes for different theses in the same request", () => {
     const req = baseRequest({
-      theses: [
-        baseThesis({ asset: "SOL" }),
-        baseThesis({ asset: "BTC", sourceHandle: "@trader2" })
-      ]
+      theses: [baseThesis({ asset: "SOL" }), baseThesis({ asset: "BTC", sourceHandle: "@trader2" })]
     });
     const a = computeSrThesisV2CanonicalAndHash(req, req.theses[0]);
     const b = computeSrThesisV2CanonicalAndHash(req, req.theses[1]);

@@ -168,7 +168,9 @@ describe.skipIf(!process.env.DATABASE_URL)("SrThesesV2Store (PG)", () => {
 
   it("getCurrent selects the latest brief by capturedAtUnixMs DESC, id DESC", async () => {
     await store.insertBrief({
-      request: validRequest({ brief: { briefId: "old", sourceRecordedAtIso: null, summary: null } }),
+      request: validRequest({
+        brief: { briefId: "old", sourceRecordedAtIso: null, summary: null }
+      }),
       capturedAtUnixMs: 1_777_000_000_000
     });
     await store.insertBrief({
