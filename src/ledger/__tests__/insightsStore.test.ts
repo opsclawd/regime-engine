@@ -209,7 +209,7 @@ describe.skipIf(!process.env.DATABASE_URL)("InsightsStore (PG)", () => {
     expect(wire).toEqual({
       schemaVersion: req.schemaVersion,
       pair: req.pair,
-      asOf: req.asOf,
+      asOf: new Date(req.asOf).toISOString(),
       source: req.source,
       runId: req.runId,
       marketRegime: req.marketRegime,
@@ -222,7 +222,7 @@ describe.skipIf(!process.env.DATABASE_URL)("InsightsStore (PG)", () => {
       levels: req.levels,
       reasoning: req.reasoning,
       sourceRefs: req.sourceRefs,
-      expiresAt: req.expiresAt
+      expiresAt: new Date(req.expiresAt).toISOString()
     });
   });
 });
