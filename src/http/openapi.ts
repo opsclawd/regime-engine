@@ -320,7 +320,7 @@ export const buildOpenApiDocument = () => {
                     symbol: { type: "string", maxLength: 64 },
                     brief: {
                       type: "object",
-                      required: ["briefId"],
+                      required: ["briefId", "sourceRecordedAtIso", "summary"],
                       properties: {
                         briefId: { type: "string", maxLength: 256 },
                         sourceRecordedAtIso: { type: "string", nullable: true },
@@ -330,17 +330,30 @@ export const buildOpenApiDocument = () => {
                     theses: {
                       type: "array",
                       minItems: 1,
-                      maxItems: 64,
+                      maxItems: 100,
                       items: {
                         type: "object",
                         required: [
                           "asset",
                           "timeframe",
-                          "sourceHandle",
-                          "sourceKind",
+                          "bias",
+                          "setupType",
                           "supportLevels",
                           "resistanceLevels",
-                          "targets"
+                          "entryZone",
+                          "targets",
+                          "invalidation",
+                          "trigger",
+                          "chartReference",
+                          "sourceHandle",
+                          "sourceChannel",
+                          "sourceKind",
+                          "sourceReliability",
+                          "rawThesisText",
+                          "collectedAt",
+                          "publishedAt",
+                          "sourceUrl",
+                          "notes"
                         ],
                         properties: {
                           asset: { type: "string", maxLength: 64 },
