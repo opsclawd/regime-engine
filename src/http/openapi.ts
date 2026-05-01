@@ -303,6 +303,151 @@ export const buildOpenApiDocument = () => {
             }
           }
         }
+      },
+      "/v2/sr-levels": {
+        post: {
+          summary: "Ingest S/R thesis brief (v2)",
+          requestBody: {
+            required: true,
+            content: {
+              "application/json": {
+                schema: {
+                  type: "object",
+                  required: ["schemaVersion", "source", "symbol", "brief", "theses"],
+                  additionalProperties: false,
+                  properties: {
+                    schemaVersion: { type: "string", enum: ["2.0"] },
+                    source: { type: "string", minLength: 1, maxLength: 64 },
+                    symbol: { type: "string", minLength: 1, maxLength: 64 },
+                    brief: {
+                      type: "object",
+                      required: ["briefId", "sourceRecordedAtIso", "summary"],
+                      additionalProperties: false,
+                      properties: {
+                        briefId: { type: "string", minLength: 1, maxLength: 256 },
+                        sourceRecordedAtIso: {
+                          type: "string",
+                          format: "date-time",
+                          nullable: true
+                        },
+                        summary: { type: "string", nullable: true }
+                      }
+                    },
+                    theses: {
+                      type: "array",
+                      minItems: 1,
+                      maxItems: 100,
+                      items: {
+                        type: "object",
+                        required: [
+                          "asset",
+                          "timeframe",
+                          "bias",
+                          "setupType",
+                          "supportLevels",
+                          "resistanceLevels",
+                          "entryZone",
+                          "targets",
+                          "invalidation",
+                          "trigger",
+                          "chartReference",
+                          "sourceHandle",
+                          "sourceChannel",
+                          "sourceKind",
+                          "sourceReliability",
+                          "rawThesisText",
+                          "collectedAt",
+                          "publishedAt",
+                          "sourceUrl",
+                          "notes"
+                        ],
+                        additionalProperties: false,
+                        properties: {
+                          asset: { type: "string", minLength: 1, maxLength: 64 },
+                          timeframe: { type: "string", minLength: 1, maxLength: 64 },
+                          bias: { type: "string", nullable: true },
+                          setupType: { type: "string", nullable: true },
+                          supportLevels: { type: "array", items: { type: "string" } },
+                          resistanceLevels: { type: "array", items: { type: "string" } },
+                          entryZone: { type: "string", nullable: true },
+                          targets: { type: "array", items: { type: "string" } },
+                          invalidation: { type: "string", nullable: true },
+                          trigger: { type: "string", nullable: true },
+                          chartReference: { type: "string", nullable: true },
+                          sourceHandle: { type: "string", minLength: 1, maxLength: 256 },
+                          sourceChannel: { type: "string", nullable: true },
+                          sourceKind: { type: "string", minLength: 1, maxLength: 64 },
+                          sourceReliability: { type: "string", nullable: true },
+                          rawThesisText: { type: "string", nullable: true },
+                          collectedAt: { type: "string", format: "date-time", nullable: true },
+                          publishedAt: { type: "string", format: "date-time", nullable: true },
+                          sourceUrl: { type: "string", nullable: true },
+                          notes: { type: "string", nullable: true }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          responses: {
+            "201": {
+              description: "S/R thesis brief ingested"
+            },
+            "200": {
+              description: "Idempotent replay of already-ingested brief"
+            },
+            "400": {
+              description: "Validation error or unsupported schema version"
+            },
+            "401": {
+              description: "Invalid or missing X-Ingest-Token"
+            },
+            "409": {
+              description: "S/R thesis v2 conflict (same identity, different payload)"
+            },
+            "500": {
+              description: "OPENCLAW_INGEST_TOKEN environment variable not set"
+            },
+            "503": {
+              description: "S/R thesis v2 store not available (no DATABASE_URL configured)"
+            }
+          }
+        }
+      },
+      "/v2/sr-levels/current": {
+        get: {
+          summary: "Get current S/R thesis brief for symbol and source (v2)",
+          parameters: [
+            {
+              name: "symbol",
+              in: "query",
+              required: true,
+              schema: { type: "string", minLength: 1, maxLength: 64 }
+            },
+            {
+              name: "source",
+              in: "query",
+              required: true,
+              schema: { type: "string", minLength: 1, maxLength: 64 }
+            }
+          ],
+          responses: {
+            "200": {
+              description: "Current S/R thesis brief"
+            },
+            "400": {
+              description: "Missing required query parameters"
+            },
+            "404": {
+              description: "No S/R thesis brief found"
+            },
+            "503": {
+              description: "S/R thesis v2 store not available (no DATABASE_URL configured)"
+            }
+          }
+        }
       }
     }
   } as const;

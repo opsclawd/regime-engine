@@ -1,0 +1,5 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`computeSrThesisV2CanonicalAndHash > snapshot of canonical JSON is stable 1`] = `"{"brief":{"briefId":"mco-sol-2026-04-29","sourceRecordedAtIso":"2026-04-29T11:00:00Z","summary":"summary"},"schemaVersion":"2.0","source":"macro-charts","symbol":"SOL","thesis":{"asset":"SOL","bias":"bullish","chartReference":"https://example.com/chart.png","collectedAt":"2026-04-29T13:00:00Z","entryZone":"145-148","invalidation":"<135","notes":null,"publishedAt":"2026-04-29T12:00:00Z","rawThesisText":"raw text","resistanceLevels":["160.00"],"setupType":"breakout","sourceChannel":"twitter","sourceHandle":"@trader","sourceKind":"post","sourceReliability":"medium","sourceUrl":"https://x.com/trader/status/1","supportLevels":["140.50","135.00"],"targets":["170","180"],"timeframe":"1d","trigger":"close above 160"}}"`;
+
+exports[`computeSrThesisV2CanonicalAndHash > snapshot of payload hash is stable 1`] = `"66b315feebf1299dd5478342e033e551dc78cc8ae0359d1a682709ff28571801"`;

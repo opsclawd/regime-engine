@@ -2,6 +2,7 @@ import type { LedgerStore } from "./store.js";
 import type { Db } from "./pg/db.js";
 import { CandleStore } from "./candleStore.js";
 import { InsightsStore } from "./insightsStore.js";
+import { SrThesesV2Store } from "./srThesesV2Store.js";
 import { createLedgerStore } from "./store.js";
 import { createDb } from "./pg/db.js";
 
@@ -11,6 +12,7 @@ export interface StoreContext {
   pgClient: { end: () => Promise<void> };
   candleStore: CandleStore;
   insightsStore: InsightsStore;
+  srThesesV2Store: SrThesesV2Store;
 }
 
 export const createStoreContext = (
@@ -22,7 +24,8 @@ export const createStoreContext = (
     const { db: pg, client: pgClient } = createDb(pgConnectionString);
     const candleStore = new CandleStore(pg);
     const insightsStore = new InsightsStore(pg);
-    return { ledger, pg, pgClient, candleStore, insightsStore };
+    const srThesesV2Store = new SrThesesV2Store(pg);
+    return { ledger, pg, pgClient, candleStore, insightsStore, srThesesV2Store };
   } catch (err) {
     ledger.close();
     throw err;
