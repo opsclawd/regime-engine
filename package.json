@@ -31,7 +31,8 @@
     "zod": "^3.24.2"
   },
   "lint-staged": {
-    "*.{ts,tsx,js,jsx,json,md,mdx,css,yml,yaml}": "prettier --write"
+    "*.{ts,tsx,js,jsx,json,md,mdx,css,yml,yaml}": "prettier --write",
+    "*.{ts,tsx,js,jsx}": "eslint --fix"
   },
   "pnpm": {
     "onlyBuiltDependencies": [
