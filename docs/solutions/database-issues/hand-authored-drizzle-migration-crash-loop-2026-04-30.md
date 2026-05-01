@@ -77,7 +77,7 @@ By regenerating from scratch using `drizzle-kit generate`, the migration metadat
 
 - **Never hand-edit Drizzle migration metadata.** Always use `drizzle-kit generate` to produce migration files. If you need to rename a migration, only change the directory/filename prefix (e.g., `0003_normal_nebula` → `0003_create_sr_theses_v2`), not the `_journal.json` or snapshot contents.
 
-- **Verify journal ordering after generating migrations.** Run a quick check that each migration's `when` timestamp is greater than the previous one. A timestamps like `1746009600000` (2025) between `1777474187042` (2026) entries is an immediate red flag.
+- **Verify journal ordering after generating migrations.** Run a quick check that each migration's `when` timestamp is greater than the previous one. A timestamp like `1746009600000` (2025) between `1777474187042` (2026) entries is an immediate red flag.
 
 - **New tables should not be in the startup verification gate.** Use the 503 pattern instead: catch Postgres `42P01` at the handler level and return a service-unavailable response. This prevents a chicken-and-egg where the service crashes before migrations can apply. Only verify tables that already exist in production at startup.
 
