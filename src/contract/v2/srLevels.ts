@@ -11,8 +11,8 @@ import { toCanonicalJson } from "../v1/canonical.js";
 import { sha256Hex } from "../v1/hash.js";
 
 const ISO = z.string().datetime({ offset: true });
-const requiredString64 = z.string().min(1).max(64);
-const requiredString256 = z.string().min(1).max(256);
+const requiredString64 = z.string().trim().min(1).max(64);
+const requiredString256 = z.string().trim().min(1).max(256);
 
 const thesisSchema = z
   .object({
