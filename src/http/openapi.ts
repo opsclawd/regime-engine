@@ -424,13 +424,13 @@ export const buildOpenApiDocument = () => {
               name: "symbol",
               in: "query",
               required: true,
-              schema: { type: "string" }
+              schema: { type: "string", minLength: 1, maxLength: 64 }
             },
             {
               name: "source",
               in: "query",
               required: true,
-              schema: { type: "string" }
+              schema: { type: "string", minLength: 1, maxLength: 64 }
             }
           ],
           responses: {
