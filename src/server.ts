@@ -4,15 +4,10 @@ import {
   verifyPgConnection,
   verifyPgSchema,
   verifyCandleRevisionsTable,
-  verifyClmmInsightsTable,
-  verifySrThesesV2Table
+  verifyClmmInsightsTable
 } from "./ledger/pg/db.js";
 
-const redactUrl = (url: string): string => url.replace(/:\/\/[^@]+@/, "://***@");
-
 const port = Number(process.env.PORT ?? 8787);
-// Default to 0.0.0.0 for local dev. Production deploys (Railway) must set HOST=::
-// so Fastify binds dual-stack and is reachable over Railway private networking.
 const host = process.env.HOST ?? "0.0.0.0";
 const SHUTDOWN_TIMEOUT_MS = 10_000;
 
@@ -26,10 +21,8 @@ const start = async (): Promise<void> => {
       await verifyPgSchema(pg);
       await verifyCandleRevisionsTable(pg);
       await verifyClmmInsightsTable(pg);
-      await verifySrThesesV2Table(pg);
     } catch (error) {
       console.error("FATAL: Postgres connection failed at startup.", {
-        url: redactUrl(pgConnectionString),
         message:
           error instanceof Error ? error.message.replace(/:\/\/[^@]+@/, "://***@") : String(error)
       });

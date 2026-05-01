@@ -12,7 +12,7 @@ export interface StoreContext {
   pgClient: { end: () => Promise<void> };
   candleStore: CandleStore;
   insightsStore: InsightsStore;
-  srThesesV2Store: SrThesesV2Store;
+  srThesesV2Store: SrThesesV2Store | null;
 }
 
 export const createStoreContext = (

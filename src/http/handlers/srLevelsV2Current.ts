@@ -6,6 +6,7 @@ import {
   srThesisV2NotFoundError,
   validationErrorV2
 } from "../../contract/v2/errors.js";
+import { isTableMissingError } from "./pgErrors.js";
 
 export const createSrLevelsV2CurrentHandler = (store: SrThesesV2Store | null) => {
   return async (request: FastifyRequest, reply: FastifyReply) => {
@@ -47,6 +48,15 @@ export const createSrLevelsV2CurrentHandler = (store: SrThesesV2Store | null) =>
       }
       return reply.code(200).send(result);
     } catch (error) {
+      if (isTableMissingError(error)) {
+        return reply
+          .code(503)
+          .send(
+            serviceUnavailableV2Error(
+              "S/R thesis v2 store is not available (table not migrated — run migrations first)"
+            )
+          );
+      }
       request.log.error(error, "Unhandled error in GET /v2/sr-levels/current");
       return reply.code(500).send(internalErrorV2());
     }
