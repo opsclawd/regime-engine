@@ -1,5 +1,5 @@
 {
-  "id": "f3c98020-1234-4567-89ab-c1ab73164877",
+  "id": "2d64c967-86a5-4abe-8a33-88939f4d33d7",
   "prevId": "c1ab7316-4877-48b4-a0a8-0c710e16d23e",
   "version": "7",
   "dialect": "postgresql",
@@ -115,13 +115,48 @@
         "idx_candle_revisions_slot_hash": {
           "name": "idx_candle_revisions_slot_hash",
           "columns": [
-            { "expression": "symbol", "isExpression": false, "asc": true, "nulls": "last" },
-            { "expression": "source", "isExpression": false, "asc": true, "nulls": "last" },
-            { "expression": "network", "isExpression": false, "asc": true, "nulls": "last" },
-            { "expression": "pool_address", "isExpression": false, "asc": true, "nulls": "last" },
-            { "expression": "timeframe", "isExpression": false, "asc": true, "nulls": "last" },
-            { "expression": "unix_ms", "isExpression": false, "asc": true, "nulls": "last" },
-            { "expression": "ohlcv_hash", "isExpression": false, "asc": true, "nulls": "last" }
+            {
+              "expression": "symbol",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "source",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "network",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "pool_address",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "timeframe",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "unix_ms",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "ohlcv_hash",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
           ],
           "isUnique": false,
           "concurrently": false,
@@ -131,19 +166,54 @@
         "idx_candle_revisions_slot_latest": {
           "name": "idx_candle_revisions_slot_latest",
           "columns": [
-            { "expression": "symbol", "isExpression": false, "asc": true, "nulls": "last" },
-            { "expression": "source", "isExpression": false, "asc": true, "nulls": "last" },
-            { "expression": "network", "isExpression": false, "asc": true, "nulls": "last" },
-            { "expression": "pool_address", "isExpression": false, "asc": true, "nulls": "last" },
-            { "expression": "timeframe", "isExpression": false, "asc": true, "nulls": "last" },
-            { "expression": "unix_ms", "isExpression": false, "asc": true, "nulls": "last" },
+            {
+              "expression": "symbol",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "source",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "network",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "pool_address",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "timeframe",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "unix_ms",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
             {
               "expression": "source_recorded_at_unix_ms",
               "isExpression": false,
               "asc": true,
               "nulls": "last"
             },
-            { "expression": "id", "isExpression": false, "asc": true, "nulls": "last" }
+            {
+              "expression": "id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
           ],
           "isUnique": false,
           "concurrently": false,
@@ -153,12 +223,42 @@
         "idx_candle_revisions_feed_window": {
           "name": "idx_candle_revisions_feed_window",
           "columns": [
-            { "expression": "symbol", "isExpression": false, "asc": true, "nulls": "last" },
-            { "expression": "source", "isExpression": false, "asc": true, "nulls": "last" },
-            { "expression": "network", "isExpression": false, "asc": true, "nulls": "last" },
-            { "expression": "pool_address", "isExpression": false, "asc": true, "nulls": "last" },
-            { "expression": "timeframe", "isExpression": false, "asc": true, "nulls": "last" },
-            { "expression": "unix_ms", "isExpression": false, "asc": true, "nulls": "last" }
+            {
+              "expression": "symbol",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "source",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "network",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "pool_address",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "timeframe",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "unix_ms",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
           ],
           "isUnique": false,
           "concurrently": false,
@@ -177,21 +277,36 @@
       "name": "clmm_insights",
       "schema": "regime_engine",
       "columns": {
-        "id": { "name": "id", "type": "serial", "primaryKey": true, "notNull": true },
+        "id": {
+          "name": "id",
+          "type": "serial",
+          "primaryKey": true,
+          "notNull": true
+        },
         "schema_version": {
           "name": "schema_version",
           "type": "varchar(16)",
           "primaryKey": false,
           "notNull": true
         },
-        "pair": { "name": "pair", "type": "varchar(32)", "primaryKey": false, "notNull": true },
+        "pair": {
+          "name": "pair",
+          "type": "varchar(32)",
+          "primaryKey": false,
+          "notNull": true
+        },
         "as_of_unix_ms": {
           "name": "as_of_unix_ms",
           "type": "bigint",
           "primaryKey": false,
           "notNull": true
         },
-        "source": { "name": "source", "type": "varchar(64)", "primaryKey": false, "notNull": true },
+        "source": {
+          "name": "source",
+          "type": "varchar(64)",
+          "primaryKey": false,
+          "notNull": true
+        },
         "run_id": {
           "name": "run_id",
           "type": "varchar(256)",
@@ -287,8 +402,18 @@
         "uniq_clmm_insights_source_run": {
           "name": "uniq_clmm_insights_source_run",
           "columns": [
-            { "expression": "source", "isExpression": false, "asc": true, "nulls": "last" },
-            { "expression": "run_id", "isExpression": false, "asc": true, "nulls": "last" }
+            {
+              "expression": "source",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "run_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
           ],
           "isUnique": true,
           "concurrently": false,
@@ -298,9 +423,24 @@
         "idx_clmm_insights_pair_as_of": {
           "name": "idx_clmm_insights_pair_as_of",
           "columns": [
-            { "expression": "pair", "isExpression": false, "asc": true, "nulls": "last" },
-            { "expression": "as_of_unix_ms", "isExpression": false, "asc": true, "nulls": "last" },
-            { "expression": "id", "isExpression": false, "asc": true, "nulls": "last" }
+            {
+              "expression": "pair",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "as_of_unix_ms",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
           ],
           "isUnique": false,
           "concurrently": false,
@@ -310,14 +450,24 @@
         "idx_clmm_insights_pair_received": {
           "name": "idx_clmm_insights_pair_received",
           "columns": [
-            { "expression": "pair", "isExpression": false, "asc": true, "nulls": "last" },
+            {
+              "expression": "pair",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
             {
               "expression": "received_at_unix_ms",
               "isExpression": false,
               "asc": true,
               "nulls": "last"
             },
-            { "expression": "id", "isExpression": false, "asc": true, "nulls": "last" }
+            {
+              "expression": "id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
           ],
           "isUnique": false,
           "concurrently": false,
@@ -336,15 +486,30 @@
       "name": "sr_theses_v2",
       "schema": "regime_engine",
       "columns": {
-        "id": { "name": "id", "type": "serial", "primaryKey": true, "notNull": true },
+        "id": {
+          "name": "id",
+          "type": "serial",
+          "primaryKey": true,
+          "notNull": true
+        },
         "schema_version": {
           "name": "schema_version",
           "type": "varchar(16)",
           "primaryKey": false,
           "notNull": true
         },
-        "source": { "name": "source", "type": "varchar(64)", "primaryKey": false, "notNull": true },
-        "symbol": { "name": "symbol", "type": "varchar(64)", "primaryKey": false, "notNull": true },
+        "source": {
+          "name": "source",
+          "type": "varchar(64)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "symbol": {
+          "name": "symbol",
+          "type": "varchar(64)",
+          "primaryKey": false,
+          "notNull": true
+        },
         "brief_id": {
           "name": "brief_id",
           "type": "varchar(256)",
@@ -357,7 +522,12 @@
           "primaryKey": false,
           "notNull": false
         },
-        "summary": { "name": "summary", "type": "text", "primaryKey": false, "notNull": false },
+        "summary": {
+          "name": "summary",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
         "captured_at_iso": {
           "name": "captured_at_iso",
           "type": "varchar(64)",
@@ -370,14 +540,24 @@
           "primaryKey": false,
           "notNull": true
         },
-        "asset": { "name": "asset", "type": "varchar(64)", "primaryKey": false, "notNull": true },
+        "asset": {
+          "name": "asset",
+          "type": "varchar(64)",
+          "primaryKey": false,
+          "notNull": true
+        },
         "timeframe": {
           "name": "timeframe",
           "type": "varchar(64)",
           "primaryKey": false,
           "notNull": true
         },
-        "bias": { "name": "bias", "type": "text", "primaryKey": false, "notNull": false },
+        "bias": {
+          "name": "bias",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
         "setup_type": {
           "name": "setup_type",
           "type": "text",
@@ -402,7 +582,12 @@
           "primaryKey": false,
           "notNull": false
         },
-        "targets": { "name": "targets", "type": "text[]", "primaryKey": false, "notNull": true },
+        "targets": {
+          "name": "targets",
+          "type": "text[]",
+          "primaryKey": false,
+          "notNull": true
+        },
         "invalidation": {
           "name": "invalidation",
           "type": "text",
@@ -469,7 +654,12 @@
           "primaryKey": false,
           "notNull": false
         },
-        "notes": { "name": "notes", "type": "text", "primaryKey": false, "notNull": false },
+        "notes": {
+          "name": "notes",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
         "payload_hash": {
           "name": "payload_hash",
           "type": "varchar(64)",
@@ -487,11 +677,36 @@
         "uniq_sr_theses_v2_idempotency": {
           "name": "uniq_sr_theses_v2_idempotency",
           "columns": [
-            { "expression": "source", "isExpression": false, "asc": true, "nulls": "last" },
-            { "expression": "symbol", "isExpression": false, "asc": true, "nulls": "last" },
-            { "expression": "brief_id", "isExpression": false, "asc": true, "nulls": "last" },
-            { "expression": "asset", "isExpression": false, "asc": true, "nulls": "last" },
-            { "expression": "source_handle", "isExpression": false, "asc": true, "nulls": "last" }
+            {
+              "expression": "source",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "symbol",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "brief_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "asset",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "source_handle",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
           ],
           "isUnique": true,
           "concurrently": false,
@@ -501,15 +716,30 @@
         "idx_sr_theses_v2_symbol_received": {
           "name": "idx_sr_theses_v2_symbol_received",
           "columns": [
-            { "expression": "symbol", "isExpression": false, "asc": true, "nulls": "last" },
-            { "expression": "source", "isExpression": false, "asc": true, "nulls": "last" },
+            {
+              "expression": "symbol",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "source",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
             {
               "expression": "captured_at_unix_ms",
               "isExpression": false,
               "asc": true,
               "nulls": "last"
             },
-            { "expression": "id", "isExpression": false, "asc": true, "nulls": "last" }
+            {
+              "expression": "id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
           ],
           "isUnique": false,
           "concurrently": false,
@@ -519,15 +749,30 @@
         "idx_sr_theses_v2_source_brief": {
           "name": "idx_sr_theses_v2_source_brief",
           "columns": [
-            { "expression": "source", "isExpression": false, "asc": true, "nulls": "last" },
-            { "expression": "brief_id", "isExpression": false, "asc": true, "nulls": "last" },
+            {
+              "expression": "source",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "brief_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
             {
               "expression": "captured_at_unix_ms",
               "isExpression": false,
               "asc": true,
               "nulls": "last"
             },
-            { "expression": "id", "isExpression": false, "asc": true, "nulls": "last" }
+            {
+              "expression": "id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
           ],
           "isUnique": false,
           "concurrently": false,
