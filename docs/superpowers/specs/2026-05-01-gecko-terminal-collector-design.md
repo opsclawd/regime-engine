@@ -112,8 +112,10 @@ if (isMainModule(import.meta.url, process.argv[1])) {
 }
 ```
 
-`isMainModule` can compare `import.meta.url` with `pathToFileURL(process.argv[1]).href`.
-Tests import `runOneCycle` and `runCollector` without starting the worker.
+`isMainModule` must compare real paths, not raw launch strings. Convert
+`import.meta.url` with `fileURLToPath`, resolve both paths with `realpathSync`,
+and compare those values. Tests import `runOneCycle` and `runCollector` without
+starting the worker.
 
 ### `src/workers/gecko/config.ts`
 
@@ -146,11 +148,11 @@ export function parseGeckoCollectorConfig(env?: NodeJS.ProcessEnv): GeckoCollect
 
 Hard-required env:
 
-| Variable               | Rule                             |
-| ---------------------- | -------------------------------- |
-| `REGIME_ENGINE_URL`    | absolute URL                     |
-| `CANDLES_INGEST_TOKEN` | non-empty                        |
-| `GECKO_POOL_ADDRESS`   | explicit non-empty; do not infer |
+| Variable               | Rule                                                         |
+| ---------------------- | ------------------------------------------------------------ |
+| `REGIME_ENGINE_URL`    | absolute URL; HTTPS unless localhost or Railway private host |
+| `CANDLES_INGEST_TOKEN` | non-empty                                                    |
+| `GECKO_POOL_ADDRESS`   | explicit non-empty; do not infer                             |
 
 Defaulted env, validated if present:
 
@@ -173,6 +175,7 @@ Responsibilities:
 - apply the provider-scoped rate limiter before each provider call
 - fetch with a per-request timeout controller
 - convert non-OK HTTP responses into typed `HttpError`s
+- cap response bodies before parsing JSON or error text
 - parse and return JSON as `unknown`
 
 Exports:
@@ -197,6 +200,9 @@ For MVP, `GECKO_TIMEFRAME=1h` maps to Gecko `hour` with `aggregate=1`.
 The request sends `Accept: application/json`. GeckoTerminal public API access
 does not require provider authentication for this MVP path.
 
+Response bodies are capped at 512 KiB before parsing. A larger body is a
+`ProtocolError`.
+
 ### `src/workers/gecko/normalize.ts`
 
 Responsibilities:
@@ -205,6 +211,7 @@ Responsibilities:
 - accept only the documented OHLCV list shape
 - convert Unix seconds to Unix milliseconds
 - validate rows independently
+- reject provider payloads with more than 1000 OHLCV rows
 - handle duplicate timestamps
 - sort final candles by `unixMs ASC`
 - produce structured stats and corruption-guard decisions
@@ -250,6 +257,7 @@ Responsibilities:
 - send `X-Candles-Ingest-Token`
 - fetch with a per-request timeout controller
 - convert non-OK HTTP responses into typed `HttpError`s
+- cap response bodies before parsing JSON or error text
 - validate the expected ingest response shape
 - treat `200` with `rejectedCount > 0` as success with warning, not retry
 
@@ -275,6 +283,11 @@ The `/v1/candles` response is validated strictly before logging success:
 - `rejections` is an array
 - every rejection has integer `unixMs`, reason `"STALE_REVISION"`, and string
   `existingSourceRecordedAtIso`
+
+Response bodies are capped at 512 KiB before parsing. Ingest HTTP errors should
+not retain the response body in logs or thrown error context because the upstream
+could reflect request metadata. Status code and retryability are enough for
+ingest failures.
 
 ### `src/workers/gecko/retry.ts`
 
@@ -304,13 +317,15 @@ export class HttpError extends Error {
 
 export class ProtocolError extends Error {}
 export class RequestTimeoutError extends Error {}
+export class RequestTransportError extends Error {}
 
 export type RetryOptions = {
   maxAttempts: number;
   initialBackoffMs: number;
   maxBackoffMs: number;
   jitterMs: (attempt: number) => number;
-  sleep: typeof import("node:timers/promises").setTimeout;
+  sleep: (ms: number, options?: { signal?: AbortSignal }) => Promise<unknown>;
+  signal?: AbortSignal;
   shouldContinue?: () => boolean;
 };
 
@@ -398,7 +413,9 @@ hit their own request timeout.
 
 Fetch and ingest clients create their own per-request timeout controllers. If
 shutdown is requested during a retry backoff, the collector should not start the
-next provider or ingest attempt.
+next provider or ingest attempt. Retry backoff sleeps receive the shutdown
+signal so a SIGTERM during backoff exits promptly instead of waiting for the
+full capped backoff.
 
 ## Retry, Rate Limit, And HTTP Errors
 
@@ -425,7 +442,8 @@ Retry policy for Gecko fetch and ingest POST:
   and fails the cycle.
 - timeout aborts become `RequestTimeoutError` and are retryable until attempts
   are exhausted.
-- network or transport failures are retryable until attempts are exhausted.
+- network or transport failures are wrapped as `RequestTransportError` and are
+  retryable until attempts are exhausted.
 - protocol and programmer errors are non-retryable unless explicitly classified
   as retryable.
 
@@ -485,14 +503,16 @@ Per-row validation:
 - each row must have length exactly `6`; missing fields or extra fields are
   malformed
 - `timestampSeconds` is an integer
+- `timestampSeconds` and normalized `unixMs` must be safe integers
 - `unixMs` is an integer aligned to the 1h boundary
 - `open`, `high`, `low`, and `close` are finite and `> 0`
 - `volume` is finite and `>= 0`
 - `high >= max(open, close, low)`
 - `low <= min(open, close, high)`
 
-Malformed top-level provider envelopes, missing OHLCV lists, and non-array
-OHLCV lists are protocol failures. They fail the cycle and do not POST.
+Malformed top-level provider envelopes, missing OHLCV lists, non-array OHLCV
+lists, and OHLCV lists longer than 1000 rows are protocol failures. They fail
+the cycle and do not POST.
 
 Parseable rows are validated independently:
 
@@ -547,7 +567,8 @@ if (config.geckoLookback >= 50 && validCount < 50) {
 
 The worker posts the valid subset only when the guard passes.
 When the guard does not pass, it logs and returns from `runOneCycle`; the
-collector process stays alive and the outer loop sleeps normally.
+collector process stays alive and the outer loop sleeps normally. Guard logs
+include `guardReason`: `zero_valid`, `corruption_rate`, or `low_valid_count`.
 
 ## Ingest POST
 
@@ -604,6 +625,7 @@ Use compact structured console output or an injected logger type. Events:
 - `gecko_cycle_completed`
 - `gecko_collector_shutdown_requested`
 - `gecko_collector_shutdown_complete`
+- `gecko_collector_fatal`
 
 Common context:
 
@@ -614,15 +636,22 @@ Common context:
 - `timeframe`
 - `attempt`
 - `statusCode`
-- `errorCode` or `errorMessage`
+- `errorName`, `statusCode`, or `retryable`
 
 Secret redaction rule:
 
 - never log `CANDLES_INGEST_TOKEN`
 - never log request headers containing `X-Candles-Ingest-Token`
 - never log unredacted full config objects
+- recursively redact nested keys containing `token`, `secret`, `authorization`,
+  or `headers`
+- sanitize error context before logging; do not log response bodies from ingest
+  errors
 - if config context is needed, log only non-secret fields such as provider,
   network, pool address, symbol, timeframe, lookback, poll interval, and timeout
+
+This redaction helper is still part of the minimal logger. It does not add
+metrics, tracing, sinks, log shipping, or a generic observability layer.
 
 ## Package Scripts
 
@@ -676,6 +705,9 @@ unless the canonical GeckoTerminal SOL/USDC pool has already been selected.
 
 Docs must include a deployment checkbox to confirm the canonical SOL/USDC
 GeckoTerminal pool address before production deployment.
+Docs also include a pool preflight command, a note that `new URL("/v1/candles",
+REGIME_ENGINE_URL)` targets the origin root rather than preserving any path
+prefix, and token rotation steps for `CANDLES_INGEST_TOKEN`.
 
 ## Tests
 
@@ -686,6 +718,9 @@ Config parser:
 - required env validation
 - defaults
 - invalid absolute URL
+- rejects plain HTTP except `localhost`, `127.0.0.1`, `::1`, and
+  `*.railway.internal`
+- rejects explicit empty optional env vars instead of silently defaulting
 - missing token
 - missing pool address
 - invalid positive integers
@@ -703,7 +738,7 @@ Gecko client:
 - injectable `now?: () => number` makes limiter tests deterministic
 - request timeout
 - timeout aborts become `RequestTimeoutError`
-- network/transport failures are retryable
+- network/transport failures become retryable `RequestTransportError`
 - protocol/programmer errors are non-retryable unless explicitly classified
 - 429/5xx converted to retryable `HttpError`
 - non-429 4xx converted to non-retryable `HttpError`
@@ -715,6 +750,8 @@ Normalizer:
 - 1h timestamp alignment
 - non-array rows are malformed
 - rows with `length !== 6` are malformed, including missing or extra fields
+- timestamps must be safe integers
+- payloads with more than 1000 OHLCV rows fail before iteration
 - malformed rows dropped
 - invalid OHLCV rows dropped
 - exact duplicate kept once and excluded from corruption guard
@@ -754,6 +791,7 @@ Collector loop:
 - shutdown during sleep exits
 - shutdown after fetch skips ingest
 - shutdown during ingest lets request finish or timeout
+- shutdown during retry backoff exits promptly
 - no overlapping cycles
 - ESM entrypoint guard prevents imports from starting the loop
 

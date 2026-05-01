@@ -118,6 +118,23 @@ describe("parseGeckoCollectorConfig", () => {
     ).toThrow("REGIME_ENGINE_URL");
   });
 
+  it("rejects plain HTTP except localhost and Railway private hosts", () => {
+    expect(() =>
+      parseGeckoCollectorConfig({ ...validEnv, REGIME_ENGINE_URL: "http://example.com" })
+    ).toThrow("REGIME_ENGINE_URL");
+
+    expect(
+      parseGeckoCollectorConfig({ ...validEnv, REGIME_ENGINE_URL: "http://localhost:8787" })
+        .regimeEngineUrl.href
+    ).toBe("http://localhost:8787/");
+    expect(
+      parseGeckoCollectorConfig({
+        ...validEnv,
+        REGIME_ENGINE_URL: "http://regime-engine.railway.internal:8787"
+      }).regimeEngineUrl.href
+    ).toBe("http://regime-engine.railway.internal:8787/");
+  });
+
   it.each([
     ["GECKO_SOURCE", "other"],
     ["GECKO_NETWORK", "ethereum"],
@@ -126,6 +143,13 @@ describe("parseGeckoCollectorConfig", () => {
   ])("rejects unsupported MVP value %s=%s", (key, value) => {
     expect(() => parseGeckoCollectorConfig({ ...validEnv, [key]: value })).toThrow(key);
   });
+
+  it.each(["GECKO_SOURCE", "GECKO_LOOKBACK", "GECKO_SYMBOL"])(
+    "rejects explicit empty optional env %s",
+    (key) => {
+      expect(() => parseGeckoCollectorConfig({ ...validEnv, [key]: "" })).toThrow(key);
+    }
+  );
 
   it.each([
     ["GECKO_LOOKBACK", "0"],
@@ -177,13 +201,24 @@ const readRequired = (env: NodeJS.ProcessEnv, key: string): string => {
   return value;
 };
 
+const readOptional = (env: NodeJS.ProcessEnv, key: string, defaultValue: string): string => {
+  if (!(key in env)) {
+    return defaultValue;
+  }
+  const value = env[key]?.trim();
+  if (!value) {
+    throw new Error(`${key} must not be empty`);
+  }
+  return value;
+};
+
 const readLiteral = <T extends string>(
   env: NodeJS.ProcessEnv,
   key: string,
   defaultValue: T,
   allowed: T
 ): T => {
-  const value = (env[key]?.trim() || defaultValue) as T;
+  const value = readOptional(env, key, defaultValue) as T;
   if (value !== allowed) {
     throw new Error(`${key} must equal ${allowed}`);
   }
@@ -191,12 +226,22 @@ const readLiteral = <T extends string>(
 };
 
 const readPositiveInteger = (env: NodeJS.ProcessEnv, key: string, defaultValue: number): number => {
-  const raw = env[key]?.trim() || String(defaultValue);
+  const raw = readOptional(env, key, String(defaultValue));
   const parsed = Number(raw);
   if (!Number.isInteger(parsed) || parsed <= 0) {
     throw new Error(`${key} must be a positive integer`);
   }
   return parsed;
+};
+
+const isAllowedHttpHost = (hostname: string): boolean => {
+  return (
+    hostname === "localhost" ||
+    hostname === "127.0.0.1" ||
+    hostname === "::1" ||
+    hostname === "[::1]" ||
+    hostname.endsWith(".railway.internal")
+  );
 };
 
 const readAbsoluteUrl = (env: NodeJS.ProcessEnv, key: string): URL => {
@@ -206,9 +251,17 @@ const readAbsoluteUrl = (env: NodeJS.ProcessEnv, key: string): URL => {
     if (!url.protocol || !url.hostname) {
       throw new Error("missing protocol or host");
     }
+    if (url.protocol === "http:" && !isAllowedHttpHost(url.hostname)) {
+      throw new Error("plain HTTP is only allowed for localhost or Railway private hosts");
+    }
+    if (url.protocol !== "https:" && url.protocol !== "http:") {
+      throw new Error("unsupported protocol");
+    }
     return url;
   } catch {
-    throw new Error(`${key} must be an absolute URL`);
+    throw new Error(
+      `${key} must be an absolute HTTPS URL, localhost HTTP URL, or Railway private HTTP URL`
+    );
   }
 };
 
@@ -244,22 +297,29 @@ export type WorkerLogger = {
   error: (event: string, context?: LogContext) => void;
 };
 
-const SECRET_KEYS = new Set([
-  "candlesIngestToken",
-  "CANDLES_INGEST_TOKEN",
-  "x-candles-ingest-token"
-]);
+const SECRET_KEY_PATTERN = /(token|secret|authorization|headers|responseBody)/i;
+
+const redactValue = (key: string, value: unknown): unknown => {
+  if (SECRET_KEY_PATTERN.test(key)) {
+    return "[REDACTED]";
+  }
+  if (Array.isArray(value)) {
+    return value.map((item) => redactValue("", item));
+  }
+  if (typeof value === "object" && value !== null) {
+    const nested: LogContext = {};
+    for (const [nestedKey, nestedValue] of Object.entries(value)) {
+      nested[nestedKey] = redactValue(nestedKey, nestedValue);
+    }
+    return nested;
+  }
+  return value;
+};
 
 export const redactLogContext = (context: LogContext = {}): LogContext => {
   const redacted: LogContext = {};
   for (const [key, value] of Object.entries(context)) {
-    if (SECRET_KEYS.has(key) || key.toLowerCase().includes("token")) {
-      redacted[key] = "[REDACTED]";
-    } else if (key.toLowerCase() === "headers") {
-      redacted[key] = "[REDACTED]";
-    } else {
-      redacted[key] = value;
-    }
+    redacted[key] = redactValue(key, value);
   }
   return redacted;
 };
@@ -453,6 +513,30 @@ describe("withRetry", () => {
     expect(operation).toHaveBeenCalledTimes(2);
   });
 
+  it("exits promptly when retry backoff sleep is aborted", async () => {
+    const abort = new AbortController();
+    const originalError = new HttpError({ statusCode: 503, retryable: true });
+    const operation = vi.fn(async () => {
+      throw originalError;
+    });
+    const sleep = vi.fn(async (_ms: number, _options?: { signal?: AbortSignal }) => {
+      abort.abort();
+      throw new DOMException("aborted", "AbortError");
+    });
+
+    await expect(
+      withRetry(operation, {
+        maxAttempts: 3,
+        initialBackoffMs: 1000,
+        maxBackoffMs: 30000,
+        jitterMs: () => 0,
+        sleep,
+        signal: abort.signal
+      })
+    ).rejects.toBe(originalError);
+    expect(operation).toHaveBeenCalledTimes(1);
+  });
+
   it("stops before another attempt when shouldContinue returns false", async () => {
     const operation = vi.fn(async () => {
       throw new HttpError({ statusCode: 503, retryable: true });
@@ -481,6 +565,8 @@ describe("createRateLimiter", () => {
     const waitForPermit = createRateLimiter(6, { sleep, now: () => now });
 
     await waitForPermit();
+    expect(sleep).not.toHaveBeenCalled();
+
     await waitForPermit();
     await waitForPermit();
 
@@ -554,7 +640,8 @@ export type RetryOptions = {
   initialBackoffMs: number;
   maxBackoffMs: number;
   jitterMs: (attempt: number) => number;
-  sleep: (ms: number) => Promise<unknown>;
+  sleep: (ms: number, options?: { signal?: AbortSignal }) => Promise<unknown>;
+  signal?: AbortSignal;
   shouldContinue?: () => boolean;
 };
 
@@ -590,7 +677,17 @@ export async function withRetry<T>(
 
       const exponential = options.initialBackoffMs * 2 ** (attempt - 1);
       const capped = Math.min(options.maxBackoffMs, exponential);
-      await options.sleep(capped + options.jitterMs(attempt));
+      try {
+        await options.sleep(capped + options.jitterMs(attempt), { signal: options.signal });
+      } catch (sleepError) {
+        if (
+          sleepError instanceof DOMException &&
+          (sleepError.name === "AbortError" || sleepError.name === "TimeoutError")
+        ) {
+          throw error;
+        }
+        throw sleepError;
+      }
 
       if (options.shouldContinue && !options.shouldContinue()) {
         throw error;
@@ -698,6 +795,19 @@ describe("normalizeGeckoOhlcv", () => {
     expect(() => normalizeGeckoOhlcv({ data: { attributes: {} } }, config)).toThrow("ohlcv_list");
   });
 
+  it("throws ProtocolError when provider returns more than 1000 rows", () => {
+    const rows = Array.from({ length: 1001 }, (_, index) => [
+      (index + 1) * 3600,
+      100,
+      110,
+      90,
+      105,
+      1
+    ]);
+
+    expect(() => normalizeGeckoOhlcv(payload(rows), config)).toThrow("1000");
+  });
+
   it("drops non-array rows and rows with missing or extra fields", () => {
     const result = normalizeGeckoOhlcv(
       payload([
@@ -729,6 +839,16 @@ describe("normalizeGeckoOhlcv", () => {
     expect(result.validCandles.map((candle) => candle.unixMs)).toEqual([14_400_000]);
     expect(result.stats.misalignedRowCount).toBe(1);
     expect(result.stats.invalidOhlcvRowCount).toBe(3);
+  });
+
+  it("drops unsafe timestamp rows as malformed", () => {
+    const result = normalizeGeckoOhlcv(
+      payload([[Number.MAX_SAFE_INTEGER + 1, 100, 110, 90, 105, 1]]),
+      config
+    );
+
+    expect(result.validCandles).toEqual([]);
+    expect(result.stats.malformedRowCount).toBe(1);
   });
 
   it("dedupes identical rows without adding to corruption dropped count", () => {
@@ -928,6 +1048,9 @@ const readRows = (payload: unknown): unknown[] => {
   ) {
     throw new ProtocolError("GeckoTerminal payload missing data.attributes.ohlcv_list array");
   }
+  if (payload.data.attributes.ohlcv_list.length > 1000) {
+    throw new ProtocolError("GeckoTerminal ohlcv_list must not exceed 1000 rows");
+  }
   return payload.data.attributes.ohlcv_list;
 };
 
@@ -944,7 +1067,14 @@ const toFiniteNumber = (value: unknown): number | null => {
   return value;
 };
 
-const parseRow = (row: unknown, stats: NormalizationStats): Candle | null => {
+const timeframeMsForConfig = (config: GeckoCollectorConfig): number => {
+  if (config.geckoTimeframe !== "1h") {
+    throw new ProtocolError("Only GECKO_TIMEFRAME=1h is supported");
+  }
+  return ONE_HOUR_MS;
+};
+
+const parseRow = (row: unknown, stats: NormalizationStats, timeframeMs: number): Candle | null => {
   if (!Array.isArray(row) || row.length !== 6) {
     stats.malformedRowCount += 1;
     increment(stats, "malformed");
@@ -966,7 +1096,8 @@ const parseRow = (row: unknown, stats: NormalizationStats): Candle | null => {
     low === null ||
     close === null ||
     volume === null ||
-    !Number.isInteger(timestampSeconds)
+    !Number.isInteger(timestampSeconds) ||
+    !Number.isSafeInteger(timestampSeconds)
   ) {
     stats.malformedRowCount += 1;
     increment(stats, "malformed");
@@ -974,7 +1105,13 @@ const parseRow = (row: unknown, stats: NormalizationStats): Candle | null => {
   }
 
   const unixMs = timestampSeconds * 1000;
-  if (!Number.isInteger(unixMs) || unixMs % ONE_HOUR_MS !== 0) {
+  if (!Number.isSafeInteger(unixMs)) {
+    stats.malformedRowCount += 1;
+    increment(stats, "malformed");
+    return null;
+  }
+
+  if (!Number.isInteger(unixMs) || unixMs % timeframeMs !== 0) {
     stats.misalignedRowCount += 1;
     increment(stats, "misaligned");
     return null;
@@ -999,15 +1136,16 @@ const parseRow = (row: unknown, stats: NormalizationStats): Candle | null => {
 
 export function normalizeGeckoOhlcv(
   payload: unknown,
-  _config: GeckoCollectorConfig
+  config: GeckoCollectorConfig
 ): NormalizationResult {
   const rows = readRows(payload);
+  const timeframeMs = timeframeMsForConfig(config);
   const stats = emptyStats();
   stats.providerRowCount = rows.length;
 
   const groups = new Map<number, Candle[]>();
   for (const row of rows) {
-    const candle = parseRow(row, stats);
+    const candle = parseRow(row, stats, timeframeMs);
     if (!candle) continue;
     const existing = groups.get(candle.unixMs) ?? [];
     existing.push(candle);
@@ -1125,8 +1263,7 @@ describe("fetchGeckoOhlcv", () => {
 
     await fetchGeckoOhlcv(config, {
       fetch: fetchMock,
-      waitForProviderPermit,
-      createTimeoutSignal: () => undefined
+      waitForProviderPermit
     });
 
     expect(waitForProviderPermit).toHaveBeenCalledTimes(1);
@@ -1144,8 +1281,7 @@ describe("fetchGeckoOhlcv", () => {
       await expect(
         fetchGeckoOhlcv(config, {
           fetch: fetchMock,
-          waitForProviderPermit: async () => {},
-          createTimeoutSignal: () => undefined
+          waitForProviderPermit: async () => {}
         })
       ).rejects.toMatchObject({ statusCode: status, retryable: true });
     }
@@ -1157,8 +1293,7 @@ describe("fetchGeckoOhlcv", () => {
     await expect(
       fetchGeckoOhlcv(config, {
         fetch: fetchMock,
-        waitForProviderPermit: async () => {},
-        createTimeoutSignal: () => undefined
+        waitForProviderPermit: async () => {}
       })
     ).rejects.toMatchObject({ statusCode: 404, retryable: false });
   });
@@ -1169,8 +1304,24 @@ describe("fetchGeckoOhlcv", () => {
     await expect(
       fetchGeckoOhlcv(config, {
         fetch: fetchMock,
-        waitForProviderPermit: async () => {},
-        createTimeoutSignal: () => undefined
+        waitForProviderPermit: async () => {}
+      })
+    ).rejects.toBeInstanceOf(ProtocolError);
+  });
+
+  it("throws ProtocolError for oversized 2xx response bodies", async () => {
+    const fetchMock = vi.fn(
+      async () =>
+        new Response("{}", {
+          status: 200,
+          headers: { "content-length": String(512 * 1024 + 1) }
+        })
+    );
+
+    await expect(
+      fetchGeckoOhlcv(config, {
+        fetch: fetchMock,
+        waitForProviderPermit: async () => {}
       })
     ).rejects.toBeInstanceOf(ProtocolError);
   });
@@ -1184,8 +1335,7 @@ describe("fetchGeckoOhlcv", () => {
     await expect(
       fetchGeckoOhlcv(config, {
         fetch: fetchMock,
-        waitForProviderPermit: async () => {},
-        createTimeoutSignal: () => undefined
+        waitForProviderPermit: async () => {}
       })
     ).rejects.toBeInstanceOf(RequestTimeoutError);
   });
@@ -1198,8 +1348,7 @@ describe("fetchGeckoOhlcv", () => {
     await expect(
       fetchGeckoOhlcv(config, {
         fetch: fetchMock,
-        waitForProviderPermit: async () => {},
-        createTimeoutSignal: () => undefined
+        waitForProviderPermit: async () => {}
       })
     ).rejects.toBeInstanceOf(RequestTransportError);
   });
@@ -1235,7 +1384,6 @@ export type GeckoOhlcvPayload = unknown;
 export type GeckoFetchDeps = {
   fetch?: typeof fetch;
   waitForProviderPermit: () => Promise<void>;
-  createTimeoutSignal?: (timeoutMs: number) => AbortSignal | undefined;
 };
 
 const encodeSegment = (segment: string): string => encodeURIComponent(segment);
@@ -1254,17 +1402,32 @@ const buildGeckoUrl = (config: GeckoCollectorConfig): URL => {
   return url;
 };
 
+const MAX_RESPONSE_BYTES = 512 * 1024;
+
+const readTextWithLimit = async (response: Response): Promise<string> => {
+  const contentLength = response.headers.get("content-length");
+  if (contentLength && Number(contentLength) > MAX_RESPONSE_BYTES) {
+    throw new ProtocolError("Response body exceeds 512 KiB limit");
+  }
+  const text = await response.text();
+  if (text.length > MAX_RESPONSE_BYTES) {
+    throw new ProtocolError("Response body exceeds 512 KiB limit");
+  }
+  return text;
+};
+
 const parseJson = async (response: Response): Promise<unknown> => {
   try {
-    return await response.json();
+    return JSON.parse(await readTextWithLimit(response));
   } catch (error) {
+    if (error instanceof ProtocolError) throw error;
     throw new ProtocolError(
       `GeckoTerminal returned invalid JSON: ${error instanceof Error ? error.message : String(error)}`
     );
   }
 };
 
-const wrapFetchError = (error: unknown): never => {
+function wrapFetchError(error: unknown): never {
   if (
     error instanceof DOMException &&
     (error.name === "AbortError" || error.name === "TimeoutError")
@@ -1275,7 +1438,7 @@ const wrapFetchError = (error: unknown): never => {
     throw new RequestTransportError(error.message);
   }
   throw error;
-};
+}
 
 export async function fetchGeckoOhlcv(
   config: GeckoCollectorConfig,
@@ -1284,9 +1447,7 @@ export async function fetchGeckoOhlcv(
   await deps.waitForProviderPermit();
 
   const fetchImpl = deps.fetch ?? fetch;
-  const signal =
-    deps.createTimeoutSignal?.(config.geckoRequestTimeoutMs) ??
-    AbortSignal.timeout(config.geckoRequestTimeoutMs);
+  const signal = AbortSignal.timeout(config.geckoRequestTimeoutMs);
   let response: Response;
 
   try {
@@ -1301,7 +1462,7 @@ export async function fetchGeckoOhlcv(
   if (!response.ok) {
     throw new HttpError({
       statusCode: response.status,
-      responseBody: await response.text().catch(() => undefined),
+      responseBody: await readTextWithLimit(response).catch(() => undefined),
       retryable: isRetryableHttpStatus(response.status)
     });
   }
@@ -1383,8 +1544,7 @@ describe("postCandles", () => {
     );
 
     const result = await postCandles(config, candles, "2026-05-01T00:00:00.000Z", {
-      fetch: fetchMock,
-      createTimeoutSignal: () => undefined
+      fetch: fetchMock
     });
 
     expect(result.insertedCount).toBe(1);
@@ -1428,8 +1588,7 @@ describe("postCandles", () => {
 
     await expect(
       postCandles(config, candles, "2026-05-01T00:00:00.000Z", {
-        fetch: fetchMock,
-        createTimeoutSignal: () => undefined
+        fetch: fetchMock
       })
     ).resolves.toMatchObject({ rejectedCount: 1 });
     expect(fetchMock).toHaveBeenCalledTimes(1);
@@ -1440,8 +1599,7 @@ describe("postCandles", () => {
       const fetchMock = vi.fn(async () => new Response("error", { status }));
       await expect(
         postCandles(config, candles, "2026-05-01T00:00:00.000Z", {
-          fetch: fetchMock,
-          createTimeoutSignal: () => undefined
+          fetch: fetchMock
         })
       ).rejects.toMatchObject({ statusCode: status, retryable: true });
     }
@@ -1451,8 +1609,7 @@ describe("postCandles", () => {
     const fetchMock = vi.fn(async () => new Response("bad token", { status: 401 }));
     await expect(
       postCandles(config, candles, "2026-05-01T00:00:00.000Z", {
-        fetch: fetchMock,
-        createTimeoutSignal: () => undefined
+        fetch: fetchMock
       })
     ).rejects.toMatchObject({ statusCode: 401, retryable: false });
   });
@@ -1464,8 +1621,7 @@ describe("postCandles", () => {
     );
     await expect(
       postCandles(config, candles, "2026-05-01T00:00:00.000Z", {
-        fetch: fetchMock,
-        createTimeoutSignal: () => undefined
+        fetch: fetchMock
       })
     ).rejects.toBeInstanceOf(ProtocolError);
   });
@@ -1479,8 +1635,23 @@ describe("postCandles", () => {
     );
     await expect(
       postCandles(config, candles, "2026-05-01T00:00:00.000Z", {
-        fetch: fetchMock,
-        createTimeoutSignal: () => undefined
+        fetch: fetchMock
+      })
+    ).rejects.toBeInstanceOf(ProtocolError);
+  });
+
+  it("throws ProtocolError for oversized 2xx response bodies", async () => {
+    const fetchMock = vi.fn(
+      async () =>
+        new Response("{}", {
+          status: 200,
+          headers: { "content-length": String(512 * 1024 + 1) }
+        })
+    );
+
+    await expect(
+      postCandles(config, candles, "2026-05-01T00:00:00.000Z", {
+        fetch: fetchMock
       })
     ).rejects.toBeInstanceOf(ProtocolError);
   });
@@ -1514,11 +1685,24 @@ import {
 
 export type IngestClientDeps = {
   fetch?: typeof fetch;
-  createTimeoutSignal?: (timeoutMs: number) => AbortSignal | undefined;
 };
 
 const nonNegativeInteger = (value: unknown): value is number => {
   return typeof value === "number" && Number.isInteger(value) && value >= 0;
+};
+
+const MAX_RESPONSE_BYTES = 512 * 1024;
+
+const readTextWithLimit = async (response: Response): Promise<string> => {
+  const contentLength = response.headers.get("content-length");
+  if (contentLength && Number(contentLength) > MAX_RESPONSE_BYTES) {
+    throw new ProtocolError("Response body exceeds 512 KiB limit");
+  }
+  const text = await response.text();
+  if (text.length > MAX_RESPONSE_BYTES) {
+    throw new ProtocolError("Response body exceeds 512 KiB limit");
+  }
+  return text;
 };
 
 const validateResponse = (body: unknown): CandleIngestResponse => {
@@ -1551,7 +1735,7 @@ const validateResponse = (body: unknown): CandleIngestResponse => {
   return body as CandleIngestResponse;
 };
 
-const wrapFetchError = (error: unknown): never => {
+function wrapFetchError(error: unknown): never {
   if (
     error instanceof DOMException &&
     (error.name === "AbortError" || error.name === "TimeoutError")
@@ -1562,7 +1746,7 @@ const wrapFetchError = (error: unknown): never => {
     throw new RequestTransportError(error.message);
   }
   throw error;
-};
+}
 
 export async function postCandles(
   config: GeckoCollectorConfig,
@@ -1581,9 +1765,7 @@ export async function postCandles(
     sourceRecordedAtIso,
     candles
   };
-  const signal =
-    deps.createTimeoutSignal?.(config.geckoRequestTimeoutMs) ??
-    AbortSignal.timeout(config.geckoRequestTimeoutMs);
+  const signal = AbortSignal.timeout(config.geckoRequestTimeoutMs);
 
   let response: Response;
   try {
@@ -1603,15 +1785,15 @@ export async function postCandles(
   if (!response.ok) {
     throw new HttpError({
       statusCode: response.status,
-      responseBody: await response.text().catch(() => undefined),
       retryable: isRetryableHttpStatus(response.status)
     });
   }
 
   let body: unknown;
   try {
-    body = await response.json();
+    body = JSON.parse(await readTextWithLimit(response));
   } catch (error) {
+    if (error instanceof ProtocolError) throw error;
     throw new ProtocolError(
       `/v1/candles returned invalid JSON: ${error instanceof Error ? error.message : String(error)}`
     );
@@ -1684,6 +1866,7 @@ describe("isMainModule", () => {
 
 describe("runOneCycle", () => {
   it("fetches, normalizes, and posts using one sourceRecordedAtIso", async () => {
+    const logger = { info: vi.fn(), warn: vi.fn(), error: vi.fn() };
     const postCandles = vi.fn(async () => ({
       schemaVersion: "1.0" as const,
       insertedCount: 1,
@@ -1695,7 +1878,7 @@ describe("runOneCycle", () => {
     await runOneCycle(config, {
       fetchGeckoOhlcv: vi.fn(async () => payload),
       postCandles,
-      logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
+      logger,
       nowIso: () => "2026-05-01T00:00:00.000Z",
       shouldContinue: () => true
     });
@@ -1706,6 +1889,9 @@ describe("runOneCycle", () => {
       "2026-05-01T00:00:00.000Z",
       expect.any(Object)
     );
+    expect(logger.info).toHaveBeenCalledWith("gecko_fetch_succeeded", expect.any(Object));
+    expect(logger.info).toHaveBeenCalledWith("gecko_ingest_succeeded", expect.any(Object));
+    expect(logger.info).toHaveBeenCalledWith("gecko_cycle_completed", expect.any(Object));
   });
 
   it("skips ingest when shutdown is requested after fetch", async () => {
@@ -1725,7 +1911,7 @@ describe("runOneCycle", () => {
     expect(postCandles).not.toHaveBeenCalled();
   });
 
-  it("logs and skips ingest when corruption guard blocks", async () => {
+  it("logs and skips ingest when zero valid candles block posting", async () => {
     const logger = { info: vi.fn(), warn: vi.fn(), error: vi.fn() };
     const rows = Array.from({ length: 20 }, (_, index) => [1 + index, 100, 110, 90, 105, 1]);
     await runOneCycle(config, {
@@ -1738,7 +1924,52 @@ describe("runOneCycle", () => {
 
     expect(logger.warn).toHaveBeenCalledWith(
       "gecko_corruption_guard_blocked",
-      expect.objectContaining({ validCount: 0 })
+      expect.objectContaining({ validCount: 0, guardReason: "zero_valid" })
+    );
+  });
+
+  it("completes in-flight ingest when shutdown is requested during ingest", async () => {
+    let ingestStarted = false;
+    const postCandles = vi.fn(async () => {
+      ingestStarted = true;
+      return {
+        schemaVersion: "1.0" as const,
+        insertedCount: 1,
+        revisedCount: 0,
+        idempotentCount: 0,
+        rejectedCount: 0,
+        rejections: []
+      };
+    });
+
+    await runOneCycle(config, {
+      fetchGeckoOhlcv: vi.fn(async () => payload),
+      postCandles,
+      logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
+      nowIso: () => "2026-05-01T00:00:00.000Z",
+      shouldContinue: () => !ingestStarted
+    });
+
+    expect(postCandles).toHaveBeenCalledTimes(1);
+  });
+
+  it("logs ingest failures before rethrowing", async () => {
+    const logger = { info: vi.fn(), warn: vi.fn(), error: vi.fn() };
+    await expect(
+      runOneCycle(config, {
+        fetchGeckoOhlcv: vi.fn(async () => payload),
+        postCandles: vi.fn(async () => {
+          throw new Error("ingest failed");
+        }),
+        logger,
+        nowIso: () => "2026-05-01T00:00:00.000Z",
+        shouldContinue: () => true
+      })
+    ).rejects.toThrow("ingest failed");
+
+    expect(logger.error).toHaveBeenCalledWith(
+      "gecko_ingest_failed",
+      expect.objectContaining({ errorName: "Error" })
     );
   });
 });
@@ -1759,14 +1990,15 @@ Expected: FAIL because `src/workers/geckoCollector.ts` does not exist.
 Create `src/workers/geckoCollector.ts`:
 
 ```ts
-import { pathToFileURL } from "node:url";
+import { realpathSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 import { setTimeout as sleep } from "node:timers/promises";
 import { parseGeckoCollectorConfig, type GeckoCollectorConfig } from "./gecko/config.js";
 import { fetchGeckoOhlcv } from "./gecko/geckoClient.js";
 import { postCandles } from "./gecko/ingestClient.js";
 import { consoleLogger, type WorkerLogger } from "./gecko/logger.js";
-import { normalizeGeckoOhlcv, shouldPostNormalizedBatch } from "./gecko/normalize.js";
-import { createRateLimiter, withRetry } from "./gecko/retry.js";
+import { normalizeGeckoOhlcv } from "./gecko/normalize.js";
+import { createRateLimiter, HttpError, withRetry } from "./gecko/retry.js";
 
 export type GeckoCollectorDeps = {
   fetchGeckoOhlcv?: typeof fetchGeckoOhlcv;
@@ -1774,24 +2006,60 @@ export type GeckoCollectorDeps = {
   logger?: WorkerLogger;
   nowIso?: () => string;
   jitterMs?: (attempt: number) => number;
+  retrySignal?: AbortSignal;
   shouldContinue?: () => boolean;
   waitForProviderPermit?: () => Promise<void>;
 };
 
 const defaultJitterMs = () => Math.floor(Math.random() * 250);
 
-const retryOptions = (shouldContinue: () => boolean, jitterMs: (attempt: number) => number) => ({
+const retryOptions = (
+  shouldContinue: () => boolean,
+  jitterMs: (attempt: number) => number,
+  signal?: AbortSignal
+) => ({
   maxAttempts: 3,
   initialBackoffMs: 1000,
   maxBackoffMs: 30_000,
   jitterMs,
-  sleep: (ms: number) => sleep(ms),
+  sleep: (ms: number, options?: { signal?: AbortSignal }) => sleep(ms, undefined, options),
+  signal,
   shouldContinue
 });
 
 export function isMainModule(importMetaUrl: string, argvPath: string | undefined): boolean {
-  return Boolean(argvPath && importMetaUrl === pathToFileURL(argvPath).href);
+  if (!argvPath) return false;
+  try {
+    return realpathSync(fileURLToPath(importMetaUrl)) === realpathSync(argvPath);
+  } catch {
+    return false;
+  }
 }
+
+const errorContext = (error: unknown): Record<string, string | number | boolean> => {
+  const context: Record<string, string | number | boolean> = {
+    errorName: error instanceof Error ? error.name : "UnknownError"
+  };
+
+  if (error instanceof HttpError) {
+    context.statusCode = error.statusCode;
+    context.retryable = error.retryable;
+  }
+
+  return context;
+};
+
+const guardReason = (
+  stats: ReturnType<typeof normalizeGeckoOhlcv>["stats"],
+  config: GeckoCollectorConfig
+): "zero_valid" | "corruption_rate" | "low_valid_count" | null => {
+  if (stats.validCount === 0) return "zero_valid";
+  if (stats.providerRowCount > 0 && stats.corruptionDroppedCount / stats.providerRowCount > 0.1) {
+    return "corruption_rate";
+  }
+  if (config.geckoLookback >= 50 && stats.validCount < 50) return "low_valid_count";
+  return null;
+};
 
 export async function runOneCycle(
   config: GeckoCollectorConfig,
@@ -1811,32 +2079,58 @@ export async function runOneCycle(
     timeframe: config.geckoTimeframe
   });
 
-  const payload = await withRetry(
-    () =>
-      fetchClient(config, {
-        waitForProviderPermit: deps.waitForProviderPermit ?? (async () => {})
-      }),
-    retryOptions(shouldContinue, jitterMs)
-  );
+  let payload: Awaited<ReturnType<typeof fetchGeckoOhlcv>>;
+  try {
+    payload = await withRetry(
+      () =>
+        fetchClient(config, {
+          waitForProviderPermit: deps.waitForProviderPermit ?? (async () => {})
+        }),
+      retryOptions(shouldContinue, jitterMs, deps.retrySignal)
+    );
+    logger.info("gecko_fetch_succeeded", {
+      provider: config.geckoSource,
+      network: config.geckoNetwork,
+      poolAddress: config.geckoPoolAddress,
+      symbol: config.geckoSymbol,
+      timeframe: config.geckoTimeframe
+    });
+  } catch (error) {
+    logger.error("gecko_fetch_failed", errorContext(error));
+    throw error;
+  }
 
   if (!shouldContinue()) return;
 
   const sourceRecordedAtIso = deps.nowIso?.() ?? new Date().toISOString();
   const normalized = normalizeGeckoOhlcv(payload, config);
+  if (normalized.stats.totalDroppedCount > 0) {
+    logger.warn("gecko_normalization_warn", normalized.stats);
+  }
 
   if (!shouldContinue()) return;
 
-  if (!shouldPostNormalizedBatch(normalized.stats, config)) {
-    logger.warn("gecko_corruption_guard_blocked", normalized.stats);
+  const blockedReason = guardReason(normalized.stats, config);
+  if (blockedReason) {
+    logger.warn("gecko_corruption_guard_blocked", {
+      ...normalized.stats,
+      guardReason: blockedReason
+    });
     return;
   }
 
-  const response = await withRetry(
-    () => ingestClient(config, normalized.validCandles, sourceRecordedAtIso),
-    retryOptions(shouldContinue, jitterMs)
-  );
+  let response: Awaited<ReturnType<typeof postCandles>>;
+  try {
+    response = await withRetry(
+      () => ingestClient(config, normalized.validCandles, sourceRecordedAtIso),
+      retryOptions(shouldContinue, jitterMs, deps.retrySignal)
+    );
+  } catch (error) {
+    logger.error("gecko_ingest_failed", errorContext(error));
+    throw error;
+  }
 
-  logger.info("gecko_ingest_succeeded", {
+  const ingestContext = {
     insertedCount: response.insertedCount,
     revisedCount: response.revisedCount,
     idempotentCount: response.idempotentCount,
@@ -1844,14 +2138,15 @@ export async function runOneCycle(
     candleCountFetched: normalized.stats.providerRowCount,
     candleCountPosted: normalized.validCandles.length,
     sourceRecordedAtIso
-  });
+  };
 
   if (response.rejectedCount > 0) {
-    logger.warn("gecko_ingest_stale_revisions", {
-      rejectedCount: response.rejectedCount,
-      sourceRecordedAtIso
-    });
+    logger.warn("gecko_ingest_succeeded", ingestContext);
+  } else {
+    logger.info("gecko_ingest_succeeded", ingestContext);
   }
+
+  logger.info("gecko_cycle_completed", ingestContext);
 }
 
 export async function runCollector(config = parseGeckoCollectorConfig()): Promise<void> {
@@ -1882,12 +2177,12 @@ export async function runCollector(config = parseGeckoCollectorConfig()): Promis
       await runOneCycle(config, {
         logger,
         waitForProviderPermit,
+        jitterMs: defaultJitterMs,
+        retrySignal: shutdown.signal,
         shouldContinue: () => !shutdownRequested
       });
     } catch (error) {
-      logger.error("gecko_cycle_failed", {
-        errorMessage: error instanceof Error ? error.message : String(error)
-      });
+      logger.error("gecko_cycle_failed", errorContext(error));
     }
 
     if (shutdownRequested) break;
@@ -1907,7 +2202,7 @@ if (isMainModule(import.meta.url, process.argv[1])) {
       JSON.stringify({
         level: "error",
         event: "gecko_collector_fatal",
-        errorMessage: error instanceof Error ? error.message : String(error)
+        ...errorContext(error)
       })
     );
     process.exit(1);
@@ -1969,11 +2264,9 @@ describe("package scripts", () => {
       scripts: Record<string, string>;
     };
 
-    expect(packageJson.scripts.start).toBe("node --env-file-if-exists=.env dist/src/server.js");
-    expect(packageJson.scripts["dev:gecko"]).toBe("tsx watch src/workers/geckoCollector.ts");
-    expect(packageJson.scripts["start:gecko"]).toBe(
-      "node --env-file-if-exists=.env dist/src/workers/geckoCollector.js"
-    );
+    expect(packageJson.scripts.start).toContain("dist/src/server.js");
+    expect(packageJson.scripts["dev:gecko"]).toContain("src/workers/geckoCollector.ts");
+    expect(packageJson.scripts["start:gecko"]).toContain("dist/src/workers/geckoCollector.js");
   });
 });
 ```
@@ -2043,19 +2336,19 @@ npm run start:gecko
 
 Worker env vars:
 
-| Variable                     | Default         | Notes                                                                    |
-| ---------------------------- | --------------- | ------------------------------------------------------------------------ |
-| `REGIME_ENGINE_URL`          | -               | Absolute URL for the regime-engine web service.                          |
-| `CANDLES_INGEST_TOKEN`       | -               | Shared secret sent as `X-Candles-Ingest-Token`.                          |
-| `GECKO_SOURCE`               | `geckoterminal` | Must equal `geckoterminal` for MVP.                                      |
-| `GECKO_NETWORK`              | `solana`        | Must equal `solana` for MVP.                                             |
-| `GECKO_POOL_ADDRESS`         | -               | Explicit GeckoTerminal SOL/USDC pool address. Confirm before production. |
-| `GECKO_SYMBOL`               | `SOL/USDC`      | Must equal `SOL/USDC` for MVP.                                           |
-| `GECKO_TIMEFRAME`            | `1h`            | Must equal `1h` for MVP.                                                 |
-| `GECKO_LOOKBACK`             | `200`           | Rolling candle window size.                                              |
-| `GECKO_POLL_INTERVAL_MS`     | `300000`        | Sleep after each completed cycle.                                        |
-| `GECKO_MAX_CALLS_PER_MINUTE` | `6`             | Provider-scoped GeckoTerminal call cap.                                  |
-| `GECKO_REQUEST_TIMEOUT_MS`   | `10000`         | Per-request timeout for provider and ingest calls.                       |
+| Variable                     | Default         | Notes                                                                     |
+| ---------------------------- | --------------- | ------------------------------------------------------------------------- |
+| `REGIME_ENGINE_URL`          | -               | Absolute URL for the regime-engine web service.                           |
+| `CANDLES_INGEST_TOKEN`       | -               | Shared secret sent as `X-Candles-Ingest-Token`; never commit real values. |
+| `GECKO_SOURCE`               | `geckoterminal` | Must equal `geckoterminal` for MVP.                                       |
+| `GECKO_NETWORK`              | `solana`        | Must equal `solana` for MVP.                                              |
+| `GECKO_POOL_ADDRESS`         | -               | Explicit GeckoTerminal SOL/USDC pool address. Confirm before production.  |
+| `GECKO_SYMBOL`               | `SOL/USDC`      | Must equal `SOL/USDC` for MVP.                                            |
+| `GECKO_TIMEFRAME`            | `1h`            | Must equal `1h` for MVP.                                                  |
+| `GECKO_LOOKBACK`             | `200`           | Rolling candle window size.                                               |
+| `GECKO_POLL_INTERVAL_MS`     | `300000`        | Sleep after each completed cycle.                                         |
+| `GECKO_MAX_CALLS_PER_MINUTE` | `6`             | Provider-scoped GeckoTerminal call cap.                                   |
+| `GECKO_REQUEST_TIMEOUT_MS`   | `10000`         | Per-request timeout for provider and ingest calls.                        |
 
 Railway services from the same repo:
 
@@ -2064,17 +2357,15 @@ Railway services from the same repo:
 | `regime-engine-web`             | `pnpm build` | `pnpm start`       |
 | `regime-engine-gecko-collector` | `pnpm build` | `pnpm start:gecko` |
 
-Production checklist:
-
-- [ ] Confirm the canonical GeckoTerminal Solana SOL/USDC pool address before
-      setting `GECKO_POOL_ADDRESS`.
+Production setup and pool confirmation live in
+`docs/runbooks/railway-deploy.md`.
 ````
 
 - [ ] **Step 6: Update Railway runbook**
 
 Add a section after the web service deployment env vars:
 
-```md
+````md
 ## GeckoTerminal collector Railway service
 
 Create a second service from the same repo:
@@ -2104,12 +2395,36 @@ Collector env vars:
 | `GECKO_MAX_CALLS_PER_MINUTE` | `6`                                                   |
 | `GECKO_REQUEST_TIMEOUT_MS`   | `10000`                                               |
 
+URL notes:
+
+- Public `REGIME_ENGINE_URL` values must use HTTPS.
+- Plain HTTP is accepted only for `localhost`, `127.0.0.1`, `::1`, or Railway
+  private `*.railway.internal` hosts.
+- The collector posts to `new URL("/v1/candles", REGIME_ENGINE_URL)`, which
+  targets the origin root. Do not configure a base URL that relies on a path
+  prefix.
+
+Pool preflight:
+
+```bash
+curl -fsS "https://api.geckoterminal.com/api/v2/networks/solana/pools/$GECKO_POOL_ADDRESS/ohlcv/hour?aggregate=1&limit=1"
+```
+
 Before production:
 
 - [ ] Confirm and record the canonical GeckoTerminal Solana SOL/USDC pool address.
 - [ ] Confirm the collector can reach `REGIME_ENGINE_URL`.
 - [ ] Confirm the web service and collector share the same `CANDLES_INGEST_TOKEN`.
-```
+
+Token management:
+
+1. Generate a new `CANDLES_INGEST_TOKEN` in the password manager.
+2. Update the web service token and collector service token in the same Railway
+   maintenance window.
+3. Restart the web service, then restart the collector service.
+4. Confirm collector logs show successful ingest after rotation.
+5. Treat suspected token exposure as a same-day rotation event.
+````
 
 - [ ] **Step 7: Run package/docs checks**
 
