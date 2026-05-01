@@ -15,7 +15,7 @@ import {
 } from "../../contract/v2/errors.js";
 import { SrThesesV2Store, SrThesisV2ConflictError } from "../../ledger/srThesesV2Store.js";
 import { safeEqual } from "../auth.js";
-import { isTableMissingError } from "./pgErrors.js";
+import { isTableMissingError, sendTableMissing503 } from "./pgErrors.js";
 
 const ENV_VAR = "OPENCLAW_INGEST_TOKEN";
 const HEADER = "x-ingest-token";
@@ -72,13 +72,7 @@ export const createSrLevelsV2IngestHandler = (store: SrThesesV2Store | null) => 
       return reply.code(200).send(response);
     } catch (error) {
       if (isTableMissingError(error)) {
-        return reply
-          .code(503)
-          .send(
-            serviceUnavailableV2Error(
-              "S/R thesis v2 store is not available (table not migrated — run migrations first)"
-            )
-          );
+        return sendTableMissing503(reply);
       }
       if (error instanceof V2ContractValidationError) {
         return reply.code(error.statusCode).send(error.response);
