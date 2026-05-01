@@ -21,7 +21,7 @@
     "db:migrate": "drizzle-kit migrate",
     "db:generate": "drizzle-kit generate",
     "db:push": "drizzle-kit push",
-    "prepare": "husky"
+    "prepare": "husky || true"
   },
   "dependencies": {
     "drizzle-kit": "^0.31.10",
