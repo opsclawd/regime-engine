@@ -152,7 +152,7 @@ Hard-required env:
 | ---------------------- | ------------------------------------------------------------ |
 | `REGIME_ENGINE_URL`    | absolute URL; HTTPS unless localhost or Railway private host |
 | `CANDLES_INGEST_TOKEN` | non-empty                                                    |
-| `GECKO_POOL_ADDRESS`   | explicit non-empty; do not infer                             |
+| `GECKO_POOL_ADDRESS`   | explicit non-empty; no placeholder values or angle brackets  |
 
 Defaulted env, validated if present:
 
@@ -162,7 +162,7 @@ Defaulted env, validated if present:
 | `GECKO_NETWORK`              | `solana`        | must equal `solana`        |
 | `GECKO_SYMBOL`               | `SOL/USDC`      | must equal `SOL/USDC`      |
 | `GECKO_TIMEFRAME`            | `1h`            | must equal `1h`            |
-| `GECKO_LOOKBACK`             | `200`           | positive integer           |
+| `GECKO_LOOKBACK`             | `200`           | positive integer `<= 1000` |
 | `GECKO_POLL_INTERVAL_MS`     | `300000`        | positive integer           |
 | `GECKO_MAX_CALLS_PER_MINUTE` | `6`             | positive integer           |
 | `GECKO_REQUEST_TIMEOUT_MS`   | `10000`         | positive integer           |
@@ -503,7 +503,7 @@ Per-row validation:
 - each row must have length exactly `6`; missing fields or extra fields are
   malformed
 - `timestampSeconds` is an integer
-- `timestampSeconds` and normalized `unixMs` must be safe integers
+- `timestampSeconds` and normalized `unixMs` must be safe non-negative integers
 - `unixMs` is an integer aligned to the 1h boundary
 - `open`, `high`, `low`, and `close` are finite and `> 0`
 - `volume` is finite and `>= 0`
@@ -723,9 +723,11 @@ Config parser:
 - rejects explicit empty optional env vars instead of silently defaulting
 - missing token
 - missing pool address
-- invalid positive integers
+- placeholder pool addresses with `<` or `>` are rejected
+- invalid numeric env values, including `GECKO_LOOKBACK=1001`
 - wrong network/timeframe/source
 - `GECKO_SYMBOL` defaults to `SOL/USDC` and rejects any other value
+- logger redacts top-level and nested token, header, and response body fields
 
 Gecko client:
 
@@ -750,7 +752,7 @@ Normalizer:
 - 1h timestamp alignment
 - non-array rows are malformed
 - rows with `length !== 6` are malformed, including missing or extra fields
-- timestamps must be safe integers
+- timestamps must be safe non-negative integers
 - payloads with more than 1000 OHLCV rows fail before iteration
 - malformed rows dropped
 - invalid OHLCV rows dropped
@@ -773,6 +775,8 @@ Ingest client:
 - response validates `schemaVersion === "1.0"` and all count fields as
   non-negative integers
 - invalid response JSON is `ProtocolError`
+- timeout aborts become `RequestTimeoutError`
+- network/transport failures become `RequestTransportError`
 
 Retry helper:
 

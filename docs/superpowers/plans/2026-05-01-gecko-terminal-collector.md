@@ -26,6 +26,7 @@ Create:
 - `src/workers/gecko/retry.ts` - `HttpError`, `ProtocolError`, `RequestTimeoutError`, `RequestTransportError`, bounded retry, provider-scoped rate limiter.
 - `src/workers/gecko/logger.ts` - tiny structured console logger and redaction helpers.
 - `src/workers/gecko/__tests__/config.test.ts`
+- `src/workers/gecko/__tests__/logger.test.ts`
 - `src/workers/gecko/__tests__/retry.test.ts`
 - `src/workers/gecko/__tests__/normalize.test.ts`
 - `src/workers/gecko/__tests__/geckoClient.test.ts`
@@ -53,6 +54,7 @@ Do not modify:
 - Create: `src/workers/gecko/config.ts`
 - Create: `src/workers/gecko/logger.ts`
 - Test: `src/workers/gecko/__tests__/config.test.ts`
+- Test: `src/workers/gecko/__tests__/logger.test.ts`
 
 - [ ] **Step 1: Write failing config tests**
 
@@ -112,6 +114,15 @@ describe("parseGeckoCollectorConfig", () => {
     expect(() => parseGeckoCollectorConfig({ ...validEnv, [key]: value })).toThrow(key);
   });
 
+  it.each(["<confirm-before-production>", "<pool>", "pool>", "pool<"])(
+    "rejects placeholder pool address %s",
+    (poolAddress) => {
+      expect(() =>
+        parseGeckoCollectorConfig({ ...validEnv, GECKO_POOL_ADDRESS: poolAddress })
+      ).toThrow("GECKO_POOL_ADDRESS");
+    }
+  );
+
   it("rejects non-absolute REGIME_ENGINE_URL", () => {
     expect(() =>
       parseGeckoCollectorConfig({ ...validEnv, REGIME_ENGINE_URL: "regime-engine.local" })
@@ -155,10 +166,11 @@ describe("parseGeckoCollectorConfig", () => {
     ["GECKO_LOOKBACK", "0"],
     ["GECKO_LOOKBACK", "-1"],
     ["GECKO_LOOKBACK", "1.5"],
+    ["GECKO_LOOKBACK", "1001"],
     ["GECKO_POLL_INTERVAL_MS", "0"],
     ["GECKO_MAX_CALLS_PER_MINUTE", "abc"],
     ["GECKO_REQUEST_TIMEOUT_MS", "-100"]
-  ])("rejects invalid positive integer %s=%s", (key, value) => {
+  ])("rejects invalid numeric env %s=%s", (key, value) => {
     expect(() => parseGeckoCollectorConfig({ ...validEnv, [key]: value })).toThrow(key);
   });
 });
@@ -234,6 +246,22 @@ const readPositiveInteger = (env: NodeJS.ProcessEnv, key: string, defaultValue: 
   return parsed;
 };
 
+const readLookback = (env: NodeJS.ProcessEnv): number => {
+  const value = readPositiveInteger(env, "GECKO_LOOKBACK", 200);
+  if (value > 1000) {
+    throw new Error("GECKO_LOOKBACK must be <= 1000");
+  }
+  return value;
+};
+
+const readPoolAddress = (env: NodeJS.ProcessEnv): string => {
+  const value = readRequired(env, "GECKO_POOL_ADDRESS");
+  if (value.includes("<") || value.includes(">")) {
+    throw new Error("GECKO_POOL_ADDRESS must be a confirmed pool address");
+  }
+  return value;
+};
+
 const isAllowedHttpHost = (hostname: string): boolean => {
   return (
     hostname === "localhost" ||
@@ -273,10 +301,10 @@ export function parseGeckoCollectorConfig(
     candlesIngestToken: readRequired(env, "CANDLES_INGEST_TOKEN"),
     geckoSource: readLiteral(env, "GECKO_SOURCE", "geckoterminal", "geckoterminal"),
     geckoNetwork: readLiteral(env, "GECKO_NETWORK", "solana", "solana"),
-    geckoPoolAddress: readRequired(env, "GECKO_POOL_ADDRESS"),
+    geckoPoolAddress: readPoolAddress(env),
     geckoSymbol: readLiteral(env, "GECKO_SYMBOL", "SOL/USDC", "SOL/USDC"),
     geckoTimeframe: readLiteral(env, "GECKO_TIMEFRAME", "1h", "1h"),
-    geckoLookback: readPositiveInteger(env, "GECKO_LOOKBACK", 200),
+    geckoLookback: readLookback(env),
     geckoPollIntervalMs: readPositiveInteger(env, "GECKO_POLL_INTERVAL_MS", 300_000),
     geckoMaxCallsPerMinute: readPositiveInteger(env, "GECKO_MAX_CALLS_PER_MINUTE", 6),
     geckoRequestTimeoutMs: readPositiveInteger(env, "GECKO_REQUEST_TIMEOUT_MS", 10_000)
@@ -284,7 +312,52 @@ export function parseGeckoCollectorConfig(
 }
 ```
 
-- [ ] **Step 4: Implement minimal redacting logger**
+- [ ] **Step 4: Write logger redaction tests and implement minimal redacting logger**
+
+Create `src/workers/gecko/__tests__/logger.test.ts`:
+
+```ts
+import { describe, expect, it } from "vitest";
+import { redactLogContext } from "../logger.js";
+
+describe("redactLogContext", () => {
+  it("redacts top-level token, header, and response body fields", () => {
+    expect(
+      redactLogContext({
+        CANDLES_INGEST_TOKEN: "secret-token",
+        headers: { "X-Candles-Ingest-Token": "secret-token" },
+        responseBody: "reflected secret-token",
+        poolAddress: "pool"
+      })
+    ).toEqual({
+      CANDLES_INGEST_TOKEN: "[REDACTED]",
+      headers: "[REDACTED]",
+      responseBody: "[REDACTED]",
+      poolAddress: "pool"
+    });
+  });
+
+  it("redacts nested token, header, and response body fields", () => {
+    expect(
+      redactLogContext({
+        error: {
+          requestHeaders: { Authorization: "Bearer secret-token" },
+          nestedToken: "secret-token",
+          responseBody: "reflected secret-token",
+          statusCode: 500
+        }
+      })
+    ).toEqual({
+      error: {
+        requestHeaders: "[REDACTED]",
+        nestedToken: "[REDACTED]",
+        responseBody: "[REDACTED]",
+        statusCode: 500
+      }
+    });
+  });
+});
+```
 
 Create `src/workers/gecko/logger.ts`:
 
@@ -348,12 +421,13 @@ export const consoleLogger: WorkerLogger = {
 };
 ```
 
-- [ ] **Step 5: Run config tests**
+- [ ] **Step 5: Run config and logger tests**
 
 Run:
 
 ```bash
 pnpm exec vitest run src/workers/gecko/__tests__/config.test.ts
+pnpm exec vitest run src/workers/gecko/__tests__/logger.test.ts
 ```
 
 Expected: PASS.
@@ -363,7 +437,7 @@ Expected: PASS.
 Run:
 
 ```bash
-git add src/workers/gecko/config.ts src/workers/gecko/logger.ts src/workers/gecko/__tests__/config.test.ts
+git add src/workers/gecko/config.ts src/workers/gecko/logger.ts src/workers/gecko/__tests__/config.test.ts src/workers/gecko/__tests__/logger.test.ts
 git commit -m "feat: add Gecko collector config"
 ```
 
@@ -851,6 +925,19 @@ describe("normalizeGeckoOhlcv", () => {
     expect(result.stats.malformedRowCount).toBe(1);
   });
 
+  it("drops negative timestamp rows as malformed", () => {
+    const result = normalizeGeckoOhlcv(
+      payload([
+        [-3600, 100, 110, 90, 105, 1],
+        [3600, 100, 110, 90, 105, 1]
+      ]),
+      config
+    );
+
+    expect(result.validCandles.map((candle) => candle.unixMs)).toEqual([3_600_000]);
+    expect(result.stats.malformedRowCount).toBe(1);
+  });
+
   it("dedupes identical rows without adding to corruption dropped count", () => {
     const result = normalizeGeckoOhlcv(
       payload([
@@ -1097,7 +1184,8 @@ const parseRow = (row: unknown, stats: NormalizationStats, timeframeMs: number):
     close === null ||
     volume === null ||
     !Number.isInteger(timestampSeconds) ||
-    !Number.isSafeInteger(timestampSeconds)
+    !Number.isSafeInteger(timestampSeconds) ||
+    timestampSeconds < 0
   ) {
     stats.malformedRowCount += 1;
     increment(stats, "malformed");
@@ -1105,7 +1193,7 @@ const parseRow = (row: unknown, stats: NormalizationStats, timeframeMs: number):
   }
 
   const unixMs = timestampSeconds * 1000;
-  if (!Number.isSafeInteger(unixMs)) {
+  if (!Number.isSafeInteger(unixMs) || unixMs < 0) {
     stats.malformedRowCount += 1;
     increment(stats, "malformed");
     return null;
@@ -1508,7 +1596,7 @@ import { describe, expect, it, vi } from "vitest";
 import type { Candle } from "../../../contract/v1/types.js";
 import type { GeckoCollectorConfig } from "../config.js";
 import { postCandles } from "../ingestClient.js";
-import { HttpError, ProtocolError } from "../retry.js";
+import { HttpError, ProtocolError, RequestTimeoutError, RequestTransportError } from "../retry.js";
 
 const config: GeckoCollectorConfig = {
   regimeEngineUrl: new URL("https://regime-engine.example/base"),
@@ -1654,6 +1742,33 @@ describe("postCandles", () => {
         fetch: fetchMock
       })
     ).rejects.toBeInstanceOf(ProtocolError);
+  });
+
+  it.each(["AbortError", "TimeoutError"])(
+    "wraps %s fetch failures as RequestTimeoutError",
+    async (errorName) => {
+      const fetchMock = vi.fn(async () => {
+        throw new DOMException("aborted", errorName);
+      });
+
+      await expect(
+        postCandles(config, candles, "2026-05-01T00:00:00.000Z", {
+          fetch: fetchMock
+        })
+      ).rejects.toBeInstanceOf(RequestTimeoutError);
+    }
+  );
+
+  it("wraps transport failures as RequestTransportError", async () => {
+    const fetchMock = vi.fn(async () => {
+      throw new TypeError("fetch failed");
+    });
+
+    await expect(
+      postCandles(config, candles, "2026-05-01T00:00:00.000Z", {
+        fetch: fetchMock
+      })
+    ).rejects.toBeInstanceOf(RequestTransportError);
   });
 });
 ```
@@ -1836,6 +1951,10 @@ git commit -m "feat: post Gecko candles to regime engine"
 Create `src/workers/__tests__/geckoCollector.test.ts`:
 
 ```ts
+import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { pathToFileURL } from "node:url";
 import { describe, expect, it, vi } from "vitest";
 import type { GeckoCollectorConfig } from "../gecko/config.js";
 import { isMainModule, runOneCycle } from "../geckoCollector.js";
@@ -1861,6 +1980,14 @@ describe("isMainModule", () => {
     expect(isMainModule("file:///repo/src/workers/geckoCollector.ts", "/repo/src/other.ts")).toBe(
       false
     );
+  });
+
+  it("returns true when import URL and argv path resolve to the same real file", () => {
+    const tempDir = mkdtempSync(join(tmpdir(), "gecko-collector-"));
+    const entrypoint = join(tempDir, "geckoCollector.ts");
+    writeFileSync(entrypoint, "");
+
+    expect(isMainModule(pathToFileURL(entrypoint).href, entrypoint)).toBe(true);
   });
 });
 
@@ -1896,16 +2023,12 @@ describe("runOneCycle", () => {
 
   it("skips ingest when shutdown is requested after fetch", async () => {
     const postCandles = vi.fn();
-    let calls = 0;
     await runOneCycle(config, {
       fetchGeckoOhlcv: vi.fn(async () => payload),
       postCandles,
       logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
       nowIso: () => "2026-05-01T00:00:00.000Z",
-      shouldContinue: () => {
-        calls += 1;
-        return calls === 1;
-      }
+      shouldContinue: () => false
     });
 
     expect(postCandles).not.toHaveBeenCalled();
@@ -2122,7 +2245,7 @@ export async function runOneCycle(
   let response: Awaited<ReturnType<typeof postCandles>>;
   try {
     response = await withRetry(
-      () => ingestClient(config, normalized.validCandles, sourceRecordedAtIso),
+      () => ingestClient(config, normalized.validCandles, sourceRecordedAtIso, {}),
       retryOptions(shouldContinue, jitterMs, deps.retrySignal)
     );
   } catch (error) {
@@ -2256,8 +2379,6 @@ git commit -m "feat: add Gecko collector loop"
 Append this test to `src/workers/__tests__/geckoCollector.test.ts`:
 
 ```ts
-import { readFileSync } from "node:fs";
-
 describe("package scripts", () => {
   it("points start scripts at dist/src outputs", () => {
     const packageJson = JSON.parse(readFileSync("package.json", "utf8")) as {
