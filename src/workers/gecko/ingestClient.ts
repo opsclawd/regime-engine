@@ -57,8 +57,10 @@ function validateResponse(data: unknown): CandleIngestResponse {
     if (typeof r.unixMs !== "number" || !Number.isInteger(r.unixMs)) {
       throw new ProtocolError("Invalid ingest response: rejection.unixMs must be an integer");
     }
-    if (typeof r.reason !== "string") {
-      throw new ProtocolError("Invalid ingest response: rejection.reason must be a string");
+    if (r.reason !== "STALE_REVISION") {
+      throw new ProtocolError(
+        `Invalid ingest response: rejection.reason must be "STALE_REVISION", got "${r.reason}"`
+      );
     }
     if (typeof r.existingSourceRecordedAtIso !== "string") {
       throw new ProtocolError(

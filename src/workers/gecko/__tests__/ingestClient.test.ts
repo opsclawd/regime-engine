@@ -120,6 +120,24 @@ describe("postCandles", () => {
     ).rejects.toThrow(ProtocolError);
   });
 
+  it("throws ProtocolError for unexpected rejection reason", async () => {
+    const response = {
+      ...VALID_RESPONSE,
+      rejectedCount: 1,
+      rejections: [
+        {
+          unixMs: 1714536000000,
+          reason: "UNKNOWN",
+          existingSourceRecordedAtIso: "2026-05-01T00:00:00Z"
+        }
+      ]
+    };
+    const fetch = mockFetch(jsonResponse(response));
+    await expect(
+      postCandles(BASE_CONFIG, VALID_CANDLES, "2026-05-01T00:00:00Z", { fetch })
+    ).rejects.toThrow(ProtocolError);
+  });
+
   it("throws ProtocolError for oversized body", async () => {
     const fetch = mockFetch(
       new Response("", {
