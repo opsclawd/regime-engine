@@ -52,6 +52,8 @@ function parseRow(
 
   if (o < 0 || h < 0 || l < 0 || c < 0 || v < 0) return null;
 
+  if (h < Math.max(o, c, l) || l > Math.min(o, c, h)) return null;
+
   return { candle: { unixMs, open: o, high: h, low: l, close: c, volume: v } };
 }
 

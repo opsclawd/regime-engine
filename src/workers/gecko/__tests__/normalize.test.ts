@@ -60,7 +60,7 @@ describe("normalizeGeckoOhlcv", () => {
         attributes: {
           ohlcv_list: [
             [1714536000, 1, 2, 3],
-            [1714539600, 1, 2, 3, 4, 5]
+            [1714539600, 1, 5, 0.5, 3, 4]
           ]
         }
       }

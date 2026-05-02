@@ -55,11 +55,40 @@ export function parseJson(text: string, source: string): unknown {
 
 export async function readErrorBody(response: Response): Promise<string> {
   try {
-    const text = await response.text();
-    if (text.length > MAX_BODY_BYTES) {
-      return text.slice(0, 1024);
+    const contentLength = response.headers.get("content-length");
+    if (contentLength !== null) {
+      const length = Number(contentLength);
+      if (Number.isFinite(length) && length > MAX_BODY_BYTES) {
+        return "";
+      }
     }
-    return text;
+    if (!response.body) {
+      const text = await response.text();
+      return text.length > 1024 ? text.slice(0, 1024) : text;
+    }
+    const chunks: Uint8Array[] = [];
+    let totalBytes = 0;
+    const maxErrorBytes = 1024;
+    const reader = response.body.getReader();
+    try {
+      for (;;) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        totalBytes += value.byteLength;
+        if (totalBytes > MAX_BODY_BYTES) {
+          break;
+        }
+        if (chunks.reduce((s, c) => s + c.byteLength, 0) < maxErrorBytes) {
+          chunks.push(value);
+        }
+      }
+    } finally {
+      reader.releaseLock();
+    }
+    if (totalBytes > MAX_BODY_BYTES) return "";
+    const decoder = new TextDecoder();
+    const text = chunks.map((c) => decoder.decode(c, { stream: true })).join("") + decoder.decode();
+    return text.length > 1024 ? text.slice(0, 1024) : text;
   } catch {
     return "";
   }
