@@ -176,6 +176,7 @@ export async function runCollector(
           waitForProviderPermit: () => rateLimiter.waitForPermit()
         });
       } catch (err: unknown) {
+        if (signal.aborted) break;
         logger.error("cycle_error", {
           error: err instanceof Error ? err.message : String(err)
         });

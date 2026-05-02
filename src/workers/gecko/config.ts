@@ -89,7 +89,7 @@ function readAbsoluteUrl(env: Record<string, string | undefined>, key: string): 
   } catch {
     throw new Error(`${key} is not a valid absolute URL: ${raw}`);
   }
-  if (url.protocol !== "https:" && !isAllowedHttpHost(url.hostname)) {
+  if (url.protocol !== "https:" && !(url.protocol === "http:" && isAllowedHttpHost(url.hostname))) {
     throw new Error(
       `${key} must use HTTPS (got ${url.protocol}). HTTP is only allowed for localhost or *.railway.internal`
     );
