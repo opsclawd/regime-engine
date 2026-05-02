@@ -34,6 +34,26 @@ export function isRetryableHttpStatus(statusCode: number): boolean {
   return statusCode === 429 || statusCode >= 500;
 }
 
+function sleepWithAbortSignal(
+  ms: number,
+  signal: AbortSignal | undefined,
+  fallbackSleep: (ms: number) => Promise<void>
+): Promise<void> {
+  if (!signal) return fallbackSleep(ms);
+  return new Promise<void>((resolve, reject) => {
+    if (signal.aborted) {
+      reject(new DOMException("Aborted", "AbortError"));
+      return;
+    }
+    const timer = setTimeout(resolve, ms);
+    const onAbort = () => {
+      clearTimeout(timer);
+      reject(new DOMException("Aborted", "AbortError"));
+    };
+    signal.addEventListener("abort", onAbort, { once: true });
+  });
+}
+
 export type RetryDeps = {
   sleep?: (ms: number) => Promise<void>;
   now?: () => number;
@@ -75,7 +95,7 @@ export async function withRetry<T>(
       const delay = baseDelay + jitterMs(attempt);
 
       try {
-        await sleep(delay);
+        await sleepWithAbortSignal(delay, signal, sleep);
       } catch (sleepErr: unknown) {
         if (signal?.aborted) throw err;
         throw sleepErr;

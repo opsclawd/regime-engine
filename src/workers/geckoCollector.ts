@@ -164,7 +164,6 @@ export async function runCollector(
     sleep: (ms: number) => sleepFn(ms)
   });
 
-  let cycleError: unknown;
   try {
     while (!signal.aborted) {
       try {
@@ -180,8 +179,6 @@ export async function runCollector(
         logger.error("cycle_error", {
           error: err instanceof Error ? err.message : String(err)
         });
-        cycleError = err;
-        break;
       }
 
       if (signal.aborted) break;
@@ -198,10 +195,6 @@ export async function runCollector(
       process.removeListener("SIGINT", shutdown);
     }
     logger.info("shutdown_complete");
-  }
-
-  if (cycleError !== undefined) {
-    throw cycleError;
   }
 }
 

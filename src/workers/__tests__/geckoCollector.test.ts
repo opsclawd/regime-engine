@@ -237,7 +237,7 @@ describe("runCollector", () => {
     expect(listenersAfter).toBe(listenersBefore);
   });
 
-  it("rethrows cycle error so exit code is non-zero", async () => {
+  it("continues looping after recoverable cycle error", async () => {
     const shutdownController = new AbortController();
     const logger = {
       info: vi.fn(),
@@ -245,9 +245,11 @@ describe("runCollector", () => {
       error: vi.fn()
     } as unknown as WorkerLogger;
 
-    const cycleError = new Error("boom");
+    let cycleCount = 0;
     const runOneCycleFn = vi.fn(async () => {
-      throw cycleError;
+      cycleCount++;
+      if (cycleCount === 1) throw new Error("transient");
+      if (cycleCount >= 2) shutdownController.abort();
     });
 
     const sleep = vi.fn(async () => {});
@@ -260,7 +262,10 @@ describe("runCollector", () => {
     };
 
     const { runCollector } = await import("../geckoCollector.js");
-    await expect(runCollector(BASE_CONFIG, loopDeps)).rejects.toThrow("boom");
+    await runCollector(BASE_CONFIG, loopDeps);
+
+    expect(cycleCount).toBeGreaterThanOrEqual(2);
+    expect(logger.error).toHaveBeenCalledWith("cycle_error", { error: "transient" });
   });
 });
 
