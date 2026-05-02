@@ -149,4 +149,19 @@ describe("postCandles", () => {
       postCandles(BASE_CONFIG, VALID_CANDLES, "2026-05-01T00:00:00Z", { fetch })
     ).rejects.toThrow(RequestTransportError);
   });
+
+  it("aborts in-flight request when shutdown signal fires", async () => {
+    const controller = new AbortController();
+    const fetch = vi.fn(async (_input: string | URL | Request, opts?: RequestInit) => {
+      expect(opts?.signal?.aborted).toBe(false);
+      controller.abort();
+      throw new DOMException("The operation was aborted", "AbortError");
+    });
+    await expect(
+      postCandles(BASE_CONFIG, VALID_CANDLES, "2026-05-01T00:00:00Z", {
+        fetch,
+        shutdownSignal: controller.signal
+      })
+    ).rejects.toThrow(RequestTimeoutError);
+  });
 });

@@ -6,6 +6,7 @@ export type GeckoClientDeps = {
   waitForProviderPermit?: () => Promise<void>;
   fetch?: typeof globalThis.fetch;
   AbortSignal?: typeof globalThis.AbortSignal;
+  shutdownSignal?: AbortSignal;
 };
 
 function buildGeckoUrl(config: GeckoCollectorConfig): URL {
@@ -28,7 +29,10 @@ export async function fetchGeckoOhlcv(
   await waitForPermit();
 
   const url = buildGeckoUrl(config);
-  const signal = AbortSignalCtor.timeout(config.geckoRequestTimeoutMs);
+  const timeoutSignal = AbortSignalCtor.timeout(config.geckoRequestTimeoutMs);
+  const signal = deps?.shutdownSignal
+    ? AbortSignalCtor.any([timeoutSignal, deps.shutdownSignal])
+    : timeoutSignal;
 
   let response: Response;
   try {

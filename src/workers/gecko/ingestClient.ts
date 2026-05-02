@@ -6,6 +6,7 @@ import { readTextWithLimit, parseJson, readErrorBody } from "./httpUtils.js";
 export type IngestClientDeps = {
   fetch?: typeof globalThis.fetch;
   AbortSignal?: typeof globalThis.AbortSignal;
+  shutdownSignal?: AbortSignal;
 };
 
 function nonNegativeInteger(value: unknown): value is number {
@@ -91,7 +92,10 @@ export async function postCandles(
     candles
   };
 
-  const signal = AbortSignalCtor.timeout(config.geckoRequestTimeoutMs);
+  const timeoutSignal = AbortSignalCtor.timeout(config.geckoRequestTimeoutMs);
+  const signal = deps?.shutdownSignal
+    ? AbortSignalCtor.any([timeoutSignal, deps.shutdownSignal])
+    : timeoutSignal;
 
   let response: Response;
   try {

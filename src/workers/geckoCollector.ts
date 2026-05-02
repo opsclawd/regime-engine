@@ -56,6 +56,7 @@ export type GeckoCollectorDeps = {
   retrySignal?: AbortSignal;
   shouldContinue?: () => boolean;
   waitForProviderPermit?: () => Promise<void>;
+  shutdownSignal?: AbortSignal;
 };
 
 export async function runOneCycle(
@@ -78,7 +79,8 @@ export async function runOneCycle(
     payload = await withRetry(
       () =>
         (deps?.fetchGeckoOhlcv ?? fetchGeckoOhlcv)(config, {
-          waitForProviderPermit: deps?.waitForProviderPermit
+          waitForProviderPermit: deps?.waitForProviderPermit,
+          shutdownSignal: deps?.shutdownSignal
         }),
       retryDeps
     );
@@ -111,7 +113,10 @@ export async function runOneCycle(
   const sourceRecordedAtIso = nowIso();
   try {
     const result = await withRetry(
-      () => (deps?.postCandles ?? postCandles)(config, candles, sourceRecordedAtIso),
+      () =>
+        (deps?.postCandles ?? postCandles)(config, candles, sourceRecordedAtIso, {
+          shutdownSignal: deps?.shutdownSignal
+        }),
       retryDeps
     );
     logger.info("ingest_succeeded", {
@@ -172,7 +177,8 @@ export async function runCollector(
           logger,
           retrySignal: signal,
           shouldContinue: () => !signal.aborted,
-          waitForProviderPermit: () => rateLimiter.waitForPermit()
+          waitForProviderPermit: () => rateLimiter.waitForPermit(),
+          shutdownSignal: signal
         });
       } catch (err: unknown) {
         if (signal.aborted) break;
