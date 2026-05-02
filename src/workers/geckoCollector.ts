@@ -1,4 +1,5 @@
 import { realpathSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 import type { GeckoCollectorConfig } from "./gecko/config.js";
 import { parseGeckoCollectorConfig } from "./gecko/config.js";
 import type { WorkerLogger } from "./gecko/logger.js";
@@ -30,7 +31,7 @@ function sleepWithSignal(signal?: AbortSignal): (ms: number) => Promise<void> {
 export function isMainModule(importMetaUrl: string, argvPath: string | undefined): boolean {
   if (!argvPath) return false;
   try {
-    const metaReal = realpathSync(new URL(importMetaUrl).pathname);
+    const metaReal = realpathSync(fileURLToPath(importMetaUrl));
     const argvReal = realpathSync(argvPath);
     return metaReal === argvReal;
   } catch {
