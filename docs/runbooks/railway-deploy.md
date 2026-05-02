@@ -200,3 +200,62 @@ Postgres migrations are managed by Drizzle Kit via `npm run db:migrate` (the `pr
 If a deploy introduces a bad migration, the fix is forward — ship a new deploy that adds a
 compensating migration. Do NOT delete the volume. Do NOT manually modify the
 `regime_engine.regime_engine_migrations` table.
+
+## GeckoTerminal collector Railway service
+
+Create a second service from the same repo:
+
+| Setting       | Value                           |
+| ------------- | ------------------------------- |
+| Service name  | `regime-engine-gecko-collector` |
+| Build command | `pnpm build`                    |
+| Start command | `pnpm start:gecko`              |
+
+Do not change `railway.toml` for the collector. The web service continues to use
+`pnpm start`; the collector uses a Railway service start-command override.
+
+Collector env vars:
+
+| Variable                     | Value                                                 |
+| ---------------------------- | ----------------------------------------------------- |
+| `REGIME_ENGINE_URL`          | Railway private or public URL for `regime-engine-web` |
+| `CANDLES_INGEST_TOKEN`       | same value as web service `CANDLES_INGEST_TOKEN`      |
+| `GECKO_SOURCE`               | `geckoterminal`                                       |
+| `GECKO_NETWORK`              | `solana`                                              |
+| `GECKO_POOL_ADDRESS`         | confirmed GeckoTerminal SOL/USDC pool address         |
+| `GECKO_SYMBOL`               | `SOL/USDC`                                            |
+| `GECKO_TIMEFRAME`            | `1h`                                                  |
+| `GECKO_LOOKBACK`             | `200`                                                 |
+| `GECKO_POLL_INTERVAL_MS`     | `300000`                                              |
+| `GECKO_MAX_CALLS_PER_MINUTE` | `6`                                                   |
+| `GECKO_REQUEST_TIMEOUT_MS`   | `10000`                                               |
+
+URL notes:
+
+- Public `REGIME_ENGINE_URL` values must use HTTPS.
+- Plain HTTP is accepted only for `localhost`, `127.0.0.1`, `::1`, or Railway
+  private `*.railway.internal` hosts.
+- The collector posts to `new URL("/v1/candles", REGIME_ENGINE_URL)`, which
+  targets the origin root. Do not configure a base URL that relies on a path
+  prefix.
+
+Pool preflight:
+
+```bash
+curl -fsS "https://api.geckoterminal.com/api/v2/networks/solana/pools/$GECKO_POOL_ADDRESS/ohlcv/hour?aggregate=1&limit=1"
+```
+
+Before production:
+
+- [ ] Confirm and record the canonical GeckoTerminal Solana SOL/USDC pool address.
+- [ ] Confirm the collector can reach `REGIME_ENGINE_URL`.
+- [ ] Confirm the web service and collector share the same `CANDLES_INGEST_TOKEN`.
+
+Token management:
+
+1. Generate a new `CANDLES_INGEST_TOKEN` in the password manager.
+2. Update the web service token and collector service token in the same Railway
+   maintenance window.
+3. Restart the web service, then restart the collector service.
+4. Confirm collector logs show successful ingest after rotation.
+5. Treat suspected token exposure as a same-day rotation event.

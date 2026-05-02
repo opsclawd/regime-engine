@@ -1,0 +1,97 @@
+import { ProtocolError } from "./retry.js";
+
+const MAX_BODY_BYTES = 512 * 1024;
+
+export async function readTextWithLimit(response: Response): Promise<string> {
+  const contentLength = response.headers.get("content-length");
+  if (contentLength !== null) {
+    const length = Number(contentLength);
+    if (Number.isFinite(length) && length > MAX_BODY_BYTES) {
+      throw new ProtocolError(
+        `Response body exceeds ${MAX_BODY_BYTES} bytes (Content-Length: ${length})`
+      );
+    }
+  }
+  if (!response.body) {
+    const text = await response.text();
+    if (text.length > MAX_BODY_BYTES) {
+      throw new ProtocolError(
+        `Response body exceeds ${MAX_BODY_BYTES} bytes (actual: ${text.length})`
+      );
+    }
+    return text;
+  }
+  const chunks: Uint8Array[] = [];
+  let totalBytes = 0;
+  const reader = response.body.getReader();
+  try {
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      totalBytes += value.byteLength;
+      if (totalBytes > MAX_BODY_BYTES) {
+        throw new ProtocolError(
+          `Response body exceeds ${MAX_BODY_BYTES} bytes (streamed: ${totalBytes})`
+        );
+      }
+      chunks.push(value);
+    }
+  } finally {
+    reader.releaseLock();
+  }
+  const decoder = new TextDecoder();
+  return chunks.map((c) => decoder.decode(c, { stream: true })).join("") + decoder.decode();
+}
+
+export function parseJson(text: string, source: string): unknown {
+  try {
+    return JSON.parse(text);
+  } catch (err: unknown) {
+    throw new ProtocolError(
+      `Invalid JSON from ${source}: ${err instanceof Error ? err.message : String(err)}`
+    );
+  }
+}
+
+export async function readErrorBody(response: Response): Promise<string> {
+  try {
+    const contentLength = response.headers.get("content-length");
+    if (contentLength !== null) {
+      const length = Number(contentLength);
+      if (Number.isFinite(length) && length > MAX_BODY_BYTES) {
+        return "";
+      }
+    }
+    if (!response.body) {
+      const text = await response.text();
+      return text.length > 1024 ? text.slice(0, 1024) : text;
+    }
+    const chunks: Uint8Array[] = [];
+    let totalBytes = 0;
+    let retainedBytes = 0;
+    const maxErrorBytes = 1024;
+    const reader = response.body.getReader();
+    try {
+      for (;;) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        totalBytes += value.byteLength;
+        if (totalBytes > MAX_BODY_BYTES) {
+          break;
+        }
+        if (retainedBytes < maxErrorBytes) {
+          chunks.push(value);
+          retainedBytes += value.byteLength;
+        }
+      }
+    } finally {
+      reader.releaseLock();
+    }
+    if (totalBytes > MAX_BODY_BYTES) return "";
+    const decoder = new TextDecoder();
+    const text = chunks.map((c) => decoder.decode(c, { stream: true })).join("") + decoder.decode();
+    return text.length > 1024 ? text.slice(0, 1024) : text;
+  } catch {
+    return "";
+  }
+}
