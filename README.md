@@ -34,6 +34,46 @@ Server endpoints:
   market-only regime classification + CLMM suitability. Stateless: no
   `RegimeState`, no portfolio/autopilot inputs, no plan-ledger writes.
 
+## GeckoTerminal candle collector
+
+The GeckoTerminal collector is a separate worker service from the same repo. It
+does not start Fastify and does not write SQLite or Postgres directly. It fetches
+the configured Solana SOL/USDC GeckoTerminal pool and posts normalized `1h`
+candles to `POST /v1/candles` with `X-Candles-Ingest-Token`.
+
+Local commands:
+
+```bash
+npm run dev:gecko
+npm run start:gecko
+```
+
+Worker env vars:
+
+| Variable                     | Default         | Notes                                                                     |
+| ---------------------------- | --------------- | ------------------------------------------------------------------------- |
+| `REGIME_ENGINE_URL`          | -               | Absolute URL for the regime-engine web service.                           |
+| `CANDLES_INGEST_TOKEN`       | -               | Shared secret sent as `X-Candles-Ingest-Token`; never commit real values. |
+| `GECKO_SOURCE`               | `geckoterminal` | Must equal `geckoterminal` for MVP.                                       |
+| `GECKO_NETWORK`              | `solana`        | Must equal `solana` for MVP.                                              |
+| `GECKO_POOL_ADDRESS`         | -               | Explicit GeckoTerminal SOL/USDC pool address. Confirm before production.  |
+| `GECKO_SYMBOL`               | `SOL/USDC`      | Must equal `SOL/USDC` for MVP.                                            |
+| `GECKO_TIMEFRAME`            | `1h`            | Must equal `1h` for MVP.                                                  |
+| `GECKO_LOOKBACK`             | `200`           | Rolling candle window size.                                               |
+| `GECKO_POLL_INTERVAL_MS`     | `300000`        | Sleep after each completed cycle.                                         |
+| `GECKO_MAX_CALLS_PER_MINUTE` | `6`             | Provider-scoped GeckoTerminal call cap.                                   |
+| `GECKO_REQUEST_TIMEOUT_MS`   | `10000`         | Per-request timeout for provider and ingest calls.                        |
+
+Railway services from the same repo:
+
+| Service                         | Build        | Start              |
+| ------------------------------- | ------------ | ------------------ |
+| `regime-engine-web`             | `pnpm build` | `pnpm start`       |
+| `regime-engine-gecko-collector` | `pnpm build` | `pnpm start:gecko` |
+
+Production setup and pool confirmation live in
+`docs/runbooks/railway-deploy.md`.
+
 ## Commands
 
 - `npm run dev`
