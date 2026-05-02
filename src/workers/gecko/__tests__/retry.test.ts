@@ -135,6 +135,16 @@ describe("withRetry", () => {
     ).rejects.toThrow("HTTP 503");
     expect(operation).toHaveBeenCalledTimes(1);
   });
+  it("exhausts max attempts then throws", async () => {
+    const operation = vi.fn(async () => {
+      throw new HttpError(503, "retry");
+    });
+
+    await expect(withRetry(operation, { sleep: () => Promise.resolve() })).rejects.toThrow(
+      "HTTP 503"
+    );
+    expect(operation).toHaveBeenCalledTimes(3);
+  });
 });
 
 describe("createRateLimiter", () => {

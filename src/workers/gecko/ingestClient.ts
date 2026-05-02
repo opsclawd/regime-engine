@@ -1,8 +1,7 @@
 import { SCHEMA_VERSION, type Candle, type CandleIngestResponse } from "../../contract/v1/types.js";
 import type { GeckoCollectorConfig } from "./config.js";
 import { HttpError, ProtocolError, RequestTimeoutError, RequestTransportError } from "./retry.js";
-
-const MAX_BODY_BYTES = 512 * 1024;
+import { readTextWithLimit, parseJson, readErrorBody } from "./httpUtils.js";
 
 export type IngestClientDeps = {
   fetch?: typeof globalThis.fetch;
@@ -70,35 +69,6 @@ function validateResponse(data: unknown): CandleIngestResponse {
   return obj as unknown as CandleIngestResponse;
 }
 
-async function readTextWithLimit(response: Response): Promise<string> {
-  const contentLength = response.headers.get("content-length");
-  if (contentLength !== null) {
-    const length = Number(contentLength);
-    if (Number.isFinite(length) && length > MAX_BODY_BYTES) {
-      throw new ProtocolError(
-        `Response body exceeds ${MAX_BODY_BYTES} bytes (Content-Length: ${length})`
-      );
-    }
-  }
-  const text = await response.text();
-  if (text.length > MAX_BODY_BYTES) {
-    throw new ProtocolError(
-      `Response body exceeds ${MAX_BODY_BYTES} bytes (actual: ${text.length})`
-    );
-  }
-  return text;
-}
-
-function parseJson(text: string): unknown {
-  try {
-    return JSON.parse(text);
-  } catch (err: unknown) {
-    throw new ProtocolError(
-      `Invalid JSON from regime engine: ${err instanceof Error ? err.message : String(err)}`
-    );
-  }
-}
-
 export async function postCandles(
   config: GeckoCollectorConfig,
   candles: Candle[],
@@ -147,11 +117,11 @@ export async function postCandles(
   }
 
   if (!response.ok) {
-    const body = await response.text().catch(() => "");
+    const body = await readErrorBody(response);
     throw new HttpError(response.status, body);
   }
 
   const text = await readTextWithLimit(response);
-  const data = parseJson(text);
+  const data = parseJson(text, "regime engine");
   return validateResponse(data);
 }

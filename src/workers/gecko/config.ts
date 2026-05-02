@@ -94,6 +94,11 @@ function readAbsoluteUrl(env: Record<string, string | undefined>, key: string): 
       `${key} must use HTTPS (got ${url.protocol}). HTTP is only allowed for localhost or *.railway.internal`
     );
   }
+  if (url.pathname !== "/" && url.pathname !== "") {
+    throw new Error(
+      `${key} must not contain a path component (got ${url.pathname}). The collector appends paths internally.`
+    );
+  }
   return url;
 }
 

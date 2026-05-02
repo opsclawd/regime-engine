@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from "vitest";
 import { isMainModule, runOneCycle } from "../geckoCollector.js";
-import type { GeckoCollectorDeps } from "../geckoCollector.js";
+import type { CollectorLoopDeps, GeckoCollectorDeps } from "../geckoCollector.js";
 import type { GeckoCollectorConfig } from "../gecko/config.js";
 import type { WorkerLogger } from "../gecko/logger.js";
 import type { CandleIngestResponse } from "../../contract/v1/types.js";
@@ -172,6 +172,69 @@ describe("runOneCycle", () => {
 
     await expect(runOneCycle(BASE_CONFIG, deps)).rejects.toThrow("server down");
     expect(errors).toContain("server down");
+  });
+});
+
+describe("runCollector", () => {
+  it("runs two cycles then shuts down", async () => {
+    const shutdownController = new AbortController();
+    let cycleCount = 0;
+    const logger = {
+      info: vi.fn(),
+      warn: vi.fn(),
+      error: vi.fn()
+    } as unknown as WorkerLogger;
+
+    const runOneCycleFn = vi.fn(async () => {
+      cycleCount++;
+      if (cycleCount >= 2) {
+        shutdownController.abort();
+      }
+    });
+
+    const sleep = vi.fn(async () => {});
+
+    const loopDeps: CollectorLoopDeps = {
+      signal: shutdownController.signal,
+      logger: logger as WorkerLogger,
+      runOneCycleFn,
+      sleep
+    };
+
+    const { runCollector } = await import("../geckoCollector.js");
+    await runCollector(BASE_CONFIG, loopDeps);
+
+    expect(cycleCount).toBeGreaterThanOrEqual(2);
+    expect(logger.info).toHaveBeenCalledWith("shutdown_complete");
+  });
+
+  it("removes signal handlers on shutdown", async () => {
+    const listenersBefore = process.listenerCount("SIGTERM");
+    const shutdownController = new AbortController();
+    const logger = {
+      info: vi.fn(),
+      warn: vi.fn(),
+      error: vi.fn()
+    } as unknown as WorkerLogger;
+
+    const runOneCycleFn = vi.fn(async () => {
+      shutdownController.abort();
+    });
+
+    const sleep = vi.fn(async () => {});
+
+    const loopDeps: CollectorLoopDeps = {
+      signal: shutdownController.signal,
+      logger: logger as WorkerLogger,
+      runOneCycleFn,
+      sleep
+    };
+
+    const { runCollector } = await import("../geckoCollector.js");
+    await runCollector(BASE_CONFIG, loopDeps);
+
+    const listenersAfter = process.listenerCount("SIGTERM");
+    expect(listenersAfter).toBe(listenersBefore);
   });
 });
 

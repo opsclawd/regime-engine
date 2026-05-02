@@ -76,9 +76,9 @@ export async function withRetry<T>(
 
       try {
         await sleep(delay);
-      } catch {
+      } catch (sleepErr: unknown) {
         if (signal?.aborted) throw err;
-        throw err;
+        throw sleepErr;
       }
     }
   }
@@ -105,7 +105,7 @@ export function createRateLimiter(
       if (currentTime < nextAllowedAt) {
         await sleep(nextAllowedAt - currentTime);
       }
-      nextAllowedAt = now() + intervalMs;
+      nextAllowedAt = Math.max(now(), nextAllowedAt) + intervalMs;
     }
   };
 }

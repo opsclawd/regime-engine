@@ -1,7 +1,6 @@
 import type { GeckoCollectorConfig } from "./config.js";
-import { HttpError, ProtocolError, RequestTimeoutError, RequestTransportError } from "./retry.js";
-
-const MAX_BODY_BYTES = 512 * 1024;
+import { HttpError, RequestTimeoutError, RequestTransportError } from "./retry.js";
+import { readTextWithLimit, parseJson, readErrorBody } from "./httpUtils.js";
 
 export type GeckoClientDeps = {
   waitForProviderPermit?: () => Promise<void>;
@@ -16,35 +15,6 @@ function buildGeckoUrl(config: GeckoCollectorConfig): URL {
   url.searchParams.set("aggregate", "1");
   url.searchParams.set("limit", String(config.geckoLookback));
   return url;
-}
-
-async function readTextWithLimit(response: Response): Promise<string> {
-  const contentLength = response.headers.get("content-length");
-  if (contentLength !== null) {
-    const length = Number(contentLength);
-    if (Number.isFinite(length) && length > MAX_BODY_BYTES) {
-      throw new ProtocolError(
-        `Response body exceeds ${MAX_BODY_BYTES} bytes (Content-Length: ${length})`
-      );
-    }
-  }
-  const text = await response.text();
-  if (text.length > MAX_BODY_BYTES) {
-    throw new ProtocolError(
-      `Response body exceeds ${MAX_BODY_BYTES} bytes (actual: ${text.length})`
-    );
-  }
-  return text;
-}
-
-function parseJson(text: string): unknown {
-  try {
-    return JSON.parse(text);
-  } catch (err: unknown) {
-    throw new ProtocolError(
-      `Invalid JSON from GeckoTerminal: ${err instanceof Error ? err.message : String(err)}`
-    );
-  }
 }
 
 export async function fetchGeckoOhlcv(
@@ -79,10 +49,10 @@ export async function fetchGeckoOhlcv(
   }
 
   if (!response.ok) {
-    const body = await response.text().catch(() => "");
+    const body = await readErrorBody(response);
     throw new HttpError(response.status, body);
   }
 
   const text = await readTextWithLimit(response);
-  return parseJson(text);
+  return parseJson(text, "GeckoTerminal");
 }

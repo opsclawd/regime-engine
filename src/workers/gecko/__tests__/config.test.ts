@@ -129,4 +129,9 @@ describe("parseGeckoCollectorConfig", () => {
     const env = { ...MINIMAL_ENV, GECKO_LOOKBACK: "1001" };
     expect(() => parseGeckoCollectorConfig(env)).toThrow("must be a positive integer ≤ 1000");
   });
+
+  it("rejects REGIME_ENGINE_URL with a path component", () => {
+    const env = { ...MINIMAL_ENV, REGIME_ENGINE_URL: "https://regime-engine.example/api" };
+    expect(() => parseGeckoCollectorConfig(env)).toThrow("must not contain a path component");
+  });
 });

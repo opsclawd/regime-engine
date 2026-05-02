@@ -56,10 +56,10 @@ export async function runOneCycle(
   let payload: unknown;
   try {
     payload = await withRetry(
-      (() =>
+      () =>
         (deps?.fetchGeckoOhlcv ?? fetchGeckoOhlcv)(config, {
           waitForProviderPermit: deps?.waitForProviderPermit
-        })) as (attempt: number) => Promise<unknown>,
+        }),
       retryDeps
     );
     logger.info("fetch_succeeded");
@@ -108,55 +108,69 @@ export async function runOneCycle(
   logger.info("cycle_completed");
 }
 
-export async function runCollector(config?: GeckoCollectorConfig): Promise<void> {
+export type CollectorLoopDeps = GeckoCollectorDeps & {
+  signal?: AbortSignal;
+  runOneCycleFn?: (config: GeckoCollectorConfig, deps?: GeckoCollectorDeps) => Promise<void>;
+  sleep?: (ms: number) => Promise<void>;
+};
+
+export async function runCollector(
+  config?: GeckoCollectorConfig,
+  loopDeps?: CollectorLoopDeps
+): Promise<void> {
   const resolvedConfig = config ?? parseGeckoCollectorConfig(process.env);
-  const logger = consoleLogger;
+  const logger = loopDeps?.logger ?? consoleLogger;
+  const cycleFn = loopDeps?.runOneCycleFn ?? runOneCycle;
+  const sleepFn = loopDeps?.sleep ?? ((ms: number) => new Promise<void>((r) => setTimeout(r, ms)));
 
   const controller = new AbortController();
+  const signal = loopDeps?.signal ?? controller.signal;
   const shutdown = () => {
-    if (!controller.signal.aborted) {
-      controller.abort();
+    if (!signal.aborted) {
+      if (signal === controller.signal) {
+        controller.abort();
+      }
       logger.info("shutdown_requested");
     }
   };
 
-  process.on("SIGTERM", shutdown);
-  process.on("SIGINT", shutdown);
+  if (signal === controller.signal) {
+    process.on("SIGTERM", shutdown);
+    process.on("SIGINT", shutdown);
+  }
 
   const rateLimiter = createRateLimiter(resolvedConfig.geckoMaxCallsPerMinute);
 
   try {
-    while (!controller.signal.aborted) {
+    while (!signal.aborted) {
       try {
-        await runOneCycle(resolvedConfig, {
+        await cycleFn(resolvedConfig, {
+          ...loopDeps,
           logger,
-          retrySignal: controller.signal,
-          shouldContinue: () => !controller.signal.aborted,
+          retrySignal: signal,
+          shouldContinue: () => !signal.aborted,
           waitForProviderPermit: () => rateLimiter.waitForPermit()
         });
-      } catch {
+      } catch (err: unknown) {
+        logger.error("cycle_error", {
+          error: err instanceof Error ? err.message : String(err)
+        });
         break;
       }
 
-      if (controller.signal.aborted) break;
+      if (signal.aborted) break;
 
       try {
-        await new Promise<void>((resolve) => {
-          const timer = setTimeout(resolve, resolvedConfig.geckoPollIntervalMs);
-          controller.signal.addEventListener(
-            "abort",
-            () => {
-              clearTimeout(timer);
-              resolve();
-            },
-            { once: true }
-          );
-        });
+        await sleepFn(resolvedConfig.geckoPollIntervalMs);
       } catch {
         break;
       }
     }
   } finally {
+    if (signal === controller.signal) {
+      process.removeListener("SIGTERM", shutdown);
+      process.removeListener("SIGINT", shutdown);
+    }
     logger.info("shutdown_complete");
   }
 }
