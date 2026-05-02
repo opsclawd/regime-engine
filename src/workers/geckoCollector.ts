@@ -15,11 +15,14 @@ function sleepWithSignal(signal?: AbortSignal): (ms: number) => Promise<void> {
         reject(new DOMException("Aborted", "AbortError"));
         return;
       }
-      const timer = setTimeout(resolve, ms);
       const onAbort = () => {
         clearTimeout(timer);
         reject(new DOMException("Aborted", "AbortError"));
       };
+      const timer = setTimeout(() => {
+        signal?.removeEventListener("abort", onAbort);
+        resolve();
+      }, ms);
       signal?.addEventListener("abort", onAbort, { once: true });
     });
 }

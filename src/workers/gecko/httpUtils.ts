@@ -12,13 +12,35 @@ export async function readTextWithLimit(response: Response): Promise<string> {
       );
     }
   }
-  const text = await response.text();
-  if (text.length > MAX_BODY_BYTES) {
-    throw new ProtocolError(
-      `Response body exceeds ${MAX_BODY_BYTES} bytes (actual: ${text.length})`
-    );
+  if (!response.body) {
+    const text = await response.text();
+    if (text.length > MAX_BODY_BYTES) {
+      throw new ProtocolError(
+        `Response body exceeds ${MAX_BODY_BYTES} bytes (actual: ${text.length})`
+      );
+    }
+    return text;
   }
-  return text;
+  const chunks: Uint8Array[] = [];
+  let totalBytes = 0;
+  const reader = response.body.getReader();
+  try {
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      totalBytes += value.byteLength;
+      if (totalBytes > MAX_BODY_BYTES) {
+        throw new ProtocolError(
+          `Response body exceeds ${MAX_BODY_BYTES} bytes (streamed: ${totalBytes})`
+        );
+      }
+      chunks.push(value);
+    }
+  } finally {
+    reader.releaseLock();
+  }
+  const decoder = new TextDecoder();
+  return chunks.map((c) => decoder.decode(c, { stream: true })).join("") + decoder.decode();
 }
 
 export function parseJson(text: string, source: string): unknown {
