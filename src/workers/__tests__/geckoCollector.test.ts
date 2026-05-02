@@ -236,6 +236,32 @@ describe("runCollector", () => {
     const listenersAfter = process.listenerCount("SIGTERM");
     expect(listenersAfter).toBe(listenersBefore);
   });
+
+  it("rethrows cycle error so exit code is non-zero", async () => {
+    const shutdownController = new AbortController();
+    const logger = {
+      info: vi.fn(),
+      warn: vi.fn(),
+      error: vi.fn()
+    } as unknown as WorkerLogger;
+
+    const cycleError = new Error("boom");
+    const runOneCycleFn = vi.fn(async () => {
+      throw cycleError;
+    });
+
+    const sleep = vi.fn(async () => {});
+
+    const loopDeps: CollectorLoopDeps = {
+      signal: shutdownController.signal,
+      logger: logger as WorkerLogger,
+      runOneCycleFn,
+      sleep
+    };
+
+    const { runCollector } = await import("../geckoCollector.js");
+    await expect(runCollector(BASE_CONFIG, loopDeps)).rejects.toThrow("boom");
+  });
 });
 
 describe("package scripts", () => {

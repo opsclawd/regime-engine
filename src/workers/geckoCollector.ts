@@ -8,6 +8,22 @@ import { normalizeGeckoOhlcv, shouldPostNormalizedBatch } from "./gecko/normaliz
 import { fetchGeckoOhlcv } from "./gecko/geckoClient.js";
 import { postCandles } from "./gecko/ingestClient.js";
 
+function sleepWithSignal(signal?: AbortSignal): (ms: number) => Promise<void> {
+  return (ms: number) =>
+    new Promise<void>((resolve, reject) => {
+      if (signal?.aborted) {
+        reject(new DOMException("Aborted", "AbortError"));
+        return;
+      }
+      const timer = setTimeout(resolve, ms);
+      const onAbort = () => {
+        clearTimeout(timer);
+        reject(new DOMException("Aborted", "AbortError"));
+      };
+      signal?.addEventListener("abort", onAbort, { once: true });
+    });
+}
+
 export function isMainModule(importMetaUrl: string, argvPath: string | undefined): boolean {
   if (!argvPath) return false;
   try {
@@ -121,10 +137,11 @@ export async function runCollector(
   const resolvedConfig = config ?? parseGeckoCollectorConfig(process.env);
   const logger = loopDeps?.logger ?? consoleLogger;
   const cycleFn = loopDeps?.runOneCycleFn ?? runOneCycle;
-  const sleepFn = loopDeps?.sleep ?? ((ms: number) => new Promise<void>((r) => setTimeout(r, ms)));
 
   const controller = new AbortController();
   const signal = loopDeps?.signal ?? controller.signal;
+  const defaultSleepFn = sleepWithSignal(signal);
+  const sleepFn = loopDeps?.sleep ?? defaultSleepFn;
   const shutdown = () => {
     if (!signal.aborted) {
       if (signal === controller.signal) {
@@ -139,8 +156,11 @@ export async function runCollector(
     process.on("SIGINT", shutdown);
   }
 
-  const rateLimiter = createRateLimiter(resolvedConfig.geckoMaxCallsPerMinute);
+  const rateLimiter = createRateLimiter(resolvedConfig.geckoMaxCallsPerMinute, {
+    sleep: (ms: number) => sleepFn(ms)
+  });
 
+  let cycleError: unknown;
   try {
     while (!signal.aborted) {
       try {
@@ -155,6 +175,7 @@ export async function runCollector(
         logger.error("cycle_error", {
           error: err instanceof Error ? err.message : String(err)
         });
+        cycleError = err;
         break;
       }
 
@@ -172,6 +193,10 @@ export async function runCollector(
       process.removeListener("SIGINT", shutdown);
     }
     logger.info("shutdown_complete");
+  }
+
+  if (cycleError !== undefined) {
+    throw cycleError;
   }
 }
 
