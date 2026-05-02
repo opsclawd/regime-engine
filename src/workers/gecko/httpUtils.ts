@@ -68,6 +68,7 @@ export async function readErrorBody(response: Response): Promise<string> {
     }
     const chunks: Uint8Array[] = [];
     let totalBytes = 0;
+    let retainedBytes = 0;
     const maxErrorBytes = 1024;
     const reader = response.body.getReader();
     try {
@@ -78,8 +79,9 @@ export async function readErrorBody(response: Response): Promise<string> {
         if (totalBytes > MAX_BODY_BYTES) {
           break;
         }
-        if (chunks.reduce((s, c) => s + c.byteLength, 0) < maxErrorBytes) {
+        if (retainedBytes < maxErrorBytes) {
           chunks.push(value);
+          retainedBytes += value.byteLength;
         }
       }
     } finally {
