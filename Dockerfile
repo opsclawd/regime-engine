@@ -31,8 +31,11 @@ COPY .npmrc ./
 RUN pnpm install --frozen-lockfile --prod && pnpm store prune
 
 COPY --from=builder /app/dist ./dist
+COPY --from=builder /app/scripts/start.sh ./scripts/start.sh
 COPY --from=builder /app/drizzle ./drizzle
 COPY --from=builder /app/drizzle.config.ts ./drizzle.config.ts
+
+RUN chmod +x scripts/start.sh
 
 RUN mkdir -p /home/app/.cache && chown -R app:app /home/app
 
@@ -47,4 +50,4 @@ EXPOSE 8787
 
 # --env-file-if-exists makes .env optional (won't crash if absent)
 # For deployments that inject env vars directly (Docker -e, K8s env:), no .env is needed.
-CMD ["node", "--env-file-if-exists=.env", "dist/src/server.js"]
+CMD ["bash", "scripts/start.sh"]
