@@ -34,7 +34,8 @@ COPY --from=builder /app/dist ./dist
 COPY --from=builder /app/drizzle ./drizzle
 COPY --from=builder /app/drizzle.config.ts ./drizzle.config.ts
 
-# Pre-create data directory writable by non-root user
+RUN mkdir -p /home/app/.cache && chown -R app:app /home/app
+
 RUN mkdir -p /app/tmp && chown app:app /app/tmp
 
 USER app
