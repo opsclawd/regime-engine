@@ -9,7 +9,7 @@
   },
   "packageManager": "pnpm@10.33.0",
   "scripts": {
-    "dev": "tsx watch src/server.ts",
+    "dev": "tsx --env-file=.env watch src/server.ts",
     "build": "tsc -p tsconfig.build.json && node scripts/copyBuildAssets.mjs",
     "typecheck": "tsc --noEmit",
     "lint": "eslint . --max-warnings 0",
@@ -22,7 +22,7 @@
     "db:generate": "drizzle-kit generate",
     "db:push": "drizzle-kit push",
     "start": "node --env-file-if-exists=.env dist/src/server.js",
-    "dev:gecko": "tsx watch src/workers/geckoCollector.ts",
+    "dev:gecko": "tsx --env-file=.env watch src/workers/geckoCollector.ts",
     "start:gecko": "node --env-file-if-exists=.env dist/src/workers/geckoCollector.js",
     "prepare": "husky || true"
   },
