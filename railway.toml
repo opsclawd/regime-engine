@@ -4,7 +4,7 @@ dockerfilePath = "Dockerfile"
 
 [deploy]
 startCommand = "bash scripts/start.sh"
-preDeployCommand = "pnpm run db:migrate"
+preDeployCommand = "bash scripts/predeploy.sh"
 healthcheckPath = "/health"
 healthcheckTimeout = 30
 restartPolicyType = "ON_FAILURE"

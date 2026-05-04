@@ -32,10 +32,11 @@ RUN pnpm install --frozen-lockfile --prod && pnpm store prune
 
 COPY --from=builder /app/dist ./dist
 COPY --from=builder /app/scripts/start.sh ./scripts/start.sh
+COPY --from=builder /app/scripts/predeploy.sh ./scripts/predeploy.sh
 COPY --from=builder /app/drizzle ./drizzle
 COPY --from=builder /app/drizzle.config.ts ./drizzle.config.ts
 
-RUN chmod +x scripts/start.sh
+RUN chmod +x scripts/start.sh scripts/predeploy.sh
 
 RUN mkdir -p /home/app/.cache && chown -R app:app /home/app
 

@@ -1,4 +1,5 @@
 import { realpathSync } from "node:fs";
+import { createServer } from "node:http";
 import { fileURLToPath } from "node:url";
 import type { GeckoCollectorConfig } from "./gecko/config.js";
 import { parseGeckoCollectorConfig } from "./gecko/config.js";
@@ -8,6 +9,22 @@ import { withRetry, createRateLimiter, type RetryDeps } from "./gecko/retry.js";
 import { normalizeGeckoOhlcv, shouldPostNormalizedBatch } from "./gecko/normalize.js";
 import { fetchGeckoOhlcv } from "./gecko/geckoClient.js";
 import { postCandles } from "./gecko/ingestClient.js";
+
+function startHealthServer(): void {
+  const port = Number(process.env.PORT ?? 8787);
+  const server = createServer((req, res) => {
+    if (req.url === "/health" && req.method === "GET") {
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ ok: true }));
+    } else {
+      res.writeHead(404);
+      res.end();
+    }
+  });
+  server.listen(port, () => {
+    consoleLogger.info("health_server_listening", { port });
+  });
+}
 
 function sleepWithSignal(signal?: AbortSignal): (ms: number) => Promise<void> {
   return (ms: number) =>
@@ -205,6 +222,7 @@ export async function runCollector(
 }
 
 if (isMainModule(import.meta.url, process.argv[1])) {
+  startHealthServer();
   runCollector().catch((err) => {
     console.error(
       JSON.stringify({
