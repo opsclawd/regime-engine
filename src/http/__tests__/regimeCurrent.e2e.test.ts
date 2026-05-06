@@ -52,6 +52,9 @@ afterEach(() => {
 const queryString =
   "?symbol=SOL%2FUSDC&source=birdeye&network=solana-mainnet&poolAddress=Pool111&timeframe=15m";
 
+const queryString1h =
+  "?symbol=SOL%2FUSDC&source=birdeye&network=solana-mainnet&poolAddress=Pool111&timeframe=1h";
+
 describe("GET /v1/regime/current", () => {
   it("returns 400 when a required selector is missing", async () => {
     process.env.LEDGER_DB_PATH = tempDb();
@@ -106,6 +109,10 @@ describe("GET /v1/regime/current", () => {
     expect(body.metadata.candleCount).toBeGreaterThanOrEqual(
       MARKET_REGIME_CONFIG["15m"].suitability.minCandles
     );
+    expect(body.metadata.sourceTimeframe).toBe("15m");
+    expect(body.metadata.sourceCandleCount).toBe(body.metadata.candleCount);
+    expect(body.metadata.derivedTimeframe).toBeUndefined();
+    expect(body.metadata.aggregationVersion).toBeUndefined();
     expect(["ALLOWED", "CAUTION", "BLOCKED", "UNKNOWN"]).toContain(body.clmmSuitability.status);
     expect(Array.isArray(body.clmmSuitability.reasons)).toBe(true);
     expect(Array.isArray(body.marketReasons)).toBe(true);
@@ -142,5 +149,169 @@ describe("GET /v1/regime/current", () => {
     expect(afterCounts.plans).toBe(baseCounts.plans);
     expect(afterCounts.planRequests).toBe(baseCounts.planRequests);
     expect(afterCounts.executionResults).toBe(baseCounts.executionResults);
+  });
+
+  it("returns 200 with derived 1h regime classified from stored 15m candles", async () => {
+    process.env.LEDGER_DB_PATH = tempDb();
+    process.env.CANDLES_INGEST_TOKEN = "test-token";
+    const app = buildApp();
+
+    const recordedIso = new Date().toISOString();
+    await app.inject({
+      method: "POST",
+      url: "/v1/candles",
+      headers: { "X-Candles-Ingest-Token": "test-token" },
+      payload: ingestPayload(200, recordedIso)
+    });
+
+    const res = await app.inject({ method: "GET", url: `/v1/regime/current${queryString1h}` });
+    expect(res.statusCode).toBe(200);
+    const body = res.json();
+    expect(body.schemaVersion).toBe("1.0");
+    expect(body.timeframe).toBe("1h");
+    expect(["UP", "DOWN", "CHOP"]).toContain(body.regime);
+    expect(body.metadata.sourceTimeframe).toBe("15m");
+    expect(body.metadata.sourceCandleCount).toBeGreaterThanOrEqual(body.metadata.candleCount * 4);
+    expect(body.metadata.derivedTimeframe).toBe("1h");
+    expect(body.metadata.aggregationVersion).toBe("ohlcv-agg-v1");
+    expect(body.metadata.candleCount).toBeGreaterThan(0);
+    expect(Array.isArray(body.marketReasons)).toBe(true);
+  });
+
+  it("derived 1h does not classify the incomplete current-hour aggregate", async () => {
+    process.env.LEDGER_DB_PATH = tempDb();
+    process.env.CANDLES_INGEST_TOKEN = "test-token";
+    const app = buildApp();
+
+    await app.inject({
+      method: "POST",
+      url: "/v1/candles",
+      headers: { "X-Candles-Ingest-Token": "test-token" },
+      payload: ingestPayload(200, new Date().toISOString())
+    });
+
+    const res = await app.inject({ method: "GET", url: `/v1/regime/current${queryString1h}` });
+    expect(res.statusCode).toBe(200);
+    const body = res.json();
+
+    expect(body.freshness.lastCandleUnixMs).toBeLessThan(Date.now());
+
+    const ONE_HOUR_MS = 60 * 60 * 1000;
+    expect(body.freshness.lastCandleUnixMs % ONE_HOUR_MS).toBe(0);
+  });
+
+  it("returns 404 CANDLES_NOT_FOUND when no derived 1h bars survive the cutoff", async () => {
+    process.env.LEDGER_DB_PATH = tempDb();
+    process.env.CANDLES_INGEST_TOKEN = "test-token";
+    const app = buildApp();
+
+    const ONE_HOUR_MS = 60 * 60 * 1000;
+    const sourceConfig = MARKET_REGIME_CONFIG["15m"];
+
+    const sourceCutoffUnixMs =
+      Math.floor((Date.now() - sourceConfig.freshness.closedCandleDelayMs) / FIFTEEN_MIN_MS) *
+        FIFTEEN_MIN_MS -
+      FIFTEEN_MIN_MS;
+    const hourOpen =
+      Math.floor((sourceCutoffUnixMs - 4 * FIFTEEN_MIN_MS) / ONE_HOUR_MS) * ONE_HOUR_MS;
+    const partialCandles = [0, 1, 2].map((i) => ({
+      unixMs: hourOpen + i * FIFTEEN_MIN_MS,
+      open: 100,
+      high: 100.5,
+      low: 99.5,
+      close: 100,
+      volume: 1
+    }));
+
+    await app.inject({
+      method: "POST",
+      url: "/v1/candles",
+      headers: { "X-Candles-Ingest-Token": "test-token" },
+      payload: {
+        schemaVersion: "1.0",
+        source: "birdeye",
+        network: "solana-mainnet",
+        poolAddress: "Pool111",
+        symbol: "SOL/USDC",
+        timeframe: "15m",
+        sourceRecordedAtIso: new Date().toISOString(),
+        candles: partialCandles
+      }
+    });
+
+    const res = await app.inject({ method: "GET", url: `/v1/regime/current${queryString1h}` });
+    expect(res.statusCode).toBe(404);
+    expect(res.json().error.code).toBe("CANDLES_NOT_FOUND");
+  });
+
+  it("derived 1h with non-zero but insufficient derived bars returns DATA_INSUFFICIENT_SAMPLES", async () => {
+    process.env.LEDGER_DB_PATH = tempDb();
+    process.env.CANDLES_INGEST_TOKEN = "test-token";
+    const app = buildApp();
+
+    const ONE_HOUR_MS = 60 * 60 * 1000;
+    const sourceConfig = MARKET_REGIME_CONFIG["15m"];
+
+    const sourceCutoffUnixMs =
+      Math.floor((Date.now() - sourceConfig.freshness.closedCandleDelayMs) / FIFTEEN_MIN_MS) *
+        FIFTEEN_MIN_MS -
+      FIFTEEN_MIN_MS;
+    const lastHourOpen = Math.floor(sourceCutoffUnixMs / ONE_HOUR_MS) * ONE_HOUR_MS - ONE_HOUR_MS;
+    const startHourOpen = lastHourOpen - 4 * ONE_HOUR_MS;
+    const candles: Array<{
+      unixMs: number;
+      open: number;
+      high: number;
+      low: number;
+      close: number;
+      volume: number;
+    }> = [];
+    for (let h = 0; h < 5; h += 1) {
+      for (let q = 0; q < 4; q += 1) {
+        candles.push({
+          unixMs: startHourOpen + h * ONE_HOUR_MS + q * FIFTEEN_MIN_MS,
+          open: 100,
+          high: 100.5,
+          low: 99.5,
+          close: 100,
+          volume: 1
+        });
+      }
+    }
+
+    await app.inject({
+      method: "POST",
+      url: "/v1/candles",
+      headers: { "X-Candles-Ingest-Token": "test-token" },
+      payload: {
+        schemaVersion: "1.0",
+        source: "birdeye",
+        network: "solana-mainnet",
+        poolAddress: "Pool111",
+        symbol: "SOL/USDC",
+        timeframe: "15m",
+        sourceRecordedAtIso: new Date().toISOString(),
+        candles
+      }
+    });
+
+    const res = await app.inject({ method: "GET", url: `/v1/regime/current${queryString1h}` });
+    expect(res.statusCode).toBe(200);
+    const body = res.json();
+    expect(body.metadata.candleCount).toBeLessThan(
+      MARKET_REGIME_CONFIG["1h"].suitability.minCandles
+    );
+    expect(body.marketReasons.map((r: { code: string }) => r.code)).toContain(
+      "DATA_INSUFFICIENT_SAMPLES"
+    );
+    expect(body.clmmSuitability.status).toBe("UNKNOWN");
+  });
+
+  it("returns 404 CANDLES_NOT_FOUND for derived 1h when no 15m source candles exist at all", async () => {
+    process.env.LEDGER_DB_PATH = tempDb();
+    const app = buildApp();
+    const res = await app.inject({ method: "GET", url: `/v1/regime/current${queryString1h}` });
+    expect(res.statusCode).toBe(404);
+    expect(res.json().error.code).toBe("CANDLES_NOT_FOUND");
   });
 });
