@@ -30,15 +30,17 @@ Server endpoints:
   (`source + network + poolAddress + symbol + timeframe`). Append-only,
   per-slot decision tree (insert / idempotent / revise / reject). Token-guarded
   by `X-Candles-Ingest-Token` / `CANDLES_INGEST_TOKEN`.
-- `GET /v1/regime/current?symbol=&source=&network=&poolAddress=&timeframe=1h` —
+- `GET /v1/regime/current?symbol=&source=&network=&poolAddress=&timeframe=15m` —
   market-only regime classification + CLMM suitability. Stateless: no
   `RegimeState`, no portfolio/autopilot inputs, no plan-ledger writes.
+
+> **#41 contract change:** `POST /v1/candles` and `GET /v1/regime/current` accept `timeframe=15m` only. `timeframe=1h` is removed and is restored as a derived read in #42 (1h derived from stored 15m candles). Coordinate consumers before deploying.
 
 ## GeckoTerminal candle collector
 
 The GeckoTerminal collector is a separate worker service from the same repo. It
 does not start Fastify and does not write SQLite or Postgres directly. It fetches
-the configured Solana SOL/USDC GeckoTerminal pool and posts normalized `1h`
+the configured Solana SOL/USDC GeckoTerminal pool and posts normalized `15m`
 candles to `POST /v1/candles` with `X-Candles-Ingest-Token`.
 
 Local commands:
@@ -58,9 +60,9 @@ Worker env vars:
 | `GECKO_NETWORK`              | `solana`        | Must equal `solana` for MVP.                                              |
 | `GECKO_POOL_ADDRESS`         | -               | Explicit GeckoTerminal SOL/USDC pool address. Confirm before production.  |
 | `GECKO_SYMBOL`               | `SOL/USDC`      | Must equal `SOL/USDC` for MVP.                                            |
-| `GECKO_TIMEFRAME`            | `1h`            | Must equal `1h` for MVP.                                                  |
+| `GECKO_TIMEFRAME`            | `15m`           | Must equal `15m`. (`1h` is removed in #41 until #42.)                     |
 | `GECKO_LOOKBACK`             | `200`           | Rolling candle window size.                                               |
-| `GECKO_POLL_INTERVAL_MS`     | `300000`        | Sleep after each completed cycle.                                         |
+| `GECKO_POLL_INTERVAL_MS`     | `60000`         | Sleep after each completed cycle.                                         |
 | `GECKO_MAX_CALLS_PER_MINUTE` | `6`             | Provider-scoped GeckoTerminal call cap.                                   |
 | `GECKO_REQUEST_TIMEOUT_MS`   | `10000`         | Per-request timeout for provider and ingest calls.                        |
 
