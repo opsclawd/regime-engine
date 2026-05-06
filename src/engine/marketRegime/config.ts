@@ -1,7 +1,7 @@
 export const MARKET_REGIME_CONFIG_VERSION = "market-regime-1.0.0" as const;
 
 export interface MarketTimeframeConfig {
-  timeframe: "1h";
+  timeframe: "15m";
   timeframeMs: number;
   indicators: {
     volShortWindow: number;
@@ -33,9 +33,9 @@ export interface MarketTimeframeConfig {
 
 const ONE_HOUR_MS = 60 * 60 * 1000;
 
-export const MARKET_REGIME_CONFIG: Record<"1h", MarketTimeframeConfig> = {
-  "1h": {
-    timeframe: "1h",
+export const MARKET_REGIME_CONFIG: Record<"15m", MarketTimeframeConfig> = {
+  "15m": {
+    timeframe: "15m",
     timeframeMs: ONE_HOUR_MS,
     indicators: {
       volShortWindow: 8,

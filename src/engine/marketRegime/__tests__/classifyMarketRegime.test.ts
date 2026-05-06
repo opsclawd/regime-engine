@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { classifyMarketRegime } from "../classifyMarketRegime.js";
 import { MARKET_REGIME_CONFIG } from "../config.js";
 
-const config = MARKET_REGIME_CONFIG["1h"].regime;
+const config = MARKET_REGIME_CONFIG["15m"].regime;
 
 describe("classifyMarketRegime", () => {
   it("returns CHOP when telemetry is calm and trend is flat", () => {

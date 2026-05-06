@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { afterEach, describe, expect, it } from "vitest";
 import { buildApp } from "../../app.js";
 
-const ONE_HOUR_MS = 60 * 60 * 1000;
+const FIFTEEN_MIN_MS = 15 * 60 * 1000;
 const createdDbPaths: string[] = [];
 
 const tempDb = (): string => {
@@ -30,9 +30,9 @@ const makePayload = (overrides: Record<string, unknown> = {}) => ({
   network: "solana-mainnet",
   poolAddress: "Pool111",
   symbol: "SOL/USDC",
-  timeframe: "1h",
+  timeframe: "15m",
   sourceRecordedAtIso: "2026-04-26T12:00:00.000Z",
-  candles: [{ unixMs: ONE_HOUR_MS, open: 100, high: 110, low: 95, close: 105, volume: 1 }],
+  candles: [{ unixMs: FIFTEEN_MIN_MS, open: 100, high: 110, low: 95, close: 105, volume: 1 }],
   ...overrides
 });
 
@@ -62,7 +62,7 @@ describe("Candle handler fallback (SQLite-only, no DATABASE_URL)", () => {
     const app = buildApp();
     const res = await app.inject({
       method: "GET",
-      url: "/v1/regime/current?symbol=SOL%2FUSDC&source=birdeye&network=solana-mainnet&poolAddress=Pool111&timeframe=1h"
+      url: "/v1/regime/current?symbol=SOL%2FUSDC&source=birdeye&network=solana-mainnet&poolAddress=Pool111&timeframe=15m"
     });
 
     expect(res.statusCode).toBe(404);

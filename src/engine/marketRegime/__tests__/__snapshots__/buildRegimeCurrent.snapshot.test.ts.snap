@@ -57,6 +57,6 @@ exports[`buildRegimeCurrent snapshot > produces identical response objects for f
     "trendStrength": 0.000968054211,
     "volRatio": 0.373633725332,
   },
-  "timeframe": "1h",
+  "timeframe": "15m",
 }
 `;

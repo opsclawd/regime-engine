@@ -10,6 +10,7 @@ import {
 import {
   SCHEMA_VERSION,
   type CandleIngestRequest,
+  type CandleIngestTimeframe,
   type ClmmExecutionEventRequest,
   type ExecutionResultRequest,
   type PlanRequest,
@@ -276,9 +277,11 @@ export const parseClmmExecutionEventRequest = (raw: unknown): ClmmExecutionEvent
   );
 };
 
-const SUPPORTED_TIMEFRAMES = ["1h"] as const;
-const TIMEFRAME_TO_MS: Record<(typeof SUPPORTED_TIMEFRAMES)[number], number> = {
-  "1h": 60 * 60 * 1000
+const CANDLE_INGEST_TIMEFRAMES = ["15m"] as const;
+const REGIME_READ_TIMEFRAMES = ["15m"] as const;
+
+const CANDLE_INGEST_TIMEFRAME_TO_MS: Record<CandleIngestTimeframe, number> = {
+  "15m": 15 * 60 * 1000
 };
 
 const candleIngestCandleSchema = z
@@ -299,7 +302,7 @@ const candleIngestRequestSchema = z
     network: z.string().min(1),
     poolAddress: z.string().min(1),
     symbol: z.string().min(1),
-    timeframe: z.enum(SUPPORTED_TIMEFRAMES),
+    timeframe: z.enum(CANDLE_INGEST_TIMEFRAMES),
     sourceRecordedAtIso: z.string().datetime(),
     candles: z.array(candleIngestCandleSchema).min(1)
   })
@@ -397,7 +400,7 @@ export const parseCandleIngestRequest = (raw: unknown): CandleIngestRequest => {
 
   checkBatchSize(parsed.candles.length);
   checkDuplicateUnixMs(parsed.candles);
-  validateOhlcvInvariants(parsed.candles, TIMEFRAME_TO_MS[parsed.timeframe]);
+  validateOhlcvInvariants(parsed.candles, CANDLE_INGEST_TIMEFRAME_TO_MS[parsed.timeframe]);
 
   return parsed;
 };
@@ -408,7 +411,7 @@ const regimeCurrentQuerySchema = z
     source: z.string().min(1),
     network: z.string().min(1),
     poolAddress: z.string().min(1),
-    timeframe: z.enum(SUPPORTED_TIMEFRAMES)
+    timeframe: z.enum(REGIME_READ_TIMEFRAMES)
   })
   .strict();
 
@@ -419,7 +422,7 @@ export const parseRegimeCurrentQuery = (
   source: string;
   network: string;
   poolAddress: string;
-  timeframe: "1h";
+  timeframe: "15m";
 } => {
   const parsed = regimeCurrentQuerySchema.safeParse(raw);
   if (!parsed.success) {

@@ -5,7 +5,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { buildApp } from "../../app.js";
 import { createLedgerStore, getLedgerCounts } from "../../ledger/store.js";
 
-const ONE_HOUR_MS = 60 * 60 * 1000;
+const FIFTEEN_MIN_MS = 15 * 60 * 1000;
 const createdDbPaths: string[] = [];
 
 const tempDb = (): string => {
@@ -18,9 +18,9 @@ const tempDb = (): string => {
 };
 
 const buildRecentCandles = (count: number) => {
-  const anchor = Math.floor(Date.now() / ONE_HOUR_MS) * ONE_HOUR_MS - 2 * ONE_HOUR_MS;
+  const anchor = Math.floor(Date.now() / FIFTEEN_MIN_MS) * FIFTEEN_MIN_MS - 2 * FIFTEEN_MIN_MS;
   return Array.from({ length: count }, (_, i) => ({
-    unixMs: anchor - (count - 1 - i) * ONE_HOUR_MS,
+    unixMs: anchor - (count - 1 - i) * FIFTEEN_MIN_MS,
     open: 100,
     high: 100.5,
     low: 99.5,
@@ -35,7 +35,7 @@ const ingestPayload = (count: number, recordedIso: string) => ({
   network: "solana-mainnet",
   poolAddress: "Pool111",
   symbol: "SOL/USDC",
-  timeframe: "1h",
+  timeframe: "15m",
   sourceRecordedAtIso: recordedIso,
   candles: buildRecentCandles(count)
 });
@@ -49,7 +49,7 @@ afterEach(() => {
 });
 
 const queryString =
-  "?symbol=SOL%2FUSDC&source=birdeye&network=solana-mainnet&poolAddress=Pool111&timeframe=1h";
+  "?symbol=SOL%2FUSDC&source=birdeye&network=solana-mainnet&poolAddress=Pool111&timeframe=15m";
 
 describe("GET /v1/regime/current", () => {
   it("returns 400 when a required selector is missing", async () => {
@@ -99,7 +99,7 @@ describe("GET /v1/regime/current", () => {
     const body = res.json();
     expect(body.schemaVersion).toBe("1.0");
     expect(body.symbol).toBe("SOL/USDC");
-    expect(body.timeframe).toBe("1h");
+    expect(body.timeframe).toBe("15m");
     expect(["UP", "DOWN", "CHOP"]).toContain(body.regime);
     expect(body.metadata.candleCount).toBeGreaterThan(0);
     expect(["ALLOWED", "CAUTION", "BLOCKED", "UNKNOWN"]).toContain(body.clmmSuitability.status);

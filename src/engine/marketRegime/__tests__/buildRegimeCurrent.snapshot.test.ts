@@ -25,7 +25,7 @@ describe("buildRegimeCurrent snapshot", () => {
       },
       candles: goldenCandles,
       nowUnixMs: 100 * ONE_HOUR_MS,
-      config: MARKET_REGIME_CONFIG["1h"],
+      config: MARKET_REGIME_CONFIG["15m"],
       configVersion: MARKET_REGIME_CONFIG_VERSION,
       engineVersion: "0.1.0"
     });

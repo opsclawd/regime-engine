@@ -29,7 +29,7 @@ describe("buildRegimeCurrent", () => {
       feed,
       candles: flatCandles,
       nowUnixMs,
-      config: MARKET_REGIME_CONFIG["1h"],
+      config: MARKET_REGIME_CONFIG["15m"],
       configVersion: "market-regime-1.0.0",
       engineVersion: "0.1.0"
     });
@@ -49,7 +49,7 @@ describe("buildRegimeCurrent", () => {
       feed,
       candles: fewCandles,
       nowUnixMs: lastCandleUnixMs + 30 * 60 * 1000,
-      config: MARKET_REGIME_CONFIG["1h"],
+      config: MARKET_REGIME_CONFIG["15m"],
       configVersion: "market-regime-1.0.0",
       engineVersion: "0.1.0"
     });
@@ -63,7 +63,7 @@ describe("buildRegimeCurrent", () => {
       feed,
       candles: flatCandles,
       nowUnixMs: lastCandleUnixMs + 91 * 60 * 1000,
-      config: MARKET_REGIME_CONFIG["1h"],
+      config: MARKET_REGIME_CONFIG["15m"],
       configVersion: "market-regime-1.0.0",
       engineVersion: "0.1.0"
     });
