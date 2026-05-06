@@ -3,7 +3,7 @@ import type { GeckoCollectorConfig } from "./config.js";
 import { ProtocolError } from "./retry.js";
 
 const TIMEFRAME_MS: Record<string, number> = {
-  "1h": 3600000
+  "15m": 15 * 60 * 1000
 };
 
 export type NormalizationStats = {
@@ -80,7 +80,10 @@ export function normalizeGeckoOhlcv(
     throw new ProtocolError("GeckoTerminal returned >1000 rows");
   }
 
-  const timeframeMs = TIMEFRAME_MS[config.geckoTimeframe] ?? 3600000;
+  const timeframeMs = TIMEFRAME_MS[config.geckoTimeframe];
+  if (timeframeMs === undefined) {
+    throw new ProtocolError(`Unsupported geckoTimeframe: ${config.geckoTimeframe}`);
+  }
 
   const stats: NormalizationStats = {
     providerRowCount: ohlcvList.length,

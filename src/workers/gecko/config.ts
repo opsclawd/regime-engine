@@ -112,9 +112,9 @@ export function parseGeckoCollectorConfig(
     geckoNetwork: readLiteral(env, "GECKO_NETWORK", ["solana"] as const, "solana"),
     geckoPoolAddress: readPoolAddress(env, "GECKO_POOL_ADDRESS"),
     geckoSymbol: readLiteral(env, "GECKO_SYMBOL", ["SOL/USDC"] as const, "SOL/USDC"),
-    geckoTimeframe: readLiteral(env, "GECKO_TIMEFRAME", ["1h"] as const, "1h"),
+    geckoTimeframe: readLiteral(env, "GECKO_TIMEFRAME", ["15m"] as const, "15m"),
     geckoLookback: readLookback(env, "GECKO_LOOKBACK", 200, 1000),
-    geckoPollIntervalMs: readPositiveInteger(env, "GECKO_POLL_INTERVAL_MS", 300000),
+    geckoPollIntervalMs: readPositiveInteger(env, "GECKO_POLL_INTERVAL_MS", 60000),
     geckoMaxCallsPerMinute: readPositiveInteger(env, "GECKO_MAX_CALLS_PER_MINUTE", 6),
     geckoRequestTimeoutMs: readPositiveInteger(env, "GECKO_REQUEST_TIMEOUT_MS", 10000)
   };

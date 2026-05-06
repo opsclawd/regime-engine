@@ -16,9 +16,9 @@ describe("parseGeckoCollectorConfig", () => {
     expect(config.geckoNetwork).toBe("solana");
     expect(config.geckoPoolAddress).toBe("So1enD8SdYKeb4s4XxKQsXKQsXKQsXKQsXKQsXKQsXK");
     expect(config.geckoSymbol).toBe("SOL/USDC");
-    expect(config.geckoTimeframe).toBe("1h");
+    expect(config.geckoTimeframe).toBe("15m");
     expect(config.geckoLookback).toBe(200);
-    expect(config.geckoPollIntervalMs).toBe(300000);
+    expect(config.geckoPollIntervalMs).toBe(60000);
     expect(config.geckoMaxCallsPerMinute).toBe(6);
     expect(config.geckoRequestTimeoutMs).toBe(10000);
   });
@@ -29,15 +29,15 @@ describe("parseGeckoCollectorConfig", () => {
       GECKO_SOURCE: "geckoterminal",
       GECKO_NETWORK: "solana",
       GECKO_SYMBOL: "SOL/USDC",
-      GECKO_TIMEFRAME: "1h",
+      GECKO_TIMEFRAME: "15m",
       GECKO_LOOKBACK: "500",
-      GECKO_POLL_INTERVAL_MS: "60000",
+      GECKO_POLL_INTERVAL_MS: "30000",
       GECKO_MAX_CALLS_PER_MINUTE: "10",
       GECKO_REQUEST_TIMEOUT_MS: "5000"
     };
     const config = parseGeckoCollectorConfig(env);
     expect(config.geckoLookback).toBe(500);
-    expect(config.geckoPollIntervalMs).toBe(60000);
+    expect(config.geckoPollIntervalMs).toBe(30000);
     expect(config.geckoMaxCallsPerMinute).toBe(10);
     expect(config.geckoRequestTimeoutMs).toBe(5000);
   });
@@ -112,6 +112,17 @@ describe("parseGeckoCollectorConfig", () => {
   it("throws for unsupported GECKO_TIMEFRAME", () => {
     const env = { ...MINIMAL_ENV, GECKO_TIMEFRAME: "5m" };
     expect(() => parseGeckoCollectorConfig(env)).toThrow("Unsupported GECKO_TIMEFRAME");
+  });
+
+  it("throws for GECKO_TIMEFRAME=1h (rejected until #42)", () => {
+    const env = { ...MINIMAL_ENV, GECKO_TIMEFRAME: "1h" };
+    expect(() => parseGeckoCollectorConfig(env)).toThrow("Unsupported GECKO_TIMEFRAME");
+  });
+
+  it("accepts explicit GECKO_TIMEFRAME=15m", () => {
+    const env = { ...MINIMAL_ENV, GECKO_TIMEFRAME: "15m" };
+    const config = parseGeckoCollectorConfig(env);
+    expect(config.geckoTimeframe).toBe("15m");
   });
 
   it("treats empty string as default for literal env", () => {

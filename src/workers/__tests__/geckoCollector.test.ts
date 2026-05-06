@@ -14,9 +14,9 @@ const BASE_CONFIG: GeckoCollectorConfig = {
   geckoNetwork: "solana",
   geckoPoolAddress: "pool123",
   geckoSymbol: "SOL/USDC",
-  geckoTimeframe: "1h",
+  geckoTimeframe: "15m",
   geckoLookback: 10,
-  geckoPollIntervalMs: 300000,
+  geckoPollIntervalMs: 60000,
   geckoMaxCallsPerMinute: 6,
   geckoRequestTimeoutMs: 10000
 };

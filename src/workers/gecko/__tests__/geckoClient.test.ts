@@ -10,9 +10,9 @@ const BASE_CONFIG: GeckoCollectorConfig = {
   geckoNetwork: "solana",
   geckoPoolAddress: "pool123",
   geckoSymbol: "SOL/USDC",
-  geckoTimeframe: "1h",
+  geckoTimeframe: "15m",
   geckoLookback: 200,
-  geckoPollIntervalMs: 300000,
+  geckoPollIntervalMs: 60000,
   geckoMaxCallsPerMinute: 6,
   geckoRequestTimeoutMs: 10000
 };
@@ -41,14 +41,17 @@ function jsonResponse(body: unknown, status = 200): Response {
 }
 
 describe("fetchGeckoOhlcv", () => {
-  it("builds encoded URL with network and poolAddress", async () => {
+  it("builds encoded URL with network, pool, and 15m query params", async () => {
     const config = { ...BASE_CONFIG, geckoNetwork: "solana", geckoPoolAddress: "pool with spaces" };
     const fetch = mockFetch(jsonResponse(VALID_RESPONSE));
     await fetchGeckoOhlcv(config, { fetch });
     expect(fetch).toHaveBeenCalledTimes(1);
     const calledUrl = (fetch as ReturnType<typeof vi.fn>).mock.calls[0][0] as string;
-    expect(calledUrl).toContain("solana");
-    expect(calledUrl).toContain("pool%20with%20spaces");
+    expect(calledUrl).toContain("/api/v2/networks/solana/pools/pool%20with%20spaces/ohlcv/minute");
+    const u = new URL(calledUrl);
+    expect(u.searchParams.get("aggregate")).toBe("15");
+    expect(u.searchParams.get("include_empty_intervals")).toBe("true");
+    expect(u.searchParams.get("limit")).toBe("200");
   });
 
   it("sends Accept header", async () => {
@@ -125,5 +128,12 @@ describe("fetchGeckoOhlcv", () => {
     await expect(
       fetchGeckoOhlcv(BASE_CONFIG, { fetch, shutdownSignal: controller.signal })
     ).rejects.toThrow(RequestTimeoutError);
+  });
+
+  it("throws ProtocolError for unsupported geckoTimeframe before calling fetch", async () => {
+    const config = { ...BASE_CONFIG, geckoTimeframe: "1h" } as unknown as GeckoCollectorConfig;
+    const fetch = vi.fn(async () => jsonResponse(VALID_RESPONSE));
+    await expect(fetchGeckoOhlcv(config, { fetch })).rejects.toThrow(ProtocolError);
+    expect(fetch).not.toHaveBeenCalled();
   });
 });
