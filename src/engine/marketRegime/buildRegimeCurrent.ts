@@ -11,6 +11,13 @@ import { computeFreshness } from "./freshness.js";
 import { evaluateMarketClmmSuitability } from "./evaluateMarketClmmSuitability.js";
 import type { MarketTimeframeConfig } from "./config.js";
 
+export interface BuildRegimeCurrentMetadata {
+  sourceTimeframe: "15m";
+  sourceCandleCount: number;
+  derivedTimeframe?: "1h";
+  aggregationVersion?: "ohlcv-agg-v1";
+}
+
 export interface BuildRegimeCurrentInput {
   feed: {
     symbol: string;
@@ -24,6 +31,7 @@ export interface BuildRegimeCurrentInput {
   config: MarketTimeframeConfig;
   configVersion: string;
   engineVersion: string;
+  metadata: BuildRegimeCurrentMetadata;
 }
 
 const buildMarketReasons = (
@@ -75,7 +83,7 @@ export const buildRegimeCurrent = (input: BuildRegimeCurrentInput): RegimeCurren
   if (input.candles.length === 0) {
     throw new Error("buildRegimeCurrent requires at least one candle");
   }
-  const { feed, candles, nowUnixMs, config, configVersion, engineVersion } = input;
+  const { feed, candles, nowUnixMs, config, configVersion, engineVersion, metadata } = input;
 
   const telemetry = computeIndicators(candles, config.indicators);
   const { regime, reasons: regimeReasons } = classifyMarketRegime(telemetry, config.regime);
@@ -116,7 +124,15 @@ export const buildRegimeCurrent = (input: BuildRegimeCurrentInput): RegimeCurren
     metadata: {
       engineVersion,
       configVersion,
-      candleCount: candles.length
+      candleCount: candles.length,
+      sourceTimeframe: metadata.sourceTimeframe,
+      sourceCandleCount: metadata.sourceCandleCount,
+      ...(metadata.derivedTimeframe !== undefined
+        ? { derivedTimeframe: metadata.derivedTimeframe }
+        : {}),
+      ...(metadata.aggregationVersion !== undefined
+        ? { aggregationVersion: metadata.aggregationVersion }
+        : {})
     }
   };
 };

@@ -43,6 +43,8 @@ exports[`buildRegimeCurrent snapshot > produces identical response objects for f
     "candleCount": 130,
     "configVersion": "market-regime-2.0.0",
     "engineVersion": "0.1.0",
+    "sourceCandleCount": 130,
+    "sourceTimeframe": "15m",
   },
   "network": "solana-mainnet",
   "poolAddress": "Pool111",

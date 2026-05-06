@@ -70,7 +70,11 @@ export const createRegimeCurrentHandler = (store: LedgerStore, candleStore?: Can
         nowUnixMs,
         config,
         configVersion: MARKET_REGIME_CONFIG_VERSION,
-        engineVersion: process.env.npm_package_version ?? "0.0.0"
+        engineVersion: process.env.npm_package_version ?? "0.0.0",
+        metadata: {
+          sourceTimeframe: query.timeframe as "15m",
+          sourceCandleCount: candles.length
+        }
       });
 
       return reply.code(200).send(response);

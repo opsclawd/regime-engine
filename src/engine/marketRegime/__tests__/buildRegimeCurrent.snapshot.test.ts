@@ -27,7 +27,11 @@ describe("buildRegimeCurrent snapshot", () => {
       nowUnixMs: 200 * FIFTEEN_MIN_MS,
       config: MARKET_REGIME_CONFIG["15m"],
       configVersion: MARKET_REGIME_CONFIG_VERSION,
-      engineVersion: "0.1.0"
+      engineVersion: "0.1.0",
+      metadata: {
+        sourceTimeframe: "15m",
+        sourceCandleCount: goldenCandles.length
+      }
     });
 
     expect(response).toMatchSnapshot();
