@@ -279,7 +279,9 @@ Input: regime=UP, freshness=soft-stale
 
 - [Fastify+SQLite Ingestion Endpoint Patterns](./fastify-sqlite-ingestion-endpoint-patterns-2026-04-18.md) — Shared auth, idempotency, and transaction patterns that the candle endpoint follows
 - [Regime-engine Deploy Docs Gap](../documentation-gaps/regime-engine-deploy-docs-smoke-tests-runbook-2026-04-19.md) — Deploy readiness and operational verification for the full API surface including these new endpoints
-- `src/engine/marketRegime/config.ts` — Committed per-timeframe config (15m primary; 1h derived planned in #42)
+- `src/engine/marketRegime/config.ts` — Committed per-timeframe config (15m primary; 1h derived via aggregation, see [Derived Timeframe Aggregation Pattern](./derived-candle-aggregation-pattern-2026-05-06.md))
+- `src/engine/candles/aggregateCandles.ts` — Pure OHLCV aggregation utility for derived timeframes
+- `src/engine/marketRegime/regimeCandleReadPlan.ts` — Read-plan abstraction for direct vs derived candle reads
 - `src/ledger/candlesWriter.ts` — Per-slot decision tree + `BEGIN IMMEDIATE`
 - `src/engine/marketRegime/evaluateMarketClmmSuitability.ts` — Four-band decision tree
 - GitHub #17 — "Add market-data-backed current regime endpoint for CLMM Regime page"

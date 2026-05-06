@@ -311,4 +311,5 @@ if (timeframeMs === undefined) {
 - [Fastify SQLite Ingestion Endpoint Patterns](../best-practices/fastify-sqlite-ingestion-endpoint-patterns-2026-04-18.md) — auth, idempotency, and error taxonomy for ingestion endpoints. The timeframe allowlist pattern extends these validation patterns.
 - [TypeScript Strict Tooling Friction Patterns](../developer-experience/typescript-strict-tooling-friction-patterns-2026-05-01.md) — type guards for GeckoTerminal API payloads and test fixture alignment. Shares the gecko worker module.
 - GitHub #41 — "Switch Gecko candle ingestion and regime pipeline to 15m candles" (the milestone this migration completed)
-- GitHub #42 — "Add derived 1h candle aggregation from canonical 15m candles" (future work, referenced by `// until #42` comments)
+- [Derived Timeframe Aggregation Pattern](./derived-candle-aggregation-pattern-2026-05-06.md) — the m42 follow-up that implemented derived 1h reads by aggregating stored 15m candles at request time
+- GitHub #42 — "Add derived 1h candle aggregation from canonical 15m candles" (now implemented; see derived aggregation pattern)
