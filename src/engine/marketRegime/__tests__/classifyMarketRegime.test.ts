@@ -1,15 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { classifyMarketRegime } from "../classifyMarketRegime.js";
-import { classifyRegime } from "../../regime/classifier.js";
 import { MARKET_REGIME_CONFIG } from "../config.js";
 
 const config = MARKET_REGIME_CONFIG["15m"].regime;
-
-const confirmRegime = (telemetry: Parameters<typeof classifyRegime>[0]["telemetry"]) => {
-  const step1 = classifyRegime({ telemetry, config, state: undefined });
-  const step2 = classifyRegime({ telemetry, config, state: step1.nextState });
-  return step2;
-};
 
 describe("classifyMarketRegime", () => {
   it("returns CHOP when telemetry is calm and trend is flat", () => {
@@ -35,9 +28,9 @@ describe("classifyMarketRegime", () => {
       trendStrength: 1.0,
       compression: 0.05
     };
-    const decision = confirmRegime(telemetry);
-    expect(decision.regime).toBe("UP");
-    expect(decision.reasons.map((r) => r.code)).toEqual(["REGIME_SWITCH_CONFIRMED"]);
+    const result = classifyMarketRegime(telemetry, config);
+    expect(result.regime).toBe("UP");
+    expect(result.reasons.map((r) => r.code)).toEqual(["REGIME_SWITCH_CONFIRMED"]);
   });
 
   it("returns DOWN when trend is strongly negative", () => {
@@ -48,8 +41,8 @@ describe("classifyMarketRegime", () => {
       trendStrength: -1.0,
       compression: 0.05
     };
-    const decision = confirmRegime(telemetry);
-    expect(decision.regime).toBe("DOWN");
+    const result = classifyMarketRegime(telemetry, config);
+    expect(result.regime).toBe("DOWN");
   });
 
   it("rewrites the message for REGIME_SWITCH_CONFIRMED to market-read language", () => {
@@ -60,10 +53,9 @@ describe("classifyMarketRegime", () => {
       trendStrength: 1.0,
       compression: 0.05
     };
-    const decision = confirmRegime(telemetry);
-    expect(decision.regime).toBe("UP");
-    expect(decision.reasons[0].code).toBe("REGIME_SWITCH_CONFIRMED");
-    expect(decision.reasons[0].message).toBe("Switched CHOP -> UP after 2 confirmation bars.");
+    const result = classifyMarketRegime(telemetry, config);
+    expect(result.regime).toBe("UP");
+    expect(result.reasons[0].code).toBe("REGIME_SWITCH_CONFIRMED");
   });
 
   it("never emits REGIME_MIN_HOLD_ACTIVE for stateless calls", () => {

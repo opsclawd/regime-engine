@@ -17,11 +17,19 @@ export const classifyMarketRegime = (
   telemetry: IndicatorTelemetry,
   config: MarketTimeframeConfig["regime"]
 ): { regime: Regime; reasons: MarketReason[] } => {
-  const decision = classifyRegime({
+  let decision = classifyRegime({
     telemetry,
     config,
     state: undefined
   });
+
+  for (let i = 1; i < config.confirmBars; i++) {
+    decision = classifyRegime({
+      telemetry,
+      config,
+      state: decision.nextState
+    });
+  }
 
   const reasons: MarketReason[] = [];
   for (const reason of decision.reasons) {
