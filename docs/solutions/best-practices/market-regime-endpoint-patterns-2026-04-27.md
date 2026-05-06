@@ -6,6 +6,7 @@ module: engine
 problem_type: best_practice
 component: service_object
 severity: low
+last_updated: "2026-05-06"
 applies_when:
   - Adding candle ingestion endpoints with per-slot decision trees in SQLite
   - Building stateless regime classification read endpoints from raw ledger data
@@ -101,7 +102,7 @@ function closedCandleCutoffUnixMs(asOfUnixMs: number, timeframe: Timeframe): num
   const GRACE_WINDOW_MS = 5 * 60 * 1000; // 5 minutes
   return asOfUnixMs - timeframeMs - GRACE_WINDOW_MS;
 }
-// A 1h candle at slot 14:00 is closed after 15:05 (one period + 5min grace)
+// A 15m candle at slot 14:00 is closed after 14:20 (one period + 5min grace)
 ```
 
 Why a grace window instead of a strict boundary:
@@ -126,9 +127,9 @@ function computeFreshness(
   const ageMs = asOfUnixMs - latestClosedUnixMs;
   const timeframeMs = timeframe * 60 * 1000;
 
-  if (ageMs < 2 * timeframeMs) return "fresh"; // < 2h for 1h
-  if (ageMs < 4 * timeframeMs) return "soft-stale"; // 2-4h for 1h
-  return "hard-stale"; // > 4h for 1h
+  if (ageMs < 2 * timeframeMs) return "fresh"; // < 30m for 15m
+  if (ageMs < 4 * timeframeMs) return "soft-stale"; // 30m-1h for 15m
+  return "hard-stale"; // > 1h for 15m
 }
 ```
 
@@ -250,7 +251,7 @@ Full pipeline with autopilot state, hysteresis, and plan ledger writes. No way t
 ### After: Lightweight regime query
 
 ```typescript
-// GET /v1/regime/current?symbol=SOL&source=coingecko&network=mainnet&poolAddress=...&timeframe=1h
+// GET /v1/regime/current?symbol=SOL&source=coingecko&network=mainnet&poolAddress=...&timeframe=15m
 // No auth, no ledger writes, stateless computation
 const query = parseRegimeCurrentQuery(request.query);
 const candles = getLatestCandlesForFeed(store, query);
@@ -278,7 +279,7 @@ Input: regime=UP, freshness=soft-stale
 
 - [Fastify+SQLite Ingestion Endpoint Patterns](./fastify-sqlite-ingestion-endpoint-patterns-2026-04-18.md) — Shared auth, idempotency, and transaction patterns that the candle endpoint follows
 - [Regime-engine Deploy Docs Gap](../documentation-gaps/regime-engine-deploy-docs-smoke-tests-runbook-2026-04-19.md) — Deploy readiness and operational verification for the full API surface including these new endpoints
-- `src/engine/marketRegime/config.ts` — Committed per-timeframe config (1h MVP)
+- `src/engine/marketRegime/config.ts` — Committed per-timeframe config (15m primary; 1h derived planned in #42)
 - `src/ledger/candlesWriter.ts` — Per-slot decision tree + `BEGIN IMMEDIATE`
 - `src/engine/marketRegime/evaluateMarketClmmSuitability.ts` — Four-band decision tree
 - GitHub #17 — "Add market-data-backed current regime endpoint for CLMM Regime page"
