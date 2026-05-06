@@ -7,7 +7,15 @@ import { createLedgerStore, getLedgerCounts } from "../../ledger/store.js";
 import { MARKET_REGIME_CONFIG } from "../../engine/marketRegime/config.js";
 
 const FIFTEEN_MIN_MS = 15 * 60 * 1000;
+const ONE_HOUR_MS = 60 * 60 * 1000;
 const createdDbPaths: string[] = [];
+
+const computeSourceCutoffUnixMs = () =>
+  Math.floor(
+    (Date.now() - MARKET_REGIME_CONFIG["15m"].freshness.closedCandleDelayMs) / FIFTEEN_MIN_MS
+  ) *
+    FIFTEEN_MIN_MS -
+  FIFTEEN_MIN_MS;
 
 const tempDb = (): string => {
   const path = join(
@@ -196,7 +204,6 @@ describe("GET /v1/regime/current", () => {
 
     expect(body.freshness.lastCandleUnixMs).toBeLessThan(Date.now());
 
-    const ONE_HOUR_MS = 60 * 60 * 1000;
     expect(body.freshness.lastCandleUnixMs % ONE_HOUR_MS).toBe(0);
   });
 
@@ -205,13 +212,7 @@ describe("GET /v1/regime/current", () => {
     process.env.CANDLES_INGEST_TOKEN = "test-token";
     const app = buildApp();
 
-    const ONE_HOUR_MS = 60 * 60 * 1000;
-    const sourceConfig = MARKET_REGIME_CONFIG["15m"];
-
-    const sourceCutoffUnixMs =
-      Math.floor((Date.now() - sourceConfig.freshness.closedCandleDelayMs) / FIFTEEN_MIN_MS) *
-        FIFTEEN_MIN_MS -
-      FIFTEEN_MIN_MS;
+    const sourceCutoffUnixMs = computeSourceCutoffUnixMs();
     const hourOpen =
       Math.floor((sourceCutoffUnixMs - 4 * FIFTEEN_MIN_MS) / ONE_HOUR_MS) * ONE_HOUR_MS;
     const partialCandles = [0, 1, 2].map((i) => ({
@@ -249,13 +250,7 @@ describe("GET /v1/regime/current", () => {
     process.env.CANDLES_INGEST_TOKEN = "test-token";
     const app = buildApp();
 
-    const ONE_HOUR_MS = 60 * 60 * 1000;
-    const sourceConfig = MARKET_REGIME_CONFIG["15m"];
-
-    const sourceCutoffUnixMs =
-      Math.floor((Date.now() - sourceConfig.freshness.closedCandleDelayMs) / FIFTEEN_MIN_MS) *
-        FIFTEEN_MIN_MS -
-      FIFTEEN_MIN_MS;
+    const sourceCutoffUnixMs = computeSourceCutoffUnixMs();
     const lastHourOpen = Math.floor(sourceCutoffUnixMs / ONE_HOUR_MS) * ONE_HOUR_MS - ONE_HOUR_MS;
     const startHourOpen = lastHourOpen - 4 * ONE_HOUR_MS;
     const candles: Array<{
