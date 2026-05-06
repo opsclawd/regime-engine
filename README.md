@@ -30,16 +30,18 @@ Server endpoints:
   (`source + network + poolAddress + symbol + timeframe`). Append-only,
   per-slot decision tree (insert / idempotent / revise / reject). Token-guarded
   by `X-Candles-Ingest-Token` / `CANDLES_INGEST_TOKEN`.
-- `GET /v1/regime/current?symbol=&source=&network=&poolAddress=&timeframe=15m` —
-  market-only regime classification + CLMM suitability. Stateless: no
-  `RegimeState`, no portfolio/autopilot inputs, no plan-ledger writes.
+- `GET /v1/regime/current?symbol=&source=&network=&poolAddress=&timeframe=15m|1h` —
+  market-only regime classification + CLMM suitability. `timeframe=15m`
+  classifies stored 15m candles directly; `timeframe=1h` derives complete 1h
+  candles from stored 15m candles on the fly. Stateless: no `RegimeState`, no
+  portfolio/autopilot inputs, no plan-ledger writes.
 - `POST /v1/insights/sol-usdc` — CLMM insight ingestion (#20)
 - `GET /v1/insights/sol-usdc/current` — current CLMM insight
 - `GET /v1/insights/sol-usdc/history` — CLMM insight history
 - `POST /v2/sr-levels` — v2 S/R thesis ingestion (#21)
 - `GET /v2/sr-levels/current` — current v2 S/R thesis
 
-> **#41 contract change:** `POST /v1/candles` and `GET /v1/regime/current` accept `timeframe=15m` only. `timeframe=1h` is removed and is restored as a derived read in #42 (1h derived from stored 15m candles). Coordinate consumers before deploying.
+> **#41 / #42 contract:** `POST /v1/candles` accepts `timeframe=15m` only (provider ingestion is canonical at 15m). `GET /v1/regime/current` accepts `timeframe=15m | 1h`. The `1h` regime read is derived on the fly from stored 15m candles (no provider-ingested 1h candles, no derived storage). Response metadata includes `sourceTimeframe`, `sourceCandleCount`, and on derived reads `derivedTimeframe` and `aggregationVersion`.
 
 ## GeckoTerminal candle collector
 
@@ -63,19 +65,19 @@ pnpm run dev:gecko
 
 Worker env vars:
 
-| Variable                     | Default         | Notes                                                                     |
-| ---------------------------- | --------------- | ------------------------------------------------------------------------- |
-| `REGIME_ENGINE_URL`          | -               | Absolute URL for the regime-engine web service.                           |
-| `CANDLES_INGEST_TOKEN`       | -               | Shared secret sent as `X-Candles-Ingest-Token`; never commit real values. |
-| `GECKO_SOURCE`               | `geckoterminal` | Must equal `geckoterminal` for MVP.                                       |
-| `GECKO_NETWORK`              | `solana`        | Must equal `solana` for MVP.                                              |
-| `GECKO_POOL_ADDRESS`         | -               | Explicit GeckoTerminal SOL/USDC pool address. Confirm before production.  |
-| `GECKO_SYMBOL`               | `SOL/USDC`      | Must equal `SOL/USDC` for MVP.                                            |
-| `GECKO_TIMEFRAME`            | `15m`           | Must equal `15m`. (`1h` is removed in #41 until #42.)                     |
-| `GECKO_LOOKBACK`             | `200`           | Rolling candle window size.                                               |
-| `GECKO_POLL_INTERVAL_MS`     | `60000`         | Sleep after each completed cycle.                                         |
-| `GECKO_MAX_CALLS_PER_MINUTE` | `6`             | Provider-scoped GeckoTerminal call cap.                                   |
-| `GECKO_REQUEST_TIMEOUT_MS`   | `10000`         | Per-request timeout for provider and ingest calls.                        |
+| Variable                     | Default         | Notes                                                                                  |
+| ---------------------------- | --------------- | -------------------------------------------------------------------------------------- |
+| `REGIME_ENGINE_URL`          | -               | Absolute URL for the regime-engine web service.                                        |
+| `CANDLES_INGEST_TOKEN`       | -               | Shared secret sent as `X-Candles-Ingest-Token`; never commit real values.              |
+| `GECKO_SOURCE`               | `geckoterminal` | Must equal `geckoterminal` for MVP.                                                    |
+| `GECKO_NETWORK`              | `solana`        | Must equal `solana` for MVP.                                                           |
+| `GECKO_POOL_ADDRESS`         | -               | Explicit GeckoTerminal SOL/USDC pool address. Confirm before production.               |
+| `GECKO_SYMBOL`               | `SOL/USDC`      | Must equal `SOL/USDC` for MVP.                                                         |
+| `GECKO_TIMEFRAME`            | `15m`           | Must equal `15m`. Provider ingestion is canonical at 15m; 1h regime reads are derived. |
+| `GECKO_LOOKBACK`             | `200`           | Rolling candle window size.                                                            |
+| `GECKO_POLL_INTERVAL_MS`     | `60000`         | Sleep after each completed cycle.                                                      |
+| `GECKO_MAX_CALLS_PER_MINUTE` | `6`             | Provider-scoped GeckoTerminal call cap.                                                |
+| `GECKO_REQUEST_TIMEOUT_MS`   | `10000`         | Per-request timeout for provider and ingest calls.                                     |
 
 Railway services from the same repo (both use the same Dockerfile, selected via `SERVICE_TYPE`):
 

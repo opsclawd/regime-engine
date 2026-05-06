@@ -170,7 +170,7 @@ export const buildOpenApiDocument = () => {
       "/v1/candles": {
         post: {
           summary:
-            "Ingest candle revisions for a logical feed (timeframe must be 15m; 1h removed in #41 until #42 derives 1h from 15m)",
+            "Ingest candle revisions for a logical feed. Provider ingestion is restricted to timeframe=15m; 1h regime reads are derived from stored 15m candles by GET /v1/regime/current.",
           responses: {
             "200": {
               description: "Per-slot insert/revise/idempotent/reject counts"
@@ -191,7 +191,7 @@ export const buildOpenApiDocument = () => {
       "/v1/regime/current": {
         get: {
           summary:
-            "Market-only regime classification + CLMM suitability for a 15m feed (timeframe must be 15m; 1h removed, see #41/#42)",
+            "Market-only regime classification + CLMM suitability. timeframe=15m classifies stored 15m candles directly; timeframe=1h derives complete 1h candles from stored 15m candles on the fly.",
           parameters: [
             {
               name: "symbol",
@@ -221,7 +221,7 @@ export const buildOpenApiDocument = () => {
               name: "timeframe",
               in: "query",
               required: true,
-              schema: { type: "string", enum: ["15m"] }
+              schema: { type: "string", enum: ["15m", "1h"] }
             }
           ],
           responses: {
