@@ -21,6 +21,9 @@
     "db:migrate": "drizzle-kit migrate",
     "db:generate": "drizzle-kit generate",
     "db:push": "drizzle-kit push",
+    "start": "node --env-file-if-exists=.env dist/src/server.js",
+    "dev:gecko": "tsx watch src/workers/geckoCollector.ts",
+    "start:gecko": "node --env-file-if-exists=.env dist/src/workers/geckoCollector.js",
     "prepare": "husky || true"
   },
   "dependencies": {
