@@ -4,7 +4,7 @@ import { MARKET_REGIME_CONFIG } from "../config.js";
 
 const FIFTEEN_MIN_MS = 15 * 60 * 1000;
 
-const flatCandles = Array.from({ length: 40 }, (_, i) => ({
+const flatCandles = Array.from({ length: 130 }, (_, i) => ({
   unixMs: (i + 1) * FIFTEEN_MIN_MS,
   open: 100,
   high: 100.5,
@@ -24,7 +24,7 @@ const feed = {
 describe("buildRegimeCurrent", () => {
   it("classifies CHOP and emits ALLOWED for flat candles + fresh data", () => {
     const lastCandleUnixMs = flatCandles[flatCandles.length - 1].unixMs;
-    const nowUnixMs = lastCandleUnixMs + 30 * 60 * 1000;
+    const nowUnixMs = lastCandleUnixMs + 20 * 60 * 1000;
     const response = buildRegimeCurrent({
       feed,
       candles: flatCandles,
@@ -36,7 +36,7 @@ describe("buildRegimeCurrent", () => {
 
     expect(response.regime).toBe("CHOP");
     expect(response.clmmSuitability.status).toBe("ALLOWED");
-    expect(response.metadata.candleCount).toBe(40);
+    expect(response.metadata.candleCount).toBe(130);
     expect(response.metadata.engineVersion).toBe("0.1.0");
     expect(response.metadata.configVersion).toBe("market-regime-1.0.0");
     expect(response.symbol).toBe("SOL/USDC");
@@ -48,7 +48,7 @@ describe("buildRegimeCurrent", () => {
     const response = buildRegimeCurrent({
       feed,
       candles: fewCandles,
-      nowUnixMs: lastCandleUnixMs + 30 * 60 * 1000,
+      nowUnixMs: lastCandleUnixMs + 20 * 60 * 1000,
       config: MARKET_REGIME_CONFIG["15m"],
       configVersion: "market-regime-1.0.0",
       engineVersion: "0.1.0"
@@ -62,7 +62,7 @@ describe("buildRegimeCurrent", () => {
     const response = buildRegimeCurrent({
       feed,
       candles: flatCandles,
-      nowUnixMs: lastCandleUnixMs + 91 * 60 * 1000,
+      nowUnixMs: lastCandleUnixMs + 40 * 60 * 1000,
       config: MARKET_REGIME_CONFIG["15m"],
       configVersion: "market-regime-1.0.0",
       engineVersion: "0.1.0"

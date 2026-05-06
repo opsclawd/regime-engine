@@ -15,7 +15,7 @@ const baseTelemetry = {
 const fresh = { hardStale: false, softStale: false };
 const stale = { hardStale: false, softStale: true };
 const dead = { hardStale: true, softStale: true };
-const sufficient = 30;
+const sufficient = 150;
 const insufficient = 5;
 
 describe("evaluateMarketClmmSuitability", () => {

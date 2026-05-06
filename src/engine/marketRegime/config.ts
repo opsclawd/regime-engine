@@ -38,13 +38,13 @@ export const MARKET_REGIME_CONFIG: Record<"15m", MarketTimeframeConfig> = {
     timeframe: "15m",
     timeframeMs: FIFTEEN_MIN_MS,
     indicators: {
-      volShortWindow: 8,
-      volLongWindow: 21,
-      trendWindow: 14,
-      compressionWindow: 20
+      volShortWindow: 32,
+      volLongWindow: 84,
+      trendWindow: 56,
+      compressionWindow: 80
     },
     regime: {
-      confirmBars: 1,
+      confirmBars: 2,
       minHoldBars: 0,
       enterUpTrend: 0.6,
       exitUpTrend: 0.35,
@@ -56,12 +56,12 @@ export const MARKET_REGIME_CONFIG: Record<"15m", MarketTimeframeConfig> = {
       allowedVolRatioMax: 1.3,
       extremeVolRatio: 1.6,
       extremeCompression: 0.18,
-      minCandles: 30
+      minCandles: 120
     },
     freshness: {
-      closedCandleDelayMs: 5 * 60 * 1000,
-      softStaleMs: 75 * 60 * 1000,
-      hardStaleMs: 90 * 60 * 1000
+      closedCandleDelayMs: 2 * 60 * 1000,
+      softStaleMs: 25 * 60 * 1000,
+      hardStaleMs: 35 * 60 * 1000
     }
   }
 };

@@ -4,7 +4,7 @@ import { MARKET_REGIME_CONFIG, MARKET_REGIME_CONFIG_VERSION } from "../config.js
 
 const FIFTEEN_MIN_MS = 15 * 60 * 1000;
 
-const goldenCandles = Array.from({ length: 40 }, (_, i) => ({
+const goldenCandles = Array.from({ length: 130 }, (_, i) => ({
   unixMs: (i + 1) * FIFTEEN_MIN_MS,
   open: 100 + i * 0.1,
   high: 100.5 + i * 0.1,
@@ -24,7 +24,7 @@ describe("buildRegimeCurrent snapshot", () => {
         timeframe: "15m"
       },
       candles: goldenCandles,
-      nowUnixMs: 100 * FIFTEEN_MIN_MS,
+      nowUnixMs: 200 * FIFTEEN_MIN_MS,
       config: MARKET_REGIME_CONFIG["15m"],
       configVersion: MARKET_REGIME_CONFIG_VERSION,
       engineVersion: "0.1.0"

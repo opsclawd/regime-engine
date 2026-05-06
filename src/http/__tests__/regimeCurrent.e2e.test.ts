@@ -93,7 +93,7 @@ describe("GET /v1/regime/current", () => {
       method: "POST",
       url: "/v1/candles",
       headers: { "X-Candles-Ingest-Token": "test-token" },
-      payload: ingestPayload(40, recordedIso)
+      payload: ingestPayload(130, recordedIso)
     });
 
     const res = await app.inject({ method: "GET", url: `/v1/regime/current${queryString}` });
@@ -122,7 +122,7 @@ describe("GET /v1/regime/current", () => {
       method: "POST",
       url: "/v1/candles",
       headers: { "X-Candles-Ingest-Token": "test-token" },
-      payload: ingestPayload(40, new Date().toISOString())
+      payload: ingestPayload(130, new Date().toISOString())
     });
 
     const dbPath = process.env.LEDGER_DB_PATH!;
