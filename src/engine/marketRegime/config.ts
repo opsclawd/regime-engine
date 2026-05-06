@@ -1,4 +1,4 @@
-export const MARKET_REGIME_CONFIG_VERSION = "market-regime-1.0.0" as const;
+export const MARKET_REGIME_CONFIG_VERSION = "market-regime-2.0.0" as const;
 
 export interface MarketTimeframeConfig {
   timeframe: "15m";
