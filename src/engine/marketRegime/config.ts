@@ -31,12 +31,12 @@ export interface MarketTimeframeConfig {
   };
 }
 
-const ONE_HOUR_MS = 60 * 60 * 1000;
+const FIFTEEN_MIN_MS = 15 * 60 * 1000;
 
 export const MARKET_REGIME_CONFIG: Record<"15m", MarketTimeframeConfig> = {
   "15m": {
     timeframe: "15m",
-    timeframeMs: ONE_HOUR_MS,
+    timeframeMs: FIFTEEN_MIN_MS,
     indicators: {
       volShortWindow: 8,
       volLongWindow: 21,

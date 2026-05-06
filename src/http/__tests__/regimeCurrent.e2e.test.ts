@@ -71,6 +71,7 @@ describe("GET /v1/regime/current", () => {
       url: "/v1/regime/current?symbol=SOL%2FUSDC&source=birdeye&network=solana-mainnet&poolAddress=Pool111&timeframe=4h"
     });
     expect(res.statusCode).toBe(400);
+    expect(res.json().error.code).toBe("VALIDATION_ERROR");
   });
 
   it("returns 404 CANDLES_NOT_FOUND when no candles exist for the slot", async () => {

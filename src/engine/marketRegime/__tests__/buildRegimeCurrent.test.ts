@@ -2,10 +2,10 @@ import { describe, expect, it } from "vitest";
 import { buildRegimeCurrent } from "../buildRegimeCurrent.js";
 import { MARKET_REGIME_CONFIG } from "../config.js";
 
-const ONE_HOUR_MS = 60 * 60 * 1000;
+const FIFTEEN_MIN_MS = 15 * 60 * 1000;
 
 const flatCandles = Array.from({ length: 40 }, (_, i) => ({
-  unixMs: (i + 1) * ONE_HOUR_MS,
+  unixMs: (i + 1) * FIFTEEN_MIN_MS,
   open: 100,
   high: 100.5,
   low: 99.5,
