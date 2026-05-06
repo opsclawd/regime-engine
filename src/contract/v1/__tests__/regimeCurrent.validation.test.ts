@@ -30,10 +30,20 @@ describe("parseRegimeCurrentQuery", () => {
     }
   );
 
-  it("rejects timeframe=1h until #42", () => {
+  it("accepts timeframe=15m", () => {
+    const result = parseRegimeCurrentQuery({ ...baseQuery, timeframe: "15m" });
+    expect(result.timeframe).toBe("15m");
+  });
+
+  it("accepts timeframe=1h", () => {
+    const result = parseRegimeCurrentQuery({ ...baseQuery, timeframe: "1h" });
+    expect(result.timeframe).toBe("1h");
+  });
+
+  it("rejects unsupported regime-read timeframe (e.g. 4h) with VALIDATION_ERROR", () => {
     expect.assertions(1);
     try {
-      parseRegimeCurrentQuery({ ...baseQuery, timeframe: "1h" });
+      parseRegimeCurrentQuery({ ...baseQuery, timeframe: "4h" });
     } catch (error) {
       expect((error as ContractValidationError).response.error.code).toBe("VALIDATION_ERROR");
     }
