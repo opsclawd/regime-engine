@@ -1,9 +1,10 @@
 import type { Candle } from "../../contract/v1/types.js";
+import type { CandleIngestTimeframe } from "../../contract/v1/types.js";
 import type { GeckoCollectorConfig } from "./config.js";
 import { ProtocolError } from "./retry.js";
 
-const TIMEFRAME_MS: Record<string, number> = {
-  "1h": 3600000
+const TIMEFRAME_MS: Record<CandleIngestTimeframe, number> = {
+  "15m": 15 * 60 * 1000
 };
 
 export type NormalizationStats = {
@@ -80,7 +81,10 @@ export function normalizeGeckoOhlcv(
     throw new ProtocolError("GeckoTerminal returned >1000 rows");
   }
 
-  const timeframeMs = TIMEFRAME_MS[config.geckoTimeframe] ?? 3600000;
+  const timeframeMs = TIMEFRAME_MS[config.geckoTimeframe];
+  if (timeframeMs === undefined) {
+    throw new ProtocolError(`Unsupported geckoTimeframe: ${config.geckoTimeframe}`);
+  }
 
   const stats: NormalizationStats = {
     providerRowCount: ohlcvList.length,

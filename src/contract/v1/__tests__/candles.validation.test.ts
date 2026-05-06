@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { parseCandleIngestRequest } from "../validation.js";
 import { ContractValidationError } from "../../../http/errors.js";
 
-const ONE_HOUR_MS = 60 * 60 * 1000;
+const FIFTEEN_MIN_MS = 15 * 60 * 1000;
 
 const makeBody = (overrides: Record<string, unknown> = {}) => ({
   schemaVersion: "1.0",
@@ -10,11 +10,11 @@ const makeBody = (overrides: Record<string, unknown> = {}) => ({
   network: "solana-mainnet",
   poolAddress: "Pool1111111111111111111111111111111111111111",
   symbol: "SOL/USDC",
-  timeframe: "1h",
+  timeframe: "15m",
   sourceRecordedAtIso: "2026-04-26T12:00:00.000Z",
   candles: [
     {
-      unixMs: ONE_HOUR_MS,
+      unixMs: FIFTEEN_MIN_MS,
       open: 100,
       high: 110,
       low: 95,
@@ -29,7 +29,7 @@ describe("parseCandleIngestRequest", () => {
   it("accepts a minimal valid 1-candle batch", () => {
     const result = parseCandleIngestRequest(makeBody());
     expect(result.candles).toHaveLength(1);
-    expect(result.timeframe).toBe("1h");
+    expect(result.timeframe).toBe("15m");
   });
 
   it("rejects unsupported schemaVersion with UNSUPPORTED_SCHEMA_VERSION", () => {
@@ -82,7 +82,7 @@ describe("parseCandleIngestRequest", () => {
 
   it("rejects 1001-candle batch with BATCH_TOO_LARGE", () => {
     const oversized = Array.from({ length: 1001 }, (_, i) => ({
-      unixMs: (i + 1) * ONE_HOUR_MS,
+      unixMs: (i + 1) * FIFTEEN_MIN_MS,
       open: 100,
       high: 110,
       low: 95,
@@ -108,7 +108,7 @@ describe("parseCandleIngestRequest", () => {
   ])("rejects malformed candle (%s) with MALFORMED_CANDLE", (_label, ohlc) => {
     expect.assertions(2);
     try {
-      parseCandleIngestRequest(makeBody({ candles: [{ unixMs: ONE_HOUR_MS, ...ohlc }] }));
+      parseCandleIngestRequest(makeBody({ candles: [{ unixMs: FIFTEEN_MIN_MS, ...ohlc }] }));
     } catch (error) {
       const e = error as ContractValidationError;
       expect(e.response.error.code).toBe("MALFORMED_CANDLE");
@@ -123,7 +123,7 @@ describe("parseCandleIngestRequest", () => {
         makeBody({
           candles: [
             {
-              unixMs: ONE_HOUR_MS + 1,
+              unixMs: FIFTEEN_MIN_MS + 1,
               open: 100,
               high: 110,
               low: 95,
@@ -144,8 +144,8 @@ describe("parseCandleIngestRequest", () => {
       parseCandleIngestRequest(
         makeBody({
           candles: [
-            { unixMs: ONE_HOUR_MS, open: 100, high: 110, low: 95, close: 105, volume: 1 },
-            { unixMs: ONE_HOUR_MS, open: 101, high: 111, low: 96, close: 106, volume: 2 }
+            { unixMs: FIFTEEN_MIN_MS, open: 100, high: 110, low: 95, close: 105, volume: 1 },
+            { unixMs: FIFTEEN_MIN_MS, open: 101, high: 111, low: 96, close: 106, volume: 2 }
           ]
         })
       );
@@ -153,6 +153,37 @@ describe("parseCandleIngestRequest", () => {
       expect((error as ContractValidationError).response.error.code).toBe(
         "DUPLICATE_CANDLE_IN_BATCH"
       );
+    }
+  });
+
+  it("rejects timeframe: '1h' until #42", () => {
+    expect.assertions(1);
+    try {
+      parseCandleIngestRequest(makeBody({ timeframe: "1h" }));
+    } catch (error) {
+      expect((error as ContractValidationError).response.error.code).toBe("VALIDATION_ERROR");
+    }
+  });
+
+  it("rejects 15m candle whose unixMs is aligned to the hour but not to the 15m boundary", () => {
+    expect.assertions(1);
+    try {
+      parseCandleIngestRequest(
+        makeBody({
+          candles: [
+            {
+              unixMs: FIFTEEN_MIN_MS + 5 * 60 * 1000,
+              open: 100,
+              high: 110,
+              low: 95,
+              close: 105,
+              volume: 1
+            }
+          ]
+        })
+      );
+    } catch (error) {
+      expect((error as ContractValidationError).response.error.code).toBe("MALFORMED_CANDLE");
     }
   });
 });

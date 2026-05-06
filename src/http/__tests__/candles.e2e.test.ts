@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { afterEach, describe, expect, it } from "vitest";
 import { buildApp } from "../../app.js";
 
-const ONE_HOUR_MS = 60 * 60 * 1000;
+const FIFTEEN_MIN_MS = 15 * 60 * 1000;
 const createdDbPaths: string[] = [];
 
 const makePayload = (overrides: Record<string, unknown> = {}) => ({
@@ -13,9 +13,9 @@ const makePayload = (overrides: Record<string, unknown> = {}) => ({
   network: "solana-mainnet",
   poolAddress: "Pool111",
   symbol: "SOL/USDC",
-  timeframe: "1h",
+  timeframe: "15m",
   sourceRecordedAtIso: "2026-04-26T12:00:00.000Z",
-  candles: [{ unixMs: ONE_HOUR_MS, open: 100, high: 110, low: 95, close: 105, volume: 1 }],
+  candles: [{ unixMs: FIFTEEN_MIN_MS, open: 100, high: 110, low: 95, close: 105, volume: 1 }],
   ...overrides
 });
 
@@ -93,7 +93,7 @@ describe("POST /v1/candles", () => {
       headers: { "X-Candles-Ingest-Token": "test-token" },
       payload: makePayload({
         sourceRecordedAtIso: "2026-04-26T12:00:00.000Z",
-        candles: [{ unixMs: ONE_HOUR_MS, open: 200, high: 210, low: 190, close: 205, volume: 1 }]
+        candles: [{ unixMs: FIFTEEN_MIN_MS, open: 200, high: 210, low: 190, close: 205, volume: 1 }]
       })
     });
 
@@ -109,7 +109,7 @@ describe("POST /v1/candles", () => {
     const app = buildApp();
 
     const oversized = Array.from({ length: 1001 }, (_, i) => ({
-      unixMs: (i + 1) * ONE_HOUR_MS,
+      unixMs: (i + 1) * FIFTEEN_MIN_MS,
       open: 100,
       high: 110,
       low: 90,
@@ -125,5 +125,44 @@ describe("POST /v1/candles", () => {
     });
     expect(res.statusCode).toBe(400);
     expect(res.json().error.code).toBe("BATCH_TOO_LARGE");
+  });
+
+  it("returns 400 VALIDATION_ERROR when timeframe is 1h", async () => {
+    process.env.LEDGER_DB_PATH = tempDb();
+    process.env.CANDLES_INGEST_TOKEN = "test-token";
+    const app = buildApp();
+    const res = await app.inject({
+      method: "POST",
+      url: "/v1/candles",
+      headers: { "X-Candles-Ingest-Token": "test-token" },
+      payload: makePayload({ timeframe: "1h" })
+    });
+    expect(res.statusCode).toBe(400);
+    expect(res.json().error.code).toBe("VALIDATION_ERROR");
+  });
+
+  it("returns 400 MALFORMED_CANDLE when unixMs is not aligned to 15m boundary", async () => {
+    process.env.LEDGER_DB_PATH = tempDb();
+    process.env.CANDLES_INGEST_TOKEN = "test-token";
+    const app = buildApp();
+    const res = await app.inject({
+      method: "POST",
+      url: "/v1/candles",
+      headers: { "X-Candles-Ingest-Token": "test-token" },
+      payload: makePayload({
+        candles: [
+          {
+            unixMs: FIFTEEN_MIN_MS + 60 * 1000,
+            open: 100,
+            high: 110,
+            low: 95,
+            close: 105,
+            volume: 1
+          }
+        ]
+      })
+    });
+    expect(res.statusCode).toBe(400);
+    expect(res.json().error.code).toBe("MALFORMED_CANDLE");
   });
 });

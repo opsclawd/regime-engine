@@ -1,5 +1,6 @@
+import type { CandleIngestTimeframe } from "../../contract/v1/types.js";
 import type { GeckoCollectorConfig } from "./config.js";
-import { HttpError, RequestTimeoutError, RequestTransportError } from "./retry.js";
+import { HttpError, ProtocolError, RequestTimeoutError, RequestTransportError } from "./retry.js";
 import { readTextWithLimit, parseJson, readErrorBody } from "./httpUtils.js";
 
 export type GeckoClientDeps = {
@@ -9,11 +10,25 @@ export type GeckoClientDeps = {
   shutdownSignal?: AbortSignal;
 };
 
+const TIMEFRAME_TO_GECKO_PATH_PARAMS: Record<
+  CandleIngestTimeframe,
+  { path: string; aggregate: string }
+> = {
+  "15m": { path: "minute", aggregate: "15" }
+};
+
 function buildGeckoUrl(config: GeckoCollectorConfig): URL {
+  const params = TIMEFRAME_TO_GECKO_PATH_PARAMS[config.geckoTimeframe];
+  if (!params) {
+    throw new ProtocolError(
+      `Unsupported geckoTimeframe for URL construction: ${config.geckoTimeframe}`
+    );
+  }
   const base = "https://api.geckoterminal.com";
-  const path = `/api/v2/networks/${encodeURIComponent(config.geckoNetwork)}/pools/${encodeURIComponent(config.geckoPoolAddress)}/ohlcv/hour`;
+  const path = `/api/v2/networks/${encodeURIComponent(config.geckoNetwork)}/pools/${encodeURIComponent(config.geckoPoolAddress)}/ohlcv/${params.path}`;
   const url = new URL(path, base);
-  url.searchParams.set("aggregate", "1");
+  url.searchParams.set("aggregate", params.aggregate);
+  url.searchParams.set("include_empty_intervals", "true");
   url.searchParams.set("limit", String(config.geckoLookback));
   return url;
 }

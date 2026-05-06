@@ -224,9 +224,9 @@ Collector env vars:
 | `GECKO_NETWORK`              | `solana`                                              |
 | `GECKO_POOL_ADDRESS`         | confirmed GeckoTerminal SOL/USDC pool address         |
 | `GECKO_SYMBOL`               | `SOL/USDC`                                            |
-| `GECKO_TIMEFRAME`            | `1h`                                                  |
+| `GECKO_TIMEFRAME`            | `15m`                                                 |
 | `GECKO_LOOKBACK`             | `200`                                                 |
-| `GECKO_POLL_INTERVAL_MS`     | `300000`                                              |
+| `GECKO_POLL_INTERVAL_MS`     | `60000`                                               |
 | `GECKO_MAX_CALLS_PER_MINUTE` | `6`                                                   |
 | `GECKO_REQUEST_TIMEOUT_MS`   | `10000`                                               |
 
@@ -242,7 +242,7 @@ URL notes:
 Pool preflight:
 
 ```bash
-curl -fsS "https://api.geckoterminal.com/api/v2/networks/solana/pools/$GECKO_POOL_ADDRESS/ohlcv/hour?aggregate=1&limit=1"
+curl -fsS "https://api.geckoterminal.com/api/v2/networks/solana/pools/$GECKO_POOL_ADDRESS/ohlcv/minute?aggregate=15&include_empty_intervals=true&limit=1"
 ```
 
 Before production:

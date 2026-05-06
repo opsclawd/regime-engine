@@ -6,14 +6,14 @@ const baseQuery = {
   symbol: "SOL/USDC",
   source: "birdeye",
   network: "solana-mainnet",
-  poolAddress: "Pool11111111111111111111111111111111111111",
-  timeframe: "1h"
+  poolAddress: "Pool11111111111111111111111111111",
+  timeframe: "15m"
 };
 
 describe("parseRegimeCurrentQuery", () => {
   it("accepts the five required selectors", () => {
     const result = parseRegimeCurrentQuery(baseQuery);
-    expect(result.timeframe).toBe("1h");
+    expect(result.timeframe).toBe("15m");
   });
 
   it.each([["symbol"], ["source"], ["network"], ["poolAddress"], ["timeframe"]])(
@@ -30,10 +30,10 @@ describe("parseRegimeCurrentQuery", () => {
     }
   );
 
-  it("rejects timeframe outside allowlist with VALIDATION_ERROR", () => {
+  it("rejects timeframe=1h until #42", () => {
     expect.assertions(1);
     try {
-      parseRegimeCurrentQuery({ ...baseQuery, timeframe: "4h" });
+      parseRegimeCurrentQuery({ ...baseQuery, timeframe: "1h" });
     } catch (error) {
       expect((error as ContractValidationError).response.error.code).toBe("VALIDATION_ERROR");
     }

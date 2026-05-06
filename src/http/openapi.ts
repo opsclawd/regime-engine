@@ -169,14 +169,15 @@ export const buildOpenApiDocument = () => {
       },
       "/v1/candles": {
         post: {
-          summary: "Ingest candle revisions for a logical feed",
+          summary:
+            "Ingest candle revisions for a logical feed (timeframe must be 15m; 1h removed in #41 until #42 derives 1h from 15m)",
           responses: {
             "200": {
               description: "Per-slot insert/revise/idempotent/reject counts"
             },
             "400": {
               description:
-                "Validation error (BATCH_TOO_LARGE, MALFORMED_CANDLE, DUPLICATE_CANDLE_IN_BATCH, VALIDATION_ERROR, UNSUPPORTED_SCHEMA_VERSION)"
+                "Validation error (BATCH_TOO_LARGE, MALFORMED_CANDLE, DUPLICATE_CANDLE_IN_BATCH, VALIDATION_ERROR, UNSUPPORTED_SCHEMA_VERSION). Candle unixMs must be aligned to 15-minute boundaries."
             },
             "401": {
               description: "Missing or invalid X-Candles-Ingest-Token"
@@ -189,7 +190,8 @@ export const buildOpenApiDocument = () => {
       },
       "/v1/regime/current": {
         get: {
-          summary: "Market-only regime classification + CLMM suitability for a feed",
+          summary:
+            "Market-only regime classification + CLMM suitability for a 15m feed (timeframe must be 15m; 1h removed, see #41/#42)",
           parameters: [
             {
               name: "symbol",
@@ -219,7 +221,7 @@ export const buildOpenApiDocument = () => {
               name: "timeframe",
               in: "query",
               required: true,
-              schema: { type: "string", enum: ["1h"] }
+              schema: { type: "string", enum: ["15m"] }
             }
           ],
           responses: {

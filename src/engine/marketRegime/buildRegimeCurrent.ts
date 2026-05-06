@@ -1,5 +1,10 @@
 import { computeIndicators } from "../features/indicators.js";
-import type { Candle, MarketReason, RegimeCurrentResponse } from "../../contract/v1/types.js";
+import type {
+  Candle,
+  MarketReason,
+  RegimeCurrentResponse,
+  RegimeReadTimeframe
+} from "../../contract/v1/types.js";
 import { SCHEMA_VERSION } from "../../contract/v1/types.js";
 import { classifyMarketRegime } from "./classifyMarketRegime.js";
 import { computeFreshness } from "./freshness.js";
@@ -12,7 +17,7 @@ export interface BuildRegimeCurrentInput {
     source: string;
     network: string;
     poolAddress: string;
-    timeframe: "1h";
+    timeframe: RegimeReadTimeframe;
   };
   candles: Candle[];
   nowUnixMs: number;

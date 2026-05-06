@@ -1,7 +1,7 @@
-export const MARKET_REGIME_CONFIG_VERSION = "market-regime-1.0.0" as const;
+export const MARKET_REGIME_CONFIG_VERSION = "market-regime-2.0.0" as const;
 
 export interface MarketTimeframeConfig {
-  timeframe: "1h";
+  timeframe: "15m";
   timeframeMs: number;
   indicators: {
     volShortWindow: number;
@@ -31,20 +31,20 @@ export interface MarketTimeframeConfig {
   };
 }
 
-const ONE_HOUR_MS = 60 * 60 * 1000;
+const FIFTEEN_MIN_MS = 15 * 60 * 1000;
 
-export const MARKET_REGIME_CONFIG: Record<"1h", MarketTimeframeConfig> = {
-  "1h": {
-    timeframe: "1h",
-    timeframeMs: ONE_HOUR_MS,
+export const MARKET_REGIME_CONFIG: Record<"15m", MarketTimeframeConfig> = {
+  "15m": {
+    timeframe: "15m",
+    timeframeMs: FIFTEEN_MIN_MS,
     indicators: {
-      volShortWindow: 8,
-      volLongWindow: 21,
-      trendWindow: 14,
-      compressionWindow: 20
+      volShortWindow: 32,
+      volLongWindow: 84,
+      trendWindow: 56,
+      compressionWindow: 80
     },
     regime: {
-      confirmBars: 1,
+      confirmBars: 2,
       minHoldBars: 0,
       enterUpTrend: 0.6,
       exitUpTrend: 0.35,
@@ -56,12 +56,12 @@ export const MARKET_REGIME_CONFIG: Record<"1h", MarketTimeframeConfig> = {
       allowedVolRatioMax: 1.3,
       extremeVolRatio: 1.6,
       extremeCompression: 0.18,
-      minCandles: 30
+      minCandles: 120
     },
     freshness: {
-      closedCandleDelayMs: 5 * 60 * 1000,
-      softStaleMs: 75 * 60 * 1000,
-      hardStaleMs: 90 * 60 * 1000
+      closedCandleDelayMs: 2 * 60 * 1000,
+      softStaleMs: 25 * 60 * 1000,
+      hardStaleMs: 35 * 60 * 1000
     }
   }
 };

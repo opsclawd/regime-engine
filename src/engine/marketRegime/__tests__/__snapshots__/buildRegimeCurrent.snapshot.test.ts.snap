@@ -13,14 +13,14 @@ exports[`buildRegimeCurrent snapshot > produces identical response objects for f
     "status": "UNKNOWN",
   },
   "freshness": {
-    "ageSeconds": 216000,
-    "generatedAtIso": "1970-01-05T04:00:00.000Z",
+    "ageSeconds": 63000,
+    "generatedAtIso": "1970-01-03T02:00:00.000Z",
     "hardStale": true,
-    "hardStaleSeconds": 5400,
-    "lastCandleIso": "1970-01-02T16:00:00.000Z",
-    "lastCandleUnixMs": 144000000,
+    "hardStaleSeconds": 2100,
+    "lastCandleIso": "1970-01-02T08:30:00.000Z",
+    "lastCandleUnixMs": 117000000,
     "softStale": true,
-    "softStaleSeconds": 4500,
+    "softStaleSeconds": 1500,
   },
   "marketReasons": [
     {
@@ -35,13 +35,13 @@ exports[`buildRegimeCurrent snapshot > produces identical response objects for f
     },
     {
       "code": "DATA_SUFFICIENT_SAMPLES",
-      "message": "Have 40 closed candles (>= 30).",
+      "message": "Have 130 closed candles (>= 120).",
       "severity": "INFO",
     },
   ],
   "metadata": {
-    "candleCount": 40,
-    "configVersion": "market-regime-1.0.0",
+    "candleCount": 130,
+    "configVersion": "market-regime-2.0.0",
     "engineVersion": "0.1.0",
   },
   "network": "solana-mainnet",
@@ -51,12 +51,12 @@ exports[`buildRegimeCurrent snapshot > produces identical response objects for f
   "source": "birdeye",
   "symbol": "SOL/USDC",
   "telemetry": {
-    "compression": 0.022393325427,
-    "realizedVolLong": 0.000026208833,
-    "realizedVolShort": 0.000006044065,
-    "trendStrength": 0.000968054211,
-    "volRatio": 0.373633725332,
+    "compression": 0.084742042119,
+    "realizedVolLong": 0.000188111034,
+    "realizedVolShort": 0.000042131549,
+    "trendStrength": 0.000907441016,
+    "volRatio": 0.362875632839,
   },
-  "timeframe": "1h",
+  "timeframe": "15m",
 }
 `;

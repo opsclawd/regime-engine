@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { evaluateMarketClmmSuitability } from "../evaluateMarketClmmSuitability.js";
 import { MARKET_REGIME_CONFIG } from "../config.js";
 
-const cfg = MARKET_REGIME_CONFIG["1h"].suitability;
+const cfg = MARKET_REGIME_CONFIG["15m"].suitability;
 
 const baseTelemetry = {
   realizedVolShort: 0.01,
@@ -15,7 +15,7 @@ const baseTelemetry = {
 const fresh = { hardStale: false, softStale: false };
 const stale = { hardStale: false, softStale: true };
 const dead = { hardStale: true, softStale: true };
-const sufficient = 30;
+const sufficient = 150;
 const insufficient = 5;
 
 describe("evaluateMarketClmmSuitability", () => {

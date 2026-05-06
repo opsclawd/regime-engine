@@ -10,9 +10,9 @@ const BASE_CONFIG: GeckoCollectorConfig = {
   geckoNetwork: "solana",
   geckoPoolAddress: "pool123",
   geckoSymbol: "SOL/USDC",
-  geckoTimeframe: "1h",
+  geckoTimeframe: "15m",
   geckoLookback: 200,
-  geckoPollIntervalMs: 300000,
+  geckoPollIntervalMs: 60000,
   geckoMaxCallsPerMinute: 6,
   geckoRequestTimeoutMs: 10000
 };
@@ -22,7 +22,7 @@ const VALID_PAYLOAD = {
     attributes: {
       ohlcv_list: [
         [1714536000, 100, 105, 98, 102, 1000],
-        [1714539600, 102, 108, 100, 106, 1200]
+        [1714536900, 102, 108, 100, 106, 1200]
       ]
     }
   }
@@ -32,7 +32,7 @@ describe("normalizeGeckoOhlcv", () => {
   it("converts Unix seconds to milliseconds", () => {
     const { candles } = normalizeGeckoOhlcv(VALID_PAYLOAD, BASE_CONFIG);
     expect(candles[0].unixMs).toBe(1714536000000);
-    expect(candles[1].unixMs).toBe(1714539600000);
+    expect(candles[1].unixMs).toBe(1714536900000);
   });
 
   it("throws ProtocolError for malformed envelope", () => {
@@ -117,9 +117,9 @@ describe("normalizeGeckoOhlcv", () => {
     expect(stats.validCount).toBe(0);
   });
 
-  it("drops misaligned timestamps but still returns them for counting", () => {
+  it("drops 15m-misaligned timestamps but still returns them for counting", () => {
     const payload = {
-      data: { attributes: { ohlcv_list: [[1714536001, 1, 2, 3, 4, 5]] } }
+      data: { attributes: { ohlcv_list: [[1714536060, 1, 2, 3, 4, 5]] } }
     };
     const { stats } = normalizeGeckoOhlcv(payload, BASE_CONFIG);
     expect(stats.misalignedRowCount).toBe(1);
@@ -164,7 +164,7 @@ describe("normalizeGeckoOhlcv", () => {
       data: {
         attributes: {
           ohlcv_list: [
-            [1714539600, 102, 108, 100, 106, 1200],
+            [1714536900, 102, 108, 100, 106, 1200],
             [1714536000, 100, 105, 98, 102, 1000]
           ]
         }
@@ -172,7 +172,14 @@ describe("normalizeGeckoOhlcv", () => {
     };
     const { candles } = normalizeGeckoOhlcv(payload, BASE_CONFIG);
     expect(candles[0].unixMs).toBe(1714536000000);
-    expect(candles[1].unixMs).toBe(1714539600000);
+    expect(candles[1].unixMs).toBe(1714536900000);
+  });
+
+  it("throws ProtocolError when geckoTimeframe is unsupported", () => {
+    const config = { ...BASE_CONFIG, geckoTimeframe: "1h" };
+    expect(() =>
+      normalizeGeckoOhlcv(VALID_PAYLOAD, config as unknown as GeckoCollectorConfig)
+    ).toThrow("Unsupported geckoTimeframe");
   });
 });
 

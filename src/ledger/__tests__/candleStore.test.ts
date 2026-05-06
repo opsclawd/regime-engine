@@ -4,7 +4,7 @@ import { CandleStore } from "../candleStore.js";
 import { candleRevisions } from "../pg/schema/candleRevisions.js";
 import type { CandleIngestRequest } from "../../contract/v1/types.js";
 
-const ONE_HOUR_MS = 60 * 60 * 1000;
+const FIFTEEN_MIN_MS = 15 * 60 * 1000;
 
 const makeRequest = (overrides: Partial<CandleIngestRequest> = {}): CandleIngestRequest => ({
   schemaVersion: "1.0",
@@ -12,12 +12,12 @@ const makeRequest = (overrides: Partial<CandleIngestRequest> = {}): CandleIngest
   network: "solana-mainnet",
   poolAddress: "Pool111",
   symbol: "SOL/USDC",
-  timeframe: "1h",
+  timeframe: "15m",
   sourceRecordedAtIso: "2026-04-26T12:00:00.000Z",
   candles: [
-    { unixMs: 1 * ONE_HOUR_MS, open: 100, high: 110, low: 90, close: 105, volume: 1 },
-    { unixMs: 2 * ONE_HOUR_MS, open: 105, high: 115, low: 100, close: 110, volume: 2 },
-    { unixMs: 3 * ONE_HOUR_MS, open: 110, high: 120, low: 105, close: 115, volume: 3 }
+    { unixMs: 1 * FIFTEEN_MIN_MS, open: 100, high: 110, low: 90, close: 105, volume: 1 },
+    { unixMs: 2 * FIFTEEN_MIN_MS, open: 105, high: 115, low: 100, close: 110, volume: 2 },
+    { unixMs: 3 * FIFTEEN_MIN_MS, open: 110, high: 120, low: 105, close: 115, volume: 3 }
   ],
   ...overrides
 });
@@ -74,9 +74,9 @@ describe.skipIf(!process.env.DATABASE_URL)("CandleStore (PG)", () => {
     const newer = makeRequest({
       sourceRecordedAtIso: "2026-04-26T13:00:00.000Z",
       candles: [
-        { unixMs: 1 * ONE_HOUR_MS, open: 101, high: 111, low: 91, close: 106, volume: 11 },
-        { unixMs: 2 * ONE_HOUR_MS, open: 106, high: 116, low: 101, close: 111, volume: 22 },
-        { unixMs: 3 * ONE_HOUR_MS, open: 111, high: 121, low: 106, close: 116, volume: 33 }
+        { unixMs: 1 * FIFTEEN_MIN_MS, open: 101, high: 111, low: 91, close: 106, volume: 11 },
+        { unixMs: 2 * FIFTEEN_MIN_MS, open: 106, high: 116, low: 101, close: 111, volume: 22 },
+        { unixMs: 3 * FIFTEEN_MIN_MS, open: 111, high: 121, low: 106, close: 116, volume: 33 }
       ]
     });
 
@@ -95,8 +95,8 @@ describe.skipIf(!process.env.DATABASE_URL)("CandleStore (PG)", () => {
       source: "birdeye",
       network: "solana-mainnet",
       poolAddress: "Pool111",
-      timeframe: "1h",
-      closedCandleCutoffUnixMs: 10 * ONE_HOUR_MS,
+      timeframe: "15m",
+      closedCandleCutoffUnixMs: 10 * FIFTEEN_MIN_MS,
       limit: 100
     });
     expect(latest.map((c) => c.close)).toEqual([106, 111, 116]);
@@ -110,7 +110,9 @@ describe.skipIf(!process.env.DATABASE_URL)("CandleStore (PG)", () => {
 
     const stale = makeRequest({
       sourceRecordedAtIso: "2026-04-26T12:00:00.000Z",
-      candles: [{ unixMs: 1 * ONE_HOUR_MS, open: 200, high: 210, low: 190, close: 205, volume: 1 }]
+      candles: [
+        { unixMs: 1 * FIFTEEN_MIN_MS, open: 200, high: 210, low: 190, close: 205, volume: 1 }
+      ]
     });
 
     const result = await store.writeCandles(stale, 1_700_000_001_000);
@@ -119,7 +121,7 @@ describe.skipIf(!process.env.DATABASE_URL)("CandleStore (PG)", () => {
     expect(result.insertedCount).toBe(0);
     expect(result.rejections).toEqual([
       {
-        unixMs: 1 * ONE_HOUR_MS,
+        unixMs: 1 * FIFTEEN_MIN_MS,
         reason: "STALE_REVISION",
         existingSourceRecordedAtIso: "2026-04-26T13:00:00.000Z"
       }
@@ -131,8 +133,8 @@ describe.skipIf(!process.env.DATABASE_URL)("CandleStore (PG)", () => {
       makeRequest({
         sourceRecordedAtIso: "2026-04-26T13:00:00.000Z",
         candles: [
-          { unixMs: 1 * ONE_HOUR_MS, open: 100, high: 110, low: 90, close: 105, volume: 1 },
-          { unixMs: 2 * ONE_HOUR_MS, open: 105, high: 115, low: 100, close: 110, volume: 2 }
+          { unixMs: 1 * FIFTEEN_MIN_MS, open: 100, high: 110, low: 90, close: 105, volume: 1 },
+          { unixMs: 2 * FIFTEEN_MIN_MS, open: 105, high: 115, low: 100, close: 110, volume: 2 }
         ]
       }),
       1_700_000_000_000
@@ -141,9 +143,9 @@ describe.skipIf(!process.env.DATABASE_URL)("CandleStore (PG)", () => {
     const mixed = makeRequest({
       sourceRecordedAtIso: "2026-04-26T12:00:00.000Z",
       candles: [
-        { unixMs: 1 * ONE_HOUR_MS, open: 100, high: 110, low: 90, close: 105, volume: 1 },
-        { unixMs: 2 * ONE_HOUR_MS, open: 999, high: 999, low: 999, close: 999, volume: 9 },
-        { unixMs: 3 * ONE_HOUR_MS, open: 110, high: 120, low: 105, close: 115, volume: 3 }
+        { unixMs: 1 * FIFTEEN_MIN_MS, open: 100, high: 110, low: 90, close: 105, volume: 1 },
+        { unixMs: 2 * FIFTEEN_MIN_MS, open: 999, high: 999, low: 999, close: 999, volume: 9 },
+        { unixMs: 3 * FIFTEEN_MIN_MS, open: 110, high: 120, low: 105, close: 115, volume: 3 }
       ]
     });
 
@@ -154,7 +156,7 @@ describe.skipIf(!process.env.DATABASE_URL)("CandleStore (PG)", () => {
     expect(result.insertedCount).toBe(1);
     expect(result.revisedCount).toBe(0);
     expect(result.rejections).toHaveLength(1);
-    expect(result.rejections[0].unixMs).toBe(2 * ONE_HOUR_MS);
+    expect(result.rejections[0].unixMs).toBe(2 * FIFTEEN_MIN_MS);
   });
 
   it("getLatestCandlesForFeed returns empty array when no data exists", async () => {
@@ -163,8 +165,8 @@ describe.skipIf(!process.env.DATABASE_URL)("CandleStore (PG)", () => {
       source: "birdeye",
       network: "solana-mainnet",
       poolAddress: "Pool111",
-      timeframe: "1h",
-      closedCandleCutoffUnixMs: 10 * ONE_HOUR_MS,
+      timeframe: "15m",
+      closedCandleCutoffUnixMs: 10 * FIFTEEN_MIN_MS,
       limit: 100
     });
     expect(result).toEqual([]);
@@ -174,9 +176,9 @@ describe.skipIf(!process.env.DATABASE_URL)("CandleStore (PG)", () => {
     await store.writeCandles(
       makeRequest({
         candles: [
-          { unixMs: 1 * ONE_HOUR_MS, open: 100, high: 110, low: 90, close: 105, volume: 1 },
-          { unixMs: 2 * ONE_HOUR_MS, open: 101, high: 111, low: 91, close: 106, volume: 2 },
-          { unixMs: 10 * ONE_HOUR_MS, open: 102, high: 112, low: 92, close: 107, volume: 3 }
+          { unixMs: 1 * FIFTEEN_MIN_MS, open: 100, high: 110, low: 90, close: 105, volume: 1 },
+          { unixMs: 2 * FIFTEEN_MIN_MS, open: 101, high: 111, low: 91, close: 106, volume: 2 },
+          { unixMs: 10 * FIFTEEN_MIN_MS, open: 102, high: 112, low: 92, close: 107, volume: 3 }
         ]
       }),
       1_700_000_000_000
@@ -187,8 +189,8 @@ describe.skipIf(!process.env.DATABASE_URL)("CandleStore (PG)", () => {
       source: "birdeye",
       network: "solana-mainnet",
       poolAddress: "Pool111",
-      timeframe: "1h",
-      closedCandleCutoffUnixMs: 5 * ONE_HOUR_MS,
+      timeframe: "15m",
+      closedCandleCutoffUnixMs: 5 * FIFTEEN_MIN_MS,
       limit: 100
     });
 
@@ -200,7 +202,7 @@ describe.skipIf(!process.env.DATABASE_URL)("CandleStore (PG)", () => {
     await store.writeCandles(
       makeRequest({
         candles: Array.from({ length: 20 }, (_, i) => ({
-          unixMs: (i + 1) * ONE_HOUR_MS,
+          unixMs: (i + 1) * FIFTEEN_MIN_MS,
           open: 100 + i,
           high: 110 + i,
           low: 90 + i,
@@ -216,8 +218,8 @@ describe.skipIf(!process.env.DATABASE_URL)("CandleStore (PG)", () => {
       source: "birdeye",
       network: "solana-mainnet",
       poolAddress: "Pool111",
-      timeframe: "1h",
-      closedCandleCutoffUnixMs: 25 * ONE_HOUR_MS,
+      timeframe: "15m",
+      closedCandleCutoffUnixMs: 25 * FIFTEEN_MIN_MS,
       limit: 5
     });
 
@@ -228,7 +230,9 @@ describe.skipIf(!process.env.DATABASE_URL)("CandleStore (PG)", () => {
     await store.writeCandles(
       makeRequest({
         sourceRecordedAtIso: "2026-04-26T12:00:00.000Z",
-        candles: [{ unixMs: 1 * ONE_HOUR_MS, open: 100, high: 110, low: 90, close: 105, volume: 1 }]
+        candles: [
+          { unixMs: 1 * FIFTEEN_MIN_MS, open: 100, high: 110, low: 90, close: 105, volume: 1 }
+        ]
       }),
       1_700_000_000_000
     );
@@ -236,7 +240,9 @@ describe.skipIf(!process.env.DATABASE_URL)("CandleStore (PG)", () => {
     await store.writeCandles(
       makeRequest({
         sourceRecordedAtIso: "2026-04-26T13:00:00.000Z",
-        candles: [{ unixMs: 1 * ONE_HOUR_MS, open: 101, high: 111, low: 91, close: 106, volume: 2 }]
+        candles: [
+          { unixMs: 1 * FIFTEEN_MIN_MS, open: 101, high: 111, low: 91, close: 106, volume: 2 }
+        ]
       }),
       1_700_000_001_000
     );
@@ -246,8 +252,8 @@ describe.skipIf(!process.env.DATABASE_URL)("CandleStore (PG)", () => {
       source: "birdeye",
       network: "solana-mainnet",
       poolAddress: "Pool111",
-      timeframe: "1h",
-      closedCandleCutoffUnixMs: 10 * ONE_HOUR_MS,
+      timeframe: "15m",
+      closedCandleCutoffUnixMs: 10 * FIFTEEN_MIN_MS,
       limit: 100
     });
 

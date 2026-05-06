@@ -4,8 +4,9 @@ import { tmpdir } from "node:os";
 import { afterEach, describe, expect, it } from "vitest";
 import { buildApp } from "../../app.js";
 import { createLedgerStore, getLedgerCounts } from "../../ledger/store.js";
+import { MARKET_REGIME_CONFIG } from "../../engine/marketRegime/config.js";
 
-const ONE_HOUR_MS = 60 * 60 * 1000;
+const FIFTEEN_MIN_MS = 15 * 60 * 1000;
 const createdDbPaths: string[] = [];
 
 const tempDb = (): string => {
@@ -18,9 +19,9 @@ const tempDb = (): string => {
 };
 
 const buildRecentCandles = (count: number) => {
-  const anchor = Math.floor(Date.now() / ONE_HOUR_MS) * ONE_HOUR_MS - 2 * ONE_HOUR_MS;
+  const anchor = Math.floor(Date.now() / FIFTEEN_MIN_MS) * FIFTEEN_MIN_MS - 2 * FIFTEEN_MIN_MS;
   return Array.from({ length: count }, (_, i) => ({
-    unixMs: anchor - (count - 1 - i) * ONE_HOUR_MS,
+    unixMs: anchor - (count - 1 - i) * FIFTEEN_MIN_MS,
     open: 100,
     high: 100.5,
     low: 99.5,
@@ -35,7 +36,7 @@ const ingestPayload = (count: number, recordedIso: string) => ({
   network: "solana-mainnet",
   poolAddress: "Pool111",
   symbol: "SOL/USDC",
-  timeframe: "1h",
+  timeframe: "15m",
   sourceRecordedAtIso: recordedIso,
   candles: buildRecentCandles(count)
 });
@@ -49,7 +50,7 @@ afterEach(() => {
 });
 
 const queryString =
-  "?symbol=SOL%2FUSDC&source=birdeye&network=solana-mainnet&poolAddress=Pool111&timeframe=1h";
+  "?symbol=SOL%2FUSDC&source=birdeye&network=solana-mainnet&poolAddress=Pool111&timeframe=15m";
 
 describe("GET /v1/regime/current", () => {
   it("returns 400 when a required selector is missing", async () => {
@@ -71,6 +72,7 @@ describe("GET /v1/regime/current", () => {
       url: "/v1/regime/current?symbol=SOL%2FUSDC&source=birdeye&network=solana-mainnet&poolAddress=Pool111&timeframe=4h"
     });
     expect(res.statusCode).toBe(400);
+    expect(res.json().error.code).toBe("VALIDATION_ERROR");
   });
 
   it("returns 404 CANDLES_NOT_FOUND when no candles exist for the slot", async () => {
@@ -91,7 +93,7 @@ describe("GET /v1/regime/current", () => {
       method: "POST",
       url: "/v1/candles",
       headers: { "X-Candles-Ingest-Token": "test-token" },
-      payload: ingestPayload(40, recordedIso)
+      payload: ingestPayload(130, recordedIso)
     });
 
     const res = await app.inject({ method: "GET", url: `/v1/regime/current${queryString}` });
@@ -99,9 +101,11 @@ describe("GET /v1/regime/current", () => {
     const body = res.json();
     expect(body.schemaVersion).toBe("1.0");
     expect(body.symbol).toBe("SOL/USDC");
-    expect(body.timeframe).toBe("1h");
+    expect(body.timeframe).toBe("15m");
     expect(["UP", "DOWN", "CHOP"]).toContain(body.regime);
-    expect(body.metadata.candleCount).toBeGreaterThan(0);
+    expect(body.metadata.candleCount).toBeGreaterThanOrEqual(
+      MARKET_REGIME_CONFIG["15m"].suitability.minCandles
+    );
     expect(["ALLOWED", "CAUTION", "BLOCKED", "UNKNOWN"]).toContain(body.clmmSuitability.status);
     expect(Array.isArray(body.clmmSuitability.reasons)).toBe(true);
     expect(Array.isArray(body.marketReasons)).toBe(true);
@@ -118,7 +122,7 @@ describe("GET /v1/regime/current", () => {
       method: "POST",
       url: "/v1/candles",
       headers: { "X-Candles-Ingest-Token": "test-token" },
-      payload: ingestPayload(40, new Date().toISOString())
+      payload: ingestPayload(130, new Date().toISOString())
     });
 
     const dbPath = process.env.LEDGER_DB_PATH!;
