@@ -18,7 +18,7 @@ const feed = {
   source: "birdeye",
   network: "solana-mainnet",
   poolAddress: "Pool111",
-  timeframe: "1h" as const
+  timeframe: "15m" as const
 };
 
 describe("buildRegimeCurrent", () => {

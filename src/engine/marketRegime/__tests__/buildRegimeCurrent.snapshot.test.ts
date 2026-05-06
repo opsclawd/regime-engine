@@ -21,7 +21,7 @@ describe("buildRegimeCurrent snapshot", () => {
         source: "birdeye",
         network: "solana-mainnet",
         poolAddress: "Pool111",
-        timeframe: "1h"
+        timeframe: "15m"
       },
       candles: goldenCandles,
       nowUnixMs: 100 * ONE_HOUR_MS,

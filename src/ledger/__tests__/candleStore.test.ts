@@ -12,7 +12,7 @@ const makeRequest = (overrides: Partial<CandleIngestRequest> = {}): CandleIngest
   network: "solana-mainnet",
   poolAddress: "Pool111",
   symbol: "SOL/USDC",
-  timeframe: "1h",
+  timeframe: "15m",
   sourceRecordedAtIso: "2026-04-26T12:00:00.000Z",
   candles: [
     { unixMs: 1 * ONE_HOUR_MS, open: 100, high: 110, low: 90, close: 105, volume: 1 },
@@ -95,7 +95,7 @@ describe.skipIf(!process.env.DATABASE_URL)("CandleStore (PG)", () => {
       source: "birdeye",
       network: "solana-mainnet",
       poolAddress: "Pool111",
-      timeframe: "1h",
+      timeframe: "15m",
       closedCandleCutoffUnixMs: 10 * ONE_HOUR_MS,
       limit: 100
     });
@@ -163,7 +163,7 @@ describe.skipIf(!process.env.DATABASE_URL)("CandleStore (PG)", () => {
       source: "birdeye",
       network: "solana-mainnet",
       poolAddress: "Pool111",
-      timeframe: "1h",
+      timeframe: "15m",
       closedCandleCutoffUnixMs: 10 * ONE_HOUR_MS,
       limit: 100
     });
@@ -187,7 +187,7 @@ describe.skipIf(!process.env.DATABASE_URL)("CandleStore (PG)", () => {
       source: "birdeye",
       network: "solana-mainnet",
       poolAddress: "Pool111",
-      timeframe: "1h",
+      timeframe: "15m",
       closedCandleCutoffUnixMs: 5 * ONE_HOUR_MS,
       limit: 100
     });
@@ -216,7 +216,7 @@ describe.skipIf(!process.env.DATABASE_URL)("CandleStore (PG)", () => {
       source: "birdeye",
       network: "solana-mainnet",
       poolAddress: "Pool111",
-      timeframe: "1h",
+      timeframe: "15m",
       closedCandleCutoffUnixMs: 25 * ONE_HOUR_MS,
       limit: 5
     });
@@ -246,7 +246,7 @@ describe.skipIf(!process.env.DATABASE_URL)("CandleStore (PG)", () => {
       source: "birdeye",
       network: "solana-mainnet",
       poolAddress: "Pool111",
-      timeframe: "1h",
+      timeframe: "15m",
       closedCandleCutoffUnixMs: 10 * ONE_HOUR_MS,
       limit: 100
     });

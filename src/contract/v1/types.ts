@@ -219,7 +219,8 @@ export interface SrLevelsCurrentResponse {
   resistances: SrLevelResponse[];
 }
 
-export type SupportedTimeframe = "1h";
+export type CandleIngestTimeframe = "15m";
+export type RegimeReadTimeframe = "15m";
 
 export type ClmmSuitabilityStatus = "ALLOWED" | "CAUTION" | "BLOCKED" | "UNKNOWN";
 
@@ -229,7 +230,7 @@ export interface CandleIngestRequest {
   network: string;
   poolAddress: string;
   symbol: string;
-  timeframe: SupportedTimeframe;
+  timeframe: CandleIngestTimeframe;
   sourceRecordedAtIso: string;
   candles: Candle[];
 }
@@ -311,7 +312,7 @@ export interface RegimeCurrentResponse {
   source: string;
   network: string;
   poolAddress: string;
-  timeframe: SupportedTimeframe;
+  timeframe: RegimeReadTimeframe;
   regime: Regime;
   telemetry: RegimeCurrentTelemetry;
   clmmSuitability: {
@@ -328,5 +329,5 @@ export interface RegimeCurrentQuery {
   source: string;
   network: string;
   poolAddress: string;
-  timeframe: SupportedTimeframe;
+  timeframe: RegimeReadTimeframe;
 }
