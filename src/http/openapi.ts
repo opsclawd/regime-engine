@@ -191,7 +191,7 @@ export const buildOpenApiDocument = () => {
       "/v1/regime/current": {
         get: {
           summary:
-            "Market-only regime classification + CLMM suitability for a 15m feed (timeframe=1h returns until #42)",
+            "Market-only regime classification + CLMM suitability for a 15m feed (timeframe must be 15m; 1h removed, see #41/#42)",
           parameters: [
             {
               name: "symbol",

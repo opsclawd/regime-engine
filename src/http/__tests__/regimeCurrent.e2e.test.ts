@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { afterEach, describe, expect, it } from "vitest";
 import { buildApp } from "../../app.js";
 import { createLedgerStore, getLedgerCounts } from "../../ledger/store.js";
+import { MARKET_REGIME_CONFIG } from "../../engine/marketRegime/config.js";
 
 const FIFTEEN_MIN_MS = 15 * 60 * 1000;
 const createdDbPaths: string[] = [];
@@ -102,7 +103,9 @@ describe("GET /v1/regime/current", () => {
     expect(body.symbol).toBe("SOL/USDC");
     expect(body.timeframe).toBe("15m");
     expect(["UP", "DOWN", "CHOP"]).toContain(body.regime);
-    expect(body.metadata.candleCount).toBeGreaterThan(0);
+    expect(body.metadata.candleCount).toBeGreaterThanOrEqual(
+      MARKET_REGIME_CONFIG["15m"].suitability.minCandles
+    );
     expect(["ALLOWED", "CAUTION", "BLOCKED", "UNKNOWN"]).toContain(body.clmmSuitability.status);
     expect(Array.isArray(body.clmmSuitability.reasons)).toBe(true);
     expect(Array.isArray(body.marketReasons)).toBe(true);

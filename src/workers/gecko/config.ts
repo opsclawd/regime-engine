@@ -1,3 +1,5 @@
+import type { CandleIngestTimeframe } from "../../contract/v1/types.js";
+
 export type GeckoCollectorConfig = {
   regimeEngineUrl: URL;
   candlesIngestToken: string;
@@ -5,7 +7,7 @@ export type GeckoCollectorConfig = {
   geckoNetwork: string;
   geckoPoolAddress: string;
   geckoSymbol: string;
-  geckoTimeframe: string;
+  geckoTimeframe: CandleIngestTimeframe;
   geckoLookback: number;
   geckoPollIntervalMs: number;
   geckoMaxCallsPerMinute: number;

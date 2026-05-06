@@ -1,8 +1,9 @@
 import type { Candle } from "../../contract/v1/types.js";
+import type { CandleIngestTimeframe } from "../../contract/v1/types.js";
 import type { GeckoCollectorConfig } from "./config.js";
 import { ProtocolError } from "./retry.js";
 
-const TIMEFRAME_MS: Record<string, number> = {
+const TIMEFRAME_MS: Record<CandleIngestTimeframe, number> = {
   "15m": 15 * 60 * 1000
 };
 

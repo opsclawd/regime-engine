@@ -1,3 +1,4 @@
+import type { CandleIngestTimeframe } from "../../contract/v1/types.js";
 import type { GeckoCollectorConfig } from "./config.js";
 import { HttpError, ProtocolError, RequestTimeoutError, RequestTransportError } from "./retry.js";
 import { readTextWithLimit, parseJson, readErrorBody } from "./httpUtils.js";
@@ -9,7 +10,10 @@ export type GeckoClientDeps = {
   shutdownSignal?: AbortSignal;
 };
 
-const TIMEFRAME_TO_GECKO_PATH_PARAMS: Record<string, { path: string; aggregate: string }> = {
+const TIMEFRAME_TO_GECKO_PATH_PARAMS: Record<
+  CandleIngestTimeframe,
+  { path: string; aggregate: string }
+> = {
   "15m": { path: "minute", aggregate: "15" }
 };
 

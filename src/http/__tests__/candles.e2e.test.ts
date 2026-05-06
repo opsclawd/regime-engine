@@ -126,4 +126,43 @@ describe("POST /v1/candles", () => {
     expect(res.statusCode).toBe(400);
     expect(res.json().error.code).toBe("BATCH_TOO_LARGE");
   });
+
+  it("returns 400 VALIDATION_ERROR when timeframe is 1h", async () => {
+    process.env.LEDGER_DB_PATH = tempDb();
+    process.env.CANDLES_INGEST_TOKEN = "test-token";
+    const app = buildApp();
+    const res = await app.inject({
+      method: "POST",
+      url: "/v1/candles",
+      headers: { "X-Candles-Ingest-Token": "test-token" },
+      payload: makePayload({ timeframe: "1h" })
+    });
+    expect(res.statusCode).toBe(400);
+    expect(res.json().error.code).toBe("VALIDATION_ERROR");
+  });
+
+  it("returns 400 MALFORMED_CANDLE when unixMs is not aligned to 15m boundary", async () => {
+    process.env.LEDGER_DB_PATH = tempDb();
+    process.env.CANDLES_INGEST_TOKEN = "test-token";
+    const app = buildApp();
+    const res = await app.inject({
+      method: "POST",
+      url: "/v1/candles",
+      headers: { "X-Candles-Ingest-Token": "test-token" },
+      payload: makePayload({
+        candles: [
+          {
+            unixMs: FIFTEEN_MIN_MS + 60 * 1000,
+            open: 100,
+            high: 110,
+            low: 95,
+            close: 105,
+            volume: 1
+          }
+        ]
+      })
+    });
+    expect(res.statusCode).toBe(400);
+    expect(res.json().error.code).toBe("MALFORMED_CANDLE");
+  });
 });
