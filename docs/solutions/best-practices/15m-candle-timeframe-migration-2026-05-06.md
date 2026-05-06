@@ -1,6 +1,7 @@
 ---
 title: 15m Candle Timeframe Migration Pattern
 date: 2026-05-06
+last_updated: 2026-05-06
 category: best-practices
 module: engine
 problem_type: best_practice
@@ -172,11 +173,55 @@ const ONE_HOUR_MS = 3600000;
 const FIFTEEN_MIN_MS = 900000;
 ```
 
+### 7. Watch for value-level errors that type narrowing cannot catch
+
+Type aliases enforce structural correctness, but they cannot catch value errors when a constant name conveys the wrong semantics. During this migration, `MARKET_REGIME_CONFIG["15m"].timeframeMs` was accidentally set to `ONE_HOUR_MS` (3,600,000) instead of the new `FIFTEEN_MIN_MS` constant (900,000). The type system accepted both values because `timeframeMs` is typed as `number`, not as a branded 15m-specific millisecond literal.
+
+Mitigation strategies:
+
+```ts
+// Option A: Derive timeframeMs from the timeframe literal, so it cannot diverge
+const FIFTEEN_MIN_MS = 15 * 60 * 1000; // only one source of truth
+export const MARKET_REGIME_CONFIG: Record<"15m", MarketTimeframeConfig> = {
+  "15m": {
+    timeframe: "15m",
+    timeframeMs: FIFTEEN_MIN_MS
+    // ...
+  }
+};
+
+// Option B: Add a config sanity test so regressions are caught immediately
+import { MARKET_REGIME_CONFIG } from "./config.js";
+expect(MARKET_REGIME_CONFIG["15m"].timeframeMs).toBe(15 * 60 * 1000);
+```
+
+Option B (a config sanity test) caught the bug during code review. Both options are complementary.
+
+### 8. Some timeframe fields remain intentionally loose
+
+Not every `timeframe` field should be narrowed to a literal type. When a field is consumed by timeframe-agnostic logic (e.g., plan computation that trusts the caller's candle data regardless of granularity), keeping it as `string` preserves forward compatibility without sacrificing safety:
+
+```ts
+export interface PlanRequest {
+  market: {
+    // Deliberately loose — plan computation is timeframe-agnostic;
+    // only the candle ingestion and regime-read endpoints enforce
+    // CandleIngestTimeframe / RegimeReadTimeframe.
+    timeframe: string;
+    candles: Candle[];
+  };
+}
+```
+
+Document the rationale inline so future contributors don't "fix" it without understanding the tradeoff.
+
 ## Why This Matters
 
 Coarser timeframes caused the regime engine to detect transitions late — a regime shift visible in 15-minute OHLCV data wouldn't appear until the hourly candle closed, delaying rebalancing by up to 45 minutes. With 15m granularity, the engine gets 4x more data points per hour, enabling faster regime detection.
 
 The type-safe migration pattern prevents partial updates. If you change `CandleIngestTimeframe` from `"1h"` to `"15m"` but forget to update a consumer, the type checker flags it at compile time. The `ProtocolError` rejection pattern prevents runtime fallbacks to stale values. Together, they ensure the migration is all-or-nothing: no code path can still reference `"1h"` without either a type error or a runtime validation rejection.
+
+However, type narrowing cannot catch value-level errors where a constant name conveys the wrong semantics (see Section 7). Pair type-level enforcement with config sanity tests that assert specific millisecond values, especially when the unit of measurement changes.
 
 ## When to Apply
 
