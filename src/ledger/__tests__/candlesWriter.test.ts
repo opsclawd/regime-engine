@@ -88,7 +88,6 @@ describe("writeCandles", () => {
       network: "solana-mainnet",
       poolAddress: "Pool111",
       timeframe: "15m",
-      timeframeMs: FIFTEEN_MIN_MS,
       closedCandleCutoffUnixMs: 10 * FIFTEEN_MIN_MS,
       limit: 100
     });

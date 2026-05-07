@@ -244,7 +244,6 @@ export interface GetLatestCandlesParams {
   network: string;
   poolAddress: string;
   timeframe: string;
-  timeframeMs: number;
   closedCandleCutoffUnixMs: number;
   limit: number;
 }

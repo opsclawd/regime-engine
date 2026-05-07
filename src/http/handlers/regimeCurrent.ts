@@ -31,7 +31,6 @@ export const createRegimeCurrentHandler = (store: LedgerStore, candleStore?: Can
             network: query.network,
             poolAddress: query.poolAddress,
             timeframe: plan.sourceTimeframe,
-            timeframeMs: MARKET_REGIME_CONFIG[plan.sourceTimeframe].timeframeMs,
             closedCandleCutoffUnixMs: plan.sourceCutoffUnixMs,
             limit: plan.sourceLimit
           })
@@ -41,7 +40,6 @@ export const createRegimeCurrentHandler = (store: LedgerStore, candleStore?: Can
             network: query.network,
             poolAddress: query.poolAddress,
             timeframe: plan.sourceTimeframe,
-            timeframeMs: MARKET_REGIME_CONFIG[plan.sourceTimeframe].timeframeMs,
             closedCandleCutoffUnixMs: plan.sourceCutoffUnixMs,
             limit: plan.sourceLimit
           });
