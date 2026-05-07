@@ -24,6 +24,12 @@ export interface BuildRegimeCurrentInput {
   config: MarketTimeframeConfig;
   configVersion: string;
   engineVersion: string;
+  metadata: {
+    sourceTimeframe: string;
+    sourceCandleCount: number;
+    derivedTimeframe?: string;
+    aggregationVersion?: string;
+  };
 }
 
 const buildMarketReasons = (
@@ -75,7 +81,7 @@ export const buildRegimeCurrent = (input: BuildRegimeCurrentInput): RegimeCurren
   if (input.candles.length === 0) {
     throw new Error("buildRegimeCurrent requires at least one candle");
   }
-  const { feed, candles, nowUnixMs, config, configVersion, engineVersion } = input;
+  const { feed, candles, nowUnixMs, config, configVersion, engineVersion, metadata } = input;
 
   const telemetry = computeIndicators(candles, config.indicators);
   const { regime, reasons: regimeReasons } = classifyMarketRegime(telemetry, config.regime);
@@ -116,7 +122,15 @@ export const buildRegimeCurrent = (input: BuildRegimeCurrentInput): RegimeCurren
     metadata: {
       engineVersion,
       configVersion,
-      candleCount: candles.length
+      candleCount: candles.length,
+      sourceTimeframe: metadata.sourceTimeframe,
+      sourceCandleCount: metadata.sourceCandleCount,
+      ...(metadata.derivedTimeframe !== undefined
+        ? { derivedTimeframe: metadata.derivedTimeframe }
+        : {}),
+      ...(metadata.aggregationVersion !== undefined
+        ? { aggregationVersion: metadata.aggregationVersion }
+        : {})
     }
   };
 };

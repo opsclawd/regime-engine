@@ -223,7 +223,7 @@ export interface SrLevelsCurrentResponse {
 }
 
 export type CandleIngestTimeframe = "15m";
-export type RegimeReadTimeframe = "15m";
+export type RegimeReadTimeframe = "15m" | "1h";
 
 export type ClmmSuitabilityStatus = "ALLOWED" | "CAUTION" | "BLOCKED" | "UNKNOWN";
 
@@ -307,6 +307,10 @@ export interface RegimeCurrentMetadata {
   engineVersion: string;
   configVersion: string;
   candleCount: number;
+  sourceTimeframe: string;
+  sourceCandleCount: number;
+  derivedTimeframe?: string;
+  aggregationVersion?: string;
 }
 
 export interface RegimeCurrentResponse {

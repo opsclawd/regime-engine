@@ -14,6 +14,7 @@ import {
   type ClmmExecutionEventRequest,
   type ExecutionResultRequest,
   type PlanRequest,
+  type RegimeReadTimeframe,
   type SrLevelBriefRequest
 } from "./types.js";
 
@@ -278,7 +279,7 @@ export const parseClmmExecutionEventRequest = (raw: unknown): ClmmExecutionEvent
 };
 
 const CANDLE_INGEST_TIMEFRAMES = ["15m"] as const;
-const REGIME_READ_TIMEFRAMES = ["15m"] as const;
+const REGIME_READ_TIMEFRAMES = ["15m", "1h"] as const;
 
 const CANDLE_INGEST_TIMEFRAME_TO_MS: Record<CandleIngestTimeframe, number> = {
   "15m": 15 * 60 * 1000
@@ -422,7 +423,7 @@ export const parseRegimeCurrentQuery = (
   source: string;
   network: string;
   poolAddress: string;
-  timeframe: "15m";
+  timeframe: RegimeReadTimeframe;
 } => {
   const parsed = regimeCurrentQuerySchema.safeParse(raw);
   if (!parsed.success) {

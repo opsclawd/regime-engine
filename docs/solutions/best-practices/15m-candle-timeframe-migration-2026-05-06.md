@@ -1,7 +1,7 @@
 ---
 title: 15m Candle Timeframe Migration Pattern
 date: 2026-05-06
-last_updated: 2026-05-06
+last_updated: 2026-05-07
 category: best-practices
 module: engine
 problem_type: best_practice
@@ -43,7 +43,7 @@ type SupportedTimeframe = "1h";
 
 // After: purpose-specific types that the compiler can track independently
 export type CandleIngestTimeframe = "15m";
-export type RegimeReadTimeframe = "15m";
+export type RegimeReadTimeframe = "15m" | "1h"; // widened in m42 for derived reads
 ```
 
 Then constrain each interface to its own type:
@@ -54,7 +54,7 @@ export interface CandleIngestRequest {
 }
 
 export interface RegimeCurrentResponse {
-  timeframe: RegimeReadTimeframe; // only accepts "15m" for read
+  timeframe: RegimeReadTimeframe; // "15m" for direct, "1h" for derived reads (m42)
 }
 ```
 
@@ -70,7 +70,7 @@ const SUPPORTED_TIMEFRAMES = ["1h"] as const;
 
 // After: separate allowlists per endpoint
 const CANDLE_INGEST_TIMEFRAMES = ["15m"] as const;
-const REGIME_READ_TIMEFRAMES = ["15m"] as const;
+const REGIME_READ_TIMEFRAMES = ["15m", "1h"] as const;
 
 const CANDLE_INGEST_TIMEFRAME_TO_MS: Record<CandleIngestTimeframe, number> = {
   "15m": 15 * 60 * 1000
@@ -85,11 +85,11 @@ const candleIngestRequestSchema = z.object({
 });
 
 const regimeCurrentQuerySchema = z.object({
-  timeframe: z.enum(REGIME_READ_TIMEFRAMES) // rejects "1h" with VALIDATION_ERROR
+  timeframe: z.enum(REGIME_READ_TIMEFRAMES) // accepts "15m" and "1h" (1h via derived aggregation)
 });
 ```
 
-Add a comment like `// until #42` at rejection points so future maintainers know the value is intentionally excluded, not accidentally omitted.
+Add a comment like `// until #<milestone>` at rejection points so future maintainers know the value is intentionally excluded, not accidentally omitted. Remove these comments once the milestone lands and the value is accepted.
 
 ### 3. Hard-reject unsupported timeframes in workers (no silent fallbacks)
 
@@ -182,10 +182,15 @@ Mitigation strategies:
 ```ts
 // Option A: Derive timeframeMs from the timeframe literal, so it cannot diverge
 const FIFTEEN_MIN_MS = 15 * 60 * 1000; // only one source of truth
-export const MARKET_REGIME_CONFIG: Record<"15m", MarketTimeframeConfig> = {
+export const MARKET_REGIME_CONFIG: Record<RegimeReadTimeframe, MarketTimeframeConfig> = {
   "15m": {
     timeframe: "15m",
     timeframeMs: FIFTEEN_MIN_MS
+    // ...
+  },
+  "1h": {
+    timeframe: "1h",
+    timeframeMs: ONE_HOUR_MS
     // ...
   }
 };
@@ -223,6 +228,8 @@ The type-safe migration pattern prevents partial updates. If you change `CandleI
 
 However, type narrowing cannot catch value-level errors where a constant name conveys the wrong semantics (see Section 7). Pair type-level enforcement with config sanity tests that assert specific millisecond values, especially when the unit of measurement changes.
 
+**Note (m42 update):** `RegimeReadTimeframe` has since been widened to `"15m" | "1h"` to support derived 1h reads. The candle-ingest path still only accepts `"15m"`. The handler now uses `buildRegimeCandleReadPlan` to compute read parameters and `aggregate15mTo1h` for derived aggregation — see [Derived Timeframe Aggregation Pattern](./derived-candle-aggregation-pattern-2026-05-06.md) for the current handler structure.
+
 ## When to Apply
 
 - Any timeframe or granularity change in a data pipeline where the old value appears in types, validation, URL construction, normalization, and documentation.
@@ -250,7 +257,7 @@ const SUPPORTED_TIMEFRAMES = ["1h"] as const;
 
 // validation.ts — After
 const CANDLE_INGEST_TIMEFRAMES = ["15m"] as const;
-const REGIME_READ_TIMEFRAMES = ["15m"] as const;
+const REGIME_READ_TIMEFRAMES = ["15m", "1h"] as const;
 
 const CANDLE_INGEST_TIMEFRAME_TO_MS: Record<CandleIngestTimeframe, number> = {
   "15m": 15 * 60 * 1000
@@ -311,4 +318,5 @@ if (timeframeMs === undefined) {
 - [Fastify SQLite Ingestion Endpoint Patterns](../best-practices/fastify-sqlite-ingestion-endpoint-patterns-2026-04-18.md) — auth, idempotency, and error taxonomy for ingestion endpoints. The timeframe allowlist pattern extends these validation patterns.
 - [TypeScript Strict Tooling Friction Patterns](../developer-experience/typescript-strict-tooling-friction-patterns-2026-05-01.md) — type guards for GeckoTerminal API payloads and test fixture alignment. Shares the gecko worker module.
 - GitHub #41 — "Switch Gecko candle ingestion and regime pipeline to 15m candles" (the milestone this migration completed)
-- GitHub #42 — "Add derived 1h candle aggregation from canonical 15m candles" (future work, referenced by `// until #42` comments)
+- [Derived Timeframe Aggregation Pattern](./derived-candle-aggregation-pattern-2026-05-06.md) — the m42 follow-up that implemented derived 1h reads by aggregating stored 15m candles at request time
+- GitHub #42 — "Add derived 1h candle aggregation from canonical 15m candles" (now implemented; see derived aggregation pattern)

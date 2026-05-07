@@ -201,7 +201,7 @@ export const getLatestCandlesForFeed = (
           WHERE symbol = ? AND source = ? AND network = ?
             AND pool_address = ? AND timeframe = ?
             AND unix_ms <= ?
-       )
+        )
        SELECT unix_ms, open, high, low, close, volume
          FROM (
            SELECT unix_ms, open, high, low, close, volume

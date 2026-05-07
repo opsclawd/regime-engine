@@ -1,7 +1,9 @@
+import type { RegimeReadTimeframe } from "../../contract/v1/types.js";
+
 export const MARKET_REGIME_CONFIG_VERSION = "market-regime-2.0.0" as const;
 
 export interface MarketTimeframeConfig {
-  timeframe: "15m";
+  timeframe: RegimeReadTimeframe;
   timeframeMs: number;
   indicators: {
     volShortWindow: number;
@@ -32,8 +34,9 @@ export interface MarketTimeframeConfig {
 }
 
 const FIFTEEN_MIN_MS = 15 * 60 * 1000;
+const ONE_HOUR_MS = 60 * 60 * 1000;
 
-export const MARKET_REGIME_CONFIG: Record<"15m", MarketTimeframeConfig> = {
+export const MARKET_REGIME_CONFIG: Record<RegimeReadTimeframe, MarketTimeframeConfig> = {
   "15m": {
     timeframe: "15m",
     timeframeMs: FIFTEEN_MIN_MS,
@@ -62,6 +65,36 @@ export const MARKET_REGIME_CONFIG: Record<"15m", MarketTimeframeConfig> = {
       closedCandleDelayMs: 2 * 60 * 1000,
       softStaleMs: 25 * 60 * 1000,
       hardStaleMs: 35 * 60 * 1000
+    }
+  },
+  "1h": {
+    timeframe: "1h",
+    timeframeMs: ONE_HOUR_MS,
+    indicators: {
+      volShortWindow: 8,
+      volLongWindow: 21,
+      trendWindow: 14,
+      compressionWindow: 20
+    },
+    regime: {
+      confirmBars: 1,
+      minHoldBars: 0,
+      enterUpTrend: 0.6,
+      exitUpTrend: 0.35,
+      enterDownTrend: -0.6,
+      exitDownTrend: -0.35,
+      chopVolRatioMax: 1.4
+    },
+    suitability: {
+      allowedVolRatioMax: 1.3,
+      extremeVolRatio: 1.6,
+      extremeCompression: 0.18,
+      minCandles: 30
+    },
+    freshness: {
+      closedCandleDelayMs: 5 * 60 * 1000,
+      softStaleMs: 75 * 60 * 1000,
+      hardStaleMs: 90 * 60 * 1000
     }
   }
 };

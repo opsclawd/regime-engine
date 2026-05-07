@@ -8,10 +8,9 @@ import {
   MARKET_REGIME_CONFIG,
   MARKET_REGIME_CONFIG_VERSION
 } from "../../engine/marketRegime/config.js";
-import { closedCandleCutoffUnixMs } from "../../engine/marketRegime/closedCandleCutoff.js";
 import { buildRegimeCurrent } from "../../engine/marketRegime/buildRegimeCurrent.js";
-
-const READ_BUFFER = 50;
+import { buildRegimeCandleReadPlan } from "../../engine/marketRegime/regimeCandleReadPlan.js";
+import { aggregate15mTo1h } from "../../engine/candles/aggregateCandles.js";
 
 export const createRegimeCurrentHandler = (store: LedgerStore, candleStore?: CandleStore) => {
   return async (request: FastifyRequest, reply: FastifyReply) => {
@@ -20,42 +19,70 @@ export const createRegimeCurrentHandler = (store: LedgerStore, candleStore?: Can
       const config = MARKET_REGIME_CONFIG[query.timeframe];
 
       const nowUnixMs = Date.now();
-      const cutoff = closedCandleCutoffUnixMs(
-        nowUnixMs,
-        config.timeframeMs,
-        config.freshness.closedCandleDelayMs
-      );
-      const limit =
-        Math.max(config.indicators.volLongWindow, config.suitability.minCandles) + READ_BUFFER;
+      const plan = buildRegimeCandleReadPlan({
+        requestedTimeframe: query.timeframe,
+        nowUnixMs
+      });
 
-      const candles = candleStore
+      const sourceCandles = candleStore
         ? await candleStore.getLatestCandlesForFeed({
             symbol: query.symbol,
             source: query.source,
             network: query.network,
             poolAddress: query.poolAddress,
-            timeframe: query.timeframe,
-            closedCandleCutoffUnixMs: cutoff,
-            limit
+            timeframe: plan.sourceTimeframe,
+            closedCandleCutoffUnixMs: plan.sourceCutoffUnixMs,
+            limit: plan.sourceLimit
           })
-        : await Promise.resolve(
-            getLatestCandlesForFeed(store, {
-              symbol: query.symbol,
-              source: query.source,
-              network: query.network,
-              poolAddress: query.poolAddress,
-              timeframe: query.timeframe,
-              closedCandleCutoffUnixMs: cutoff,
-              limit
-            })
-          );
+        : getLatestCandlesForFeed(store, {
+            symbol: query.symbol,
+            source: query.source,
+            network: query.network,
+            poolAddress: query.poolAddress,
+            timeframe: plan.sourceTimeframe,
+            closedCandleCutoffUnixMs: plan.sourceCutoffUnixMs,
+            limit: plan.sourceLimit
+          });
 
-      if (candles.length === 0) {
+      if (sourceCandles.length === 0) {
         throw candlesNotFoundError(
           `No closed candles found for symbol="${query.symbol}", source="${query.source}", ` +
             `network="${query.network}", poolAddress="${query.poolAddress}", ` +
-            `timeframe="${query.timeframe}".`
+            `sourceTimeframe="${plan.sourceTimeframe}", requestedTimeframe="${query.timeframe}".`,
+          [
+            {
+              code: "NO_SOURCE_CANDLES",
+              path: "$.sourceTimeframe",
+              message: "No source candles found before the freshness cutoff"
+            }
+          ]
         );
+      }
+
+      let candlesToClassify = sourceCandles;
+
+      if (plan.mode === "derived") {
+        const { candles: aggregated, telemetry } = aggregate15mTo1h(sourceCandles);
+        candlesToClassify = aggregated.filter(
+          (candle) => candle.unixMs <= plan.derivedCutoffUnixMs
+        );
+        if (candlesToClassify.length === 0) {
+          throw candlesNotFoundError(
+            `No complete derived 1h candles available before the 1h freshness cutoff for ` +
+              `symbol="${query.symbol}", source="${query.source}", network="${query.network}", ` +
+              `poolAddress="${query.poolAddress}".`,
+            [
+              {
+                code: "NO_DERIVED_CANDLES_AFTER_AGGREGATION",
+                path: "$.derivedTimeframe",
+                message:
+                  `Aggregation produced ${telemetry.completeBuckets} complete 1h buckets but none before the cutoff. ` +
+                  `Skipped: ${telemetry.skippedIncomplete} incomplete, ${telemetry.skippedGapInBucket} gaps, ` +
+                  `${telemetry.skippedMisaligned} misaligned, ${telemetry.skippedNonInteger} non-integer`
+              }
+            ]
+          );
+        }
       }
 
       const response = buildRegimeCurrent({
@@ -66,11 +93,15 @@ export const createRegimeCurrentHandler = (store: LedgerStore, candleStore?: Can
           poolAddress: query.poolAddress,
           timeframe: query.timeframe
         },
-        candles,
+        candles: candlesToClassify,
         nowUnixMs,
         config,
         configVersion: MARKET_REGIME_CONFIG_VERSION,
-        engineVersion: process.env.npm_package_version ?? "0.0.0"
+        engineVersion: process.env.npm_package_version ?? "0.0.0",
+        metadata: {
+          ...plan.sourceMetadata,
+          sourceCandleCount: sourceCandles.length
+        }
       });
 
       return reply.code(200).send(response);

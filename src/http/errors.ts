@@ -23,7 +23,9 @@ export const ERROR_DETAIL_CODES = {
   INVALID_TYPE: "INVALID_TYPE",
   INVALID_VALUE: "INVALID_VALUE",
   OUT_OF_RANGE: "OUT_OF_RANGE",
-  UNKNOWN_KEY: "UNKNOWN_KEY"
+  UNKNOWN_KEY: "UNKNOWN_KEY",
+  NO_SOURCE_CANDLES: "NO_SOURCE_CANDLES",
+  NO_DERIVED_CANDLES_AFTER_AGGREGATION: "NO_DERIVED_CANDLES_AFTER_AGGREGATION"
 } as const;
 
 export type ErrorDetailCode = (typeof ERROR_DETAIL_CODES)[keyof typeof ERROR_DETAIL_CODES];
@@ -209,9 +211,12 @@ export const duplicateCandleInBatchError = (
   });
 };
 
-export const candlesNotFoundError = (message: string): ContractValidationError => {
+export const candlesNotFoundError = (
+  message: string,
+  details: ErrorDetail[] = []
+): ContractValidationError => {
   return new ContractValidationError(404, {
     schemaVersion: SCHEMA_VERSION,
-    error: { code: ERROR_CODES.CANDLES_NOT_FOUND, message, details: [] }
+    error: { code: ERROR_CODES.CANDLES_NOT_FOUND, message, details }
   });
 };
