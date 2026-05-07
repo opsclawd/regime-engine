@@ -6,7 +6,7 @@ module: engine
 problem_type: best_practice
 component: service_object
 severity: low
-last_updated: "2026-05-06"
+last_updated: "2026-05-07"
 applies_when:
   - Adding candle ingestion endpoints with per-slot decision trees in SQLite
   - Building stateless regime classification read endpoints from raw ledger data
@@ -97,10 +97,14 @@ A candle is only eligible for regime computation if it's **closed** — enough t
 
 ```typescript
 // src/engine/marketRegime/closedCandleCutoff.ts
-function closedCandleCutoffUnixMs(asOfUnixMs: number, timeframe: Timeframe): number {
-  const timeframeMs = timeframe * 60 * 1000;
-  const GRACE_WINDOW_MS = 5 * 60 * 1000; // 5 minutes
-  return asOfUnixMs - timeframeMs - GRACE_WINDOW_MS;
+// Signature updated in m42 — now takes explicit params, not a Timeframe enum
+function closedCandleCutoffUnixMs(
+  nowUnixMs: number,
+  timeframeMs: number,
+  closedCandleDelayMs: number
+): number {
+  // Snaps to bar boundaries, then subtracts one full bar + grace delay
+  return Math.floor((nowUnixMs - closedCandleDelayMs) / timeframeMs) * timeframeMs - timeframeMs;
 }
 // A 15m candle at slot 14:00 is closed after 14:20 (one period + 5min grace)
 ```
@@ -109,47 +113,60 @@ Why a grace window instead of a strict boundary:
 
 - Candle providers often lag by 1-2 minutes
 - A strict `asOf - timeframeMs` would exclude candles that are complete but not yet ingested
-- 5 minutes gives enough slack for ingestion pipeline delays without letting truly half-formed data through
+- The `closedCandleDelayMs` parameter makes the grace window configurable per timeframe
 
 ### 3. Freshness Classification from Candle Age
 
-Once you know which candles are closed, classify how fresh the latest one is:
+Once you know which candles are closed, classify how fresh the latest one is. Freshness is now a structured result with boolean flags and numeric thresholds, configurable per timeframe:
 
 ```typescript
 // src/engine/marketRegime/freshness.ts
-type Freshness = "fresh" | "soft-stale" | "hard-stale";
-
+// Returns a FreshnessResult object with softStale/hardStale booleans and numeric fields
+// Thresholds come from MARKET_REGIME_CONFIG[timeframe].freshness
 function computeFreshness(
   latestClosedUnixMs: number,
-  asOfUnixMs: number,
-  timeframe: Timeframe
-): Freshness {
-  const ageMs = asOfUnixMs - latestClosedUnixMs;
-  const timeframeMs = timeframe * 60 * 1000;
-
-  if (ageMs < 2 * timeframeMs) return "fresh"; // < 30m for 15m
-  if (ageMs < 4 * timeframeMs) return "soft-stale"; // 30m-1h for 15m
-  return "hard-stale"; // > 1h for 15m
+  nowUnixMs: number,
+  freshnessConfig: FreshnessConfig
+): FreshnessResult {
+  // softStale: age exceeds soft threshold
+  // hardStale: age exceeds hard threshold
+  // Also provides ageSeconds, softStaleSeconds, hardStaleSeconds for telemetry
 }
 ```
 
 This is a **pure function** — no state, no DB, no side effects. It feeds directly into suitability scoring.
 
+**Note (m42):** For derived 1h reads, the handler uses `buildRegimeCandleReadPlan` which computes separate cutoffs for source (15m) and derived (1h) timeframes. The freshness classification uses the derived timeframe's thresholds when aggregation is applied.
+
 ### 4. Four-Band CLMM Suitability with Band Precedence
 
-Suitability uses a precedence-ordered four-band model. The highest-severity band wins, and reasons accumulate **only within the winning band**.
+Suitability uses precedence-ordered bands. The highest-severity band wins. The implementation uses early-return logic rather than a band array:
 
 ```typescript
 // src/engine/marketRegime/evaluateMarketClmmSuitability.ts
-type SuitabilityBand = "ALLOWED" | "CAUTION" | "BLOCKED" | "UNKNOWN";
-const BAND_PRECEDENCE: SuitabilityBand[] = ["UNKNOWN", "BLOCKED", "CAUTION", "ALLOWED"];
+// Semantics: UNKNOWN > BLOCKED > CAUTION > ALLOWED
+// Implementation: early returns check minCandles/hardStale first, then blocks, then cautions
 
-// Each condition pushes a reason into the appropriate band
-// Then the first non-empty band in precedence order wins
-for (const band of BAND_PRECEDENCE) {
-  if (bands[band].length > 0) {
-    return { band, reasons: bands[band] };
-  }
+function evaluateMarketClmmSuitability(
+  regime: MarketRegime,
+  freshnessResult: FreshnessResult,
+  candleCount: number,
+  config: FreshnessConfig
+): ClmmSuitability {
+  // UNKNOWN: insufficient data (too few candles or hard-stale data)
+  if (candleCount < config.minCandles) return { band: "UNKNOWN", reasons: [...] };
+  if (freshnessResult.hardStale) return { band: "UNKNOWN", reasons: [...] };
+
+  // BLOCKED: regime conditions make CLMM unsafe
+  const blockedReasons = [...];
+  if (blockedReasons.length > 0) return { band: "BLOCKED", reasons: blockedReasons };
+
+  // CAUTION: data quality concerns but regime allows
+  const cautionReasons = [...];
+  if (cautionReasons.length > 0) return { band: "CAUTION", reasons: cautionReasons };
+
+  // ALLOWED: all clear
+  return { band: "ALLOWED", reasons: [...] };
 }
 ```
 
@@ -160,10 +177,11 @@ Critical design rule: **a single `BLOCKED` reason makes the entire result `BLOCK
 The `/v1/regime/current` endpoint computes everything from raw candle data on every request. No regime state is persisted. The pipeline is:
 
 ```
-parseQuery → getLatestCandlesForFeed → closedCandleCutoff → freshness
-           → computeIndicators → classifyMarketRegime → evaluateClmmSuitability
-           → response
+parseRegimeCurrentQuery → buildRegimeCandleReadPlan → getLatestCandlesForFeed
+  → [aggregate15mTo1h if derived] → buildRegimeCurrent → response
 ```
+
+`buildRegimeCandleReadPlan` replaces the handler-level cutoff and limit computation. It produces a `RegimeCandleReadPlan` (discriminated union: `direct` or `derived` mode) with all read parameters: source cutoff, source limit, derived cutoff (if applicable), and source metadata. For derived 1h reads, the handler aggregates 15m candles into 1h buckets before passing them to `buildRegimeCurrent`. See [Derived Timeframe Aggregation Pattern](./derived-candle-aggregation-pattern-2026-05-06.md).
 
 This pattern trades compute cost for correctness guarantees:
 
@@ -176,20 +194,22 @@ The trade-off: every request does a DB read + indicator computation. For a micro
 
 ### 6. Market-Only Classification is Deliberately Simplified
 
-`classifyMarketRegime` wraps `classifyRegime` with locked parameters:
+`classifyMarketRegime` wraps `classifyRegime` with config-driven parameters:
 
 ```typescript
 // src/engine/marketRegime/classifyMarketRegime.ts
-function classifyMarketRegime(indicators: Indicators, config: MarketRegimeConfig): Regime {
-  return classifyRegime(indicators, {
-    state: undefined, // always stateless — no hysteresis carryover
-    confirmBars: 1, // immediate classification
-    minHoldBars: 0 // no minimum hold — market regime can flip on next call
-  });
+function classifyMarketRegime(
+  telemetry: IndicatorTelemetry,
+  config: MarketTimeframeConfig["regime"]
+): Regime {
+  // Loops classifyRegime for config.confirmBars iterations
+  // 15m config: confirmBars=2 (one confirmation bar required)
+  // 1h config: confirmBars=1 (immediate classification)
+  // minHoldBars=0 for both — market regime can flip on next call
 }
 ```
 
-This deliberately disables two features of the full classifier:
+This deliberately provides some confirmation for 15m (confirmBars=2) while keeping 1h immediate (confirmBars=1), but disables portfolio-level hysteresis for both:
 
 - `confirmBars: 1` means **no REGIME_CONFIRM_PENDING** — the market regime is always resolved
 - `minHoldBars: 0` means **no REGIME_MIN_HOLD_ACTIVE** — the market regime can flip freely
@@ -252,10 +272,13 @@ Full pipeline with autopilot state, hysteresis, and plan ledger writes. No way t
 
 ```typescript
 // GET /v1/regime/current?symbol=SOL&source=coingecko&network=mainnet&poolAddress=...&timeframe=15m
+// GET /v1/regime/current?symbol=SOL&source=coingecko&network=mainnet&poolAddress=...&timeframe=1h
 // No auth, no ledger writes, stateless computation
 const query = parseRegimeCurrentQuery(request.query);
-const candles = getLatestCandlesForFeed(store, query);
-const regimeCurrent = buildRegimeCurrent(candles, query.asOf);
+const plan = buildRegimeCandleReadPlan({ requestedTimeframe: query.timeframe, nowUnixMs });
+// Read 15m candles always (1h derives from them at read time)
+const candles = await getLatestCandlesForFeed(store, { ...query, ...plan });
+const regimeCurrent = buildRegimeCurrent({ candles, metadata: { ...plan.sourceMetadata, sourceCandleCount: candles.length }, ... });
 ```
 
 ### Four-band suitability in practice
@@ -280,8 +303,8 @@ Input: regime=UP, freshness=soft-stale
 - [Fastify+SQLite Ingestion Endpoint Patterns](./fastify-sqlite-ingestion-endpoint-patterns-2026-04-18.md) — Shared auth, idempotency, and transaction patterns that the candle endpoint follows
 - [Regime-engine Deploy Docs Gap](../documentation-gaps/regime-engine-deploy-docs-smoke-tests-runbook-2026-04-19.md) — Deploy readiness and operational verification for the full API surface including these new endpoints
 - `src/engine/marketRegime/config.ts` — Committed per-timeframe config (15m primary; 1h derived via aggregation, see [Derived Timeframe Aggregation Pattern](./derived-candle-aggregation-pattern-2026-05-06.md))
-- `src/engine/candles/aggregateCandles.ts` — Pure OHLCV aggregation utility for derived timeframes
-- `src/engine/marketRegime/regimeCandleReadPlan.ts` — Read-plan abstraction for direct vs derived candle reads
+- `src/engine/candles/aggregateCandles.ts` — Pure OHLCV 15m→1h aggregation utility with telemetry
+- `src/engine/marketRegime/regimeCandleReadPlan.ts` — Read-plan abstraction (discriminated union: direct vs derived)
 - `src/ledger/candlesWriter.ts` — Per-slot decision tree + `BEGIN IMMEDIATE`
 - `src/engine/marketRegime/evaluateMarketClmmSuitability.ts` — Four-band decision tree
 - GitHub #17 — "Add market-data-backed current regime endpoint for CLMM Regime page"
