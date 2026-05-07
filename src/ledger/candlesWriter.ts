@@ -189,6 +189,7 @@ export const getLatestCandlesForFeed = (
   store: LedgerStore,
   params: GetLatestCandlesParams
 ): CandleRow[] => {
+  const lookbackUnixMs = params.closedCandleCutoffUnixMs - params.limit * params.timeframeMs;
   const rows = store.db
     .prepare(
       `WITH latest_per_slot AS (
@@ -201,6 +202,7 @@ export const getLatestCandlesForFeed = (
           WHERE symbol = ? AND source = ? AND network = ?
             AND pool_address = ? AND timeframe = ?
             AND unix_ms <= ?
+            AND unix_ms >= ?
        )
        SELECT unix_ms, open, high, low, close, volume
          FROM (
@@ -219,6 +221,7 @@ export const getLatestCandlesForFeed = (
       params.poolAddress,
       params.timeframe,
       params.closedCandleCutoffUnixMs,
+      lookbackUnixMs,
       params.limit
     ) as Array<{
     unix_ms: number;

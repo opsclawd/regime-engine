@@ -11,6 +11,10 @@ describe("buildRegimeCandleReadPlan(15m)", () => {
     nowUnixMs: NOW
   });
 
+  it("returns mode direct", () => {
+    expect(plan.mode).toBe("direct");
+  });
+
   it("uses 15m as the stored source timeframe", () => {
     expect(plan.sourceTimeframe).toBe("15m");
   });
@@ -22,18 +26,18 @@ describe("buildRegimeCandleReadPlan(15m)", () => {
     );
   });
 
-  it("does not produce a derived cutoff", () => {
-    expect(plan.derivedCutoffUnixMs).toBeUndefined();
-  });
-
   it("uses sourceLimit = max(volLongWindow, minCandles) + READ_BUFFER", () => {
     const cfg = MARKET_REGIME_CONFIG["15m"];
     const expected = Math.max(cfg.indicators.volLongWindow, cfg.suitability.minCandles) + 50;
     expect(plan.sourceLimit).toBe(expected);
   });
 
-  it("returns direct metadata hints", () => {
-    expect(plan.metadataHints).toEqual({ sourceTimeframe: "15m" });
+  it("returns direct sourceMetadata", () => {
+    expect(plan.sourceMetadata).toEqual({ sourceTimeframe: "15m" });
+  });
+
+  it("does not have derivedCutoffUnixMs on the direct plan", () => {
+    expect("derivedCutoffUnixMs" in plan).toBe(false);
   });
 });
 
@@ -41,6 +45,10 @@ describe("buildRegimeCandleReadPlan(1h)", () => {
   const plan = buildRegimeCandleReadPlan({
     requestedTimeframe: "1h",
     nowUnixMs: NOW
+  });
+
+  it("returns mode derived", () => {
+    expect(plan.mode).toBe("derived");
   });
 
   it("uses 15m as the stored source timeframe", () => {
@@ -55,6 +63,7 @@ describe("buildRegimeCandleReadPlan(1h)", () => {
   });
 
   it("computes derivedCutoffUnixMs from the 1h freshness config", () => {
+    if (plan.mode !== "derived") throw new Error("expected derived mode");
     const cfg = MARKET_REGIME_CONFIG["1h"];
     expect(plan.derivedCutoffUnixMs).toBe(
       closedCandleCutoffUnixMs(NOW, cfg.timeframeMs, cfg.freshness.closedCandleDelayMs)
@@ -69,11 +78,16 @@ describe("buildRegimeCandleReadPlan(1h)", () => {
     expect(plan.sourceLimit).toBe(expected);
   });
 
-  it("returns derived metadata hints", () => {
-    expect(plan.metadataHints).toEqual({
+  it("returns derived sourceMetadata", () => {
+    expect(plan.sourceMetadata).toEqual({
       sourceTimeframe: "15m",
       derivedTimeframe: "1h",
       aggregationVersion: "ohlcv-agg-v1"
     });
+  });
+
+  it("has derivedCutoffUnixMs as a required number (not optional)", () => {
+    if (plan.mode !== "derived") throw new Error("expected derived mode");
+    expect(typeof plan.derivedCutoffUnixMs).toBe("number");
   });
 });

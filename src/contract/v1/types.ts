@@ -244,6 +244,7 @@ export interface GetLatestCandlesParams {
   network: string;
   poolAddress: string;
   timeframe: string;
+  timeframeMs: number;
   closedCandleCutoffUnixMs: number;
   limit: number;
 }
@@ -307,10 +308,10 @@ export interface RegimeCurrentMetadata {
   engineVersion: string;
   configVersion: string;
   candleCount: number;
-  sourceTimeframe: "15m";
+  sourceTimeframe: string;
   sourceCandleCount: number;
-  derivedTimeframe?: "1h";
-  aggregationVersion?: "ohlcv-agg-v1";
+  derivedTimeframe?: string;
+  aggregationVersion?: string;
 }
 
 export interface RegimeCurrentResponse {

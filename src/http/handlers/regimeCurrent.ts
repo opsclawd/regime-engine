@@ -10,7 +10,7 @@ import {
 } from "../../engine/marketRegime/config.js";
 import { buildRegimeCurrent } from "../../engine/marketRegime/buildRegimeCurrent.js";
 import { buildRegimeCandleReadPlan } from "../../engine/marketRegime/regimeCandleReadPlan.js";
-import { aggregateCandles } from "../../engine/candles/aggregateCandles.js";
+import { aggregate15mTo1h } from "../../engine/candles/aggregateCandles.js";
 
 export const createRegimeCurrentHandler = (store: LedgerStore, candleStore?: CandleStore) => {
   return async (request: FastifyRequest, reply: FastifyReply) => {
@@ -31,40 +31,58 @@ export const createRegimeCurrentHandler = (store: LedgerStore, candleStore?: Can
             network: query.network,
             poolAddress: query.poolAddress,
             timeframe: plan.sourceTimeframe,
+            timeframeMs: MARKET_REGIME_CONFIG[plan.sourceTimeframe].timeframeMs,
             closedCandleCutoffUnixMs: plan.sourceCutoffUnixMs,
             limit: plan.sourceLimit
           })
-        : await Promise.resolve(
-            getLatestCandlesForFeed(store, {
-              symbol: query.symbol,
-              source: query.source,
-              network: query.network,
-              poolAddress: query.poolAddress,
-              timeframe: plan.sourceTimeframe,
-              closedCandleCutoffUnixMs: plan.sourceCutoffUnixMs,
-              limit: plan.sourceLimit
-            })
-          );
+        : getLatestCandlesForFeed(store, {
+            symbol: query.symbol,
+            source: query.source,
+            network: query.network,
+            poolAddress: query.poolAddress,
+            timeframe: plan.sourceTimeframe,
+            timeframeMs: MARKET_REGIME_CONFIG[plan.sourceTimeframe].timeframeMs,
+            closedCandleCutoffUnixMs: plan.sourceCutoffUnixMs,
+            limit: plan.sourceLimit
+          });
 
       if (sourceCandles.length === 0) {
         throw candlesNotFoundError(
           `No closed candles found for symbol="${query.symbol}", source="${query.source}", ` +
             `network="${query.network}", poolAddress="${query.poolAddress}", ` +
-            `sourceTimeframe="${plan.sourceTimeframe}", requestedTimeframe="${query.timeframe}".`
+            `sourceTimeframe="${plan.sourceTimeframe}", requestedTimeframe="${query.timeframe}".`,
+          [
+            {
+              code: "NO_SOURCE_CANDLES",
+              path: "$.sourceTimeframe",
+              message: "No source candles found before the freshness cutoff"
+            }
+          ]
         );
       }
 
-      let classifiedCandles = sourceCandles;
-      if (query.timeframe === "1h") {
-        const aggregated = aggregateCandles(sourceCandles, "1h");
-        classifiedCandles = aggregated.filter(
-          (candle) => candle.unixMs <= (plan.derivedCutoffUnixMs as number)
+      let candlesToClassify = sourceCandles;
+
+      if (plan.mode === "derived") {
+        const { candles: aggregated, telemetry } = aggregate15mTo1h(sourceCandles);
+        candlesToClassify = aggregated.filter(
+          (candle) => candle.unixMs <= plan.derivedCutoffUnixMs
         );
-        if (classifiedCandles.length === 0) {
+        if (candlesToClassify.length === 0) {
           throw candlesNotFoundError(
             `No complete derived 1h candles available before the 1h freshness cutoff for ` +
               `symbol="${query.symbol}", source="${query.source}", network="${query.network}", ` +
-              `poolAddress="${query.poolAddress}".`
+              `poolAddress="${query.poolAddress}".`,
+            [
+              {
+                code: "NO_DERIVED_CANDLES_AFTER_AGGREGATION",
+                path: "$.derivedTimeframe",
+                message:
+                  `Aggregation produced ${telemetry.completeBuckets} complete 1h buckets but none before the cutoff. ` +
+                  `Skipped: ${telemetry.skippedIncomplete} incomplete, ${telemetry.skippedGapInBucket} gaps, ` +
+                  `${telemetry.skippedMisaligned} misaligned, ${telemetry.skippedNonInteger} non-integer`
+              }
+            ]
           );
         }
       }
@@ -77,13 +95,13 @@ export const createRegimeCurrentHandler = (store: LedgerStore, candleStore?: Can
           poolAddress: query.poolAddress,
           timeframe: query.timeframe
         },
-        candles: classifiedCandles,
+        candles: candlesToClassify,
         nowUnixMs,
         config,
         configVersion: MARKET_REGIME_CONFIG_VERSION,
         engineVersion: process.env.npm_package_version ?? "0.0.0",
         metadata: {
-          ...plan.metadataHints,
+          ...plan.sourceMetadata,
           sourceCandleCount: sourceCandles.length
         }
       });

@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { buildRegimeCurrent } from "../buildRegimeCurrent.js";
+import { aggregate15mTo1h } from "../../candles/aggregateCandles.js";
 import { MARKET_REGIME_CONFIG } from "../config.js";
 
 const FIFTEEN_MIN_MS = 15 * 60 * 1000;
@@ -74,7 +75,7 @@ describe("buildRegimeCurrent", () => {
     expect(response.marketReasons.map((r) => r.code)).toContain("DATA_HARD_STALE");
   });
 
-  it("merges caller-supplied source/derived metadata fields into the response", () => {
+  it("passes through caller-supplied metadata fields without interpreting them", () => {
     const lastCandleUnixMs = flatCandles[flatCandles.length - 1].unixMs;
     const response = buildRegimeCurrent({
       feed: { ...feed, timeframe: "1h" as const },
@@ -116,5 +117,35 @@ describe("buildRegimeCurrent", () => {
     expect(response.metadata.sourceCandleCount).toBe(130);
     expect(response.metadata.derivedTimeframe).toBeUndefined();
     expect(response.metadata.aggregationVersion).toBeUndefined();
+  });
+});
+
+describe("buildRegimeCurrent with aggregated 1h candles", () => {
+  it("classifies using aggregated 1h candles passed to 1h config", () => {
+    const { candles: aggregated } = aggregate15mTo1h(flatCandles);
+    expect(aggregated.length).toBeGreaterThan(0);
+
+    const lastCandleUnixMs = aggregated[aggregated.length - 1].unixMs;
+    const response = buildRegimeCurrent({
+      feed: { ...feed, timeframe: "1h" as const },
+      candles: aggregated,
+      nowUnixMs: lastCandleUnixMs + 20 * 60 * 1000,
+      config: MARKET_REGIME_CONFIG["1h"],
+      configVersion: "market-regime-2.0.0",
+      engineVersion: "0.1.0",
+      metadata: {
+        sourceTimeframe: "15m",
+        sourceCandleCount: flatCandles.length,
+        derivedTimeframe: "1h",
+        aggregationVersion: "ohlcv-agg-v1"
+      }
+    });
+    expect(response.timeframe).toBe("1h");
+    expect(response.metadata.sourceTimeframe).toBe("15m");
+    expect(response.metadata.sourceCandleCount).toBe(flatCandles.length);
+    expect(response.metadata.derivedTimeframe).toBe("1h");
+    expect(response.metadata.aggregationVersion).toBe("ohlcv-agg-v1");
+    expect(response.metadata.candleCount).toBe(aggregated.length);
+    expect(["UP", "DOWN", "CHOP"]).toContain(response.regime);
   });
 });

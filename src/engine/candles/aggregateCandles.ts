@@ -4,32 +4,46 @@ const FIFTEEN_MIN_MS = 15 * 60 * 1000;
 const ONE_HOUR_MS = 60 * 60 * 1000;
 const FIFTEEN_MINUTES_PER_HOUR = 4;
 
-type AggregationTargetTimeframe = "1h";
+export { FIFTEEN_MIN_MS, ONE_HOUR_MS, FIFTEEN_MINUTES_PER_HOUR };
 
-const targetBucketMs: Record<AggregationTargetTimeframe, number> = {
-  "1h": ONE_HOUR_MS
-};
+export interface AggregationTelemetry {
+  sourceCandleCount: number;
+  skippedNonInteger: number;
+  skippedMisaligned: number;
+  skippedIncomplete: number;
+  skippedGapInBucket: number;
+  completeBuckets: number;
+}
 
-const sourceTimeframeMs: Record<AggregationTargetTimeframe, number> = {
-  "1h": FIFTEEN_MIN_MS
-};
+export interface Aggregate15mTo1hResult {
+  candles: Candle[];
+  telemetry: AggregationTelemetry;
+}
 
-const sourceCountPerBucket: Record<AggregationTargetTimeframe, number> = {
-  "1h": FIFTEEN_MINUTES_PER_HOUR
-};
+export const aggregate15mTo1h = (candles: Candle[]): Aggregate15mTo1hResult => {
+  const bucketMs = ONE_HOUR_MS;
+  const srcMs = FIFTEEN_MIN_MS;
+  const required = FIFTEEN_MINUTES_PER_HOUR;
 
-export const aggregateCandles = (
-  candles: Candle[],
-  target: AggregationTargetTimeframe
-): Candle[] => {
-  const bucketMs = targetBucketMs[target];
-  const srcMs = sourceTimeframeMs[target];
-  const required = sourceCountPerBucket[target];
+  const telemetry: AggregationTelemetry = {
+    sourceCandleCount: candles.length,
+    skippedNonInteger: 0,
+    skippedMisaligned: 0,
+    skippedIncomplete: 0,
+    skippedGapInBucket: 0,
+    completeBuckets: 0
+  };
 
   const buckets = new Map<number, Candle[]>();
   for (const candle of candles) {
-    if (!Number.isInteger(candle.unixMs)) continue;
-    if (candle.unixMs % srcMs !== 0) continue;
+    if (!Number.isInteger(candle.unixMs)) {
+      telemetry.skippedNonInteger += 1;
+      continue;
+    }
+    if (candle.unixMs % srcMs !== 0) {
+      telemetry.skippedMisaligned += 1;
+      continue;
+    }
 
     const bucketOpen = Math.floor(candle.unixMs / bucketMs) * bucketMs;
     const list = buckets.get(bucketOpen);
@@ -42,7 +56,10 @@ export const aggregateCandles = (
 
   const out: Candle[] = [];
   for (const [bucketOpen, sources] of buckets) {
-    if (sources.length !== required) continue;
+    if (sources.length !== required) {
+      telemetry.skippedIncomplete += 1;
+      continue;
+    }
 
     sources.sort((a, b) => a.unixMs - b.unixMs);
 
@@ -53,7 +70,12 @@ export const aggregateCandles = (
         break;
       }
     }
-    if (!complete) continue;
+    if (!complete) {
+      telemetry.skippedGapInBucket += 1;
+      continue;
+    }
+
+    telemetry.completeBuckets += 1;
 
     let high = sources[0].high;
     let low = sources[0].low;
@@ -75,5 +97,5 @@ export const aggregateCandles = (
   }
 
   out.sort((a, b) => a.unixMs - b.unixMs);
-  return out;
+  return { candles: out, telemetry };
 };

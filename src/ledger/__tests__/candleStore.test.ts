@@ -96,6 +96,7 @@ describe.skipIf(!process.env.DATABASE_URL)("CandleStore (PG)", () => {
       network: "solana-mainnet",
       poolAddress: "Pool111",
       timeframe: "15m",
+      timeframeMs: FIFTEEN_MIN_MS,
       closedCandleCutoffUnixMs: 10 * FIFTEEN_MIN_MS,
       limit: 100
     });
@@ -166,6 +167,7 @@ describe.skipIf(!process.env.DATABASE_URL)("CandleStore (PG)", () => {
       network: "solana-mainnet",
       poolAddress: "Pool111",
       timeframe: "15m",
+      timeframeMs: FIFTEEN_MIN_MS,
       closedCandleCutoffUnixMs: 10 * FIFTEEN_MIN_MS,
       limit: 100
     });
@@ -190,6 +192,7 @@ describe.skipIf(!process.env.DATABASE_URL)("CandleStore (PG)", () => {
       network: "solana-mainnet",
       poolAddress: "Pool111",
       timeframe: "15m",
+      timeframeMs: FIFTEEN_MIN_MS,
       closedCandleCutoffUnixMs: 5 * FIFTEEN_MIN_MS,
       limit: 100
     });
@@ -219,6 +222,7 @@ describe.skipIf(!process.env.DATABASE_URL)("CandleStore (PG)", () => {
       network: "solana-mainnet",
       poolAddress: "Pool111",
       timeframe: "15m",
+      timeframeMs: FIFTEEN_MIN_MS,
       closedCandleCutoffUnixMs: 25 * FIFTEEN_MIN_MS,
       limit: 5
     });
@@ -253,6 +257,7 @@ describe.skipIf(!process.env.DATABASE_URL)("CandleStore (PG)", () => {
       network: "solana-mainnet",
       poolAddress: "Pool111",
       timeframe: "15m",
+      timeframeMs: FIFTEEN_MIN_MS,
       closedCandleCutoffUnixMs: 10 * FIFTEEN_MIN_MS,
       limit: 100
     });

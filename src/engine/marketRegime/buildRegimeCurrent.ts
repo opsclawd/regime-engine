@@ -11,13 +11,6 @@ import { computeFreshness } from "./freshness.js";
 import { evaluateMarketClmmSuitability } from "./evaluateMarketClmmSuitability.js";
 import type { MarketTimeframeConfig } from "./config.js";
 
-export interface BuildRegimeCurrentMetadata {
-  sourceTimeframe: "15m";
-  sourceCandleCount: number;
-  derivedTimeframe?: "1h";
-  aggregationVersion?: "ohlcv-agg-v1";
-}
-
 export interface BuildRegimeCurrentInput {
   feed: {
     symbol: string;
@@ -31,7 +24,12 @@ export interface BuildRegimeCurrentInput {
   config: MarketTimeframeConfig;
   configVersion: string;
   engineVersion: string;
-  metadata: BuildRegimeCurrentMetadata;
+  metadata: {
+    sourceTimeframe: string;
+    sourceCandleCount: number;
+    derivedTimeframe?: string;
+    aggregationVersion?: string;
+  };
 }
 
 const buildMarketReasons = (

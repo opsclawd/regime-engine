@@ -227,13 +227,18 @@ export const buildOpenApiDocument = () => {
           responses: {
             "200": {
               description:
-                "RegimeCurrentResponse with regime, telemetry, suitability, freshness, metadata"
+                "RegimeCurrentResponse with regime, telemetry, suitability, freshness, metadata. " +
+                'Metadata includes sourceTimeframe (always "15m"), sourceCandleCount, ' +
+                'and optionally derivedTimeframe ("1h") and aggregationVersion ("ohlcv-agg-v1") ' +
+                "when timeframe=1h aggregation was applied."
             },
             "400": {
               description: "VALIDATION_ERROR for missing/invalid selectors"
             },
             "404": {
-              description: "CANDLES_NOT_FOUND when no closed candles exist for the feed"
+              description:
+                "CANDLES_NOT_FOUND with detail code NO_SOURCE_CANDLES or " +
+                "NO_DERIVED_CANDLES_AFTER_AGGREGATION when no complete derived bars survive cutoff"
             }
           }
         }

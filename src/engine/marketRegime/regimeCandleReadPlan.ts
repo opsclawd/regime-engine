@@ -6,23 +6,32 @@ const READ_BUFFER = 50;
 const FIFTEEN_MINUTES_PER_HOUR = 4;
 const DERIVED_SOURCE_READ_BUFFER_15M = 32;
 
-export interface DirectMetadataHints {
+export interface DirectSourceMetadata {
   sourceTimeframe: "15m";
 }
 
-export interface DerivedMetadataHints {
+export interface DerivedSourceMetadata {
   sourceTimeframe: "15m";
   derivedTimeframe: "1h";
   aggregationVersion: "ohlcv-agg-v1";
 }
 
-export interface RegimeCandleReadPlan {
-  sourceTimeframe: "15m";
-  sourceCutoffUnixMs: number;
-  sourceLimit: number;
-  derivedCutoffUnixMs?: number;
-  metadataHints: DirectMetadataHints | DerivedMetadataHints;
-}
+export type RegimeCandleReadPlan =
+  | {
+      mode: "direct";
+      sourceTimeframe: "15m";
+      sourceCutoffUnixMs: number;
+      sourceLimit: number;
+      sourceMetadata: DirectSourceMetadata;
+    }
+  | {
+      mode: "derived";
+      sourceTimeframe: "15m";
+      sourceCutoffUnixMs: number;
+      sourceLimit: number;
+      derivedCutoffUnixMs: number;
+      sourceMetadata: DerivedSourceMetadata;
+    };
 
 export interface BuildRegimeCandleReadPlanInput {
   requestedTimeframe: RegimeReadTimeframe;
@@ -40,16 +49,16 @@ export const buildRegimeCandleReadPlan = (
   );
 
   if (input.requestedTimeframe === "15m") {
-    const requestedConfig = MARKET_REGIME_CONFIG["15m"];
     const sourceLimit =
-      Math.max(requestedConfig.indicators.volLongWindow, requestedConfig.suitability.minCandles) +
+      Math.max(sourceConfig.indicators.volLongWindow, sourceConfig.suitability.minCandles) +
       READ_BUFFER;
 
     return {
+      mode: "direct",
       sourceTimeframe: "15m",
       sourceCutoffUnixMs,
       sourceLimit,
-      metadataHints: { sourceTimeframe: "15m" }
+      sourceMetadata: { sourceTimeframe: "15m" }
     };
   }
 
@@ -66,11 +75,12 @@ export const buildRegimeCandleReadPlan = (
     requiredDerivedBars * FIFTEEN_MINUTES_PER_HOUR + DERIVED_SOURCE_READ_BUFFER_15M;
 
   return {
+    mode: "derived",
     sourceTimeframe: "15m",
     sourceCutoffUnixMs,
     sourceLimit,
     derivedCutoffUnixMs,
-    metadataHints: {
+    sourceMetadata: {
       sourceTimeframe: "15m",
       derivedTimeframe: "1h",
       aggregationVersion: "ohlcv-agg-v1"

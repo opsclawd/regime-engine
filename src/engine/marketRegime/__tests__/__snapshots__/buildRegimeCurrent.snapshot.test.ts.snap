@@ -1,6 +1,71 @@
 // Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
 
-exports[`buildRegimeCurrent snapshot > produces identical response objects for fixed inputs 1`] = `
+exports[`buildRegimeCurrent snapshot > produces identical response objects for fixed 1h derived inputs 1`] = `
+{
+  "clmmSuitability": {
+    "reasons": [
+      {
+        "code": "CLMM_UNKNOWN_HARD_STALE_DATA",
+        "message": "Latest candle exceeds hard-stale window; classification is not trustworthy.",
+        "severity": "ERROR",
+      },
+    ],
+    "status": "UNKNOWN",
+  },
+  "freshness": {
+    "ageSeconds": 68400,
+    "generatedAtIso": "1970-01-03T02:00:00.000Z",
+    "hardStale": true,
+    "hardStaleSeconds": 5400,
+    "lastCandleIso": "1970-01-02T07:00:00.000Z",
+    "lastCandleUnixMs": 111600000,
+    "softStale": true,
+    "softStaleSeconds": 4500,
+  },
+  "marketReasons": [
+    {
+      "code": "REGIME_STABLE",
+      "message": "Current telemetry holds CHOP regime.",
+      "severity": "INFO",
+    },
+    {
+      "code": "DATA_HARD_STALE",
+      "message": "Latest candle is older than the hard-stale window.",
+      "severity": "ERROR",
+    },
+    {
+      "code": "DATA_SUFFICIENT_SAMPLES",
+      "message": "Have 31 closed candles (>= 30).",
+      "severity": "INFO",
+    },
+  ],
+  "metadata": {
+    "aggregationVersion": "ohlcv-agg-v1",
+    "candleCount": 31,
+    "configVersion": "market-regime-2.0.0",
+    "derivedTimeframe": "1h",
+    "engineVersion": "0.1.0",
+    "sourceCandleCount": 130,
+    "sourceTimeframe": "15m",
+  },
+  "network": "solana-mainnet",
+  "poolAddress": "Pool111",
+  "regime": "CHOP",
+  "schemaVersion": "1.0",
+  "source": "birdeye",
+  "symbol": "SOL/USDC",
+  "telemetry": {
+    "compression": 0.084759302487,
+    "realizedVolLong": 0.00037790518,
+    "realizedVolShort": 0.000084095413,
+    "trendStrength": 0.003634711495,
+    "volRatio": 0.360540549177,
+  },
+  "timeframe": "1h",
+}
+`;
+
+exports[`buildRegimeCurrent snapshot > produces identical response objects for fixed 15m inputs 1`] = `
 {
   "clmmSuitability": {
     "reasons": [

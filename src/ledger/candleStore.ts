@@ -139,6 +139,7 @@ export class CandleStore {
   }
 
   async getLatestCandlesForFeed(params: GetLatestCandlesParams): Promise<CandleRow[]> {
+    const lookbackUnixMs = params.closedCandleCutoffUnixMs - params.limit * params.timeframeMs;
     const rows = await this.db.execute(sql`
       WITH latest_per_slot AS (
         SELECT unix_ms, open, high, low, close, volume,
@@ -153,6 +154,7 @@ export class CandleStore {
            AND pool_address = ${params.poolAddress}
            AND timeframe = ${params.timeframe}
            AND unix_ms <= ${params.closedCandleCutoffUnixMs}
+           AND unix_ms >= ${lookbackUnixMs}
       )
       SELECT unix_ms, open, high, low, close, volume
         FROM (
