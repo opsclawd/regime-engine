@@ -67,13 +67,39 @@ export const buildOpenApiDocument = () => {
       },
       "/v1/plan": {
         post: {
-          summary: "Compute a deterministic plan",
+          summary: "Compute a position-scoped CLMM plan for a single position",
+          requestBody: {
+            required: true,
+            content: {
+              "application/json": {
+                schema: { $ref: "#/components/schemas/PlanRequest" }
+              }
+            }
+          },
           responses: {
             "200": {
-              description: "Plan response"
+              description: "Position-scoped plan with HOLD / STAND_DOWN / REQUEST_EXIT_CLMM",
+              content: {
+                "application/json": {
+                  schema: { $ref: "#/components/schemas/PlanResponse" }
+                }
+              }
             },
             "400": {
-              description: "Validation error"
+              description: "Validation error (invalid request body)",
+              content: {
+                "application/json": {
+                  schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+                }
+              }
+            },
+            "503": {
+              description: "Service unavailable (stale market data or position state)",
+              content: {
+                "application/json": {
+                  schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+                }
+              }
             }
           }
         }
