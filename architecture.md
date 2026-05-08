@@ -97,6 +97,74 @@ Target layout (names can vary, responsibilities cannot):
 
 ---
 
+## Architecture boundaries
+
+Regime Engine is moving toward an internal Clean Architecture seam. Pure core
+logic stays decoupled from HTTP, storage, and runtime concerns; outer layers
+depend inward, never the other way around. This is **not** a CLMM-style monorepo
+rewrite — it is an internal refactor that happens in stages.
+
+### Status
+
+- **Today (#37):** boundary gate added (`npm run boundaries`) and target
+  structure documented. No source code is moved. Existing `src/engine/**`,
+  `src/contract/**`, `src/http/**`, `src/ledger/**`, and `src/workers/**`
+  folders remain in place.
+- **Next (#38, #39, #40):** progressive extraction of domain, application
+  use-cases, and adapters out of the existing `src/http/**` and `src/ledger/**`
+  folders. Composition wiring lands at the end.
+
+### Target inner-layer structure
+
+| Folder                         | Layer                  | Allowed inward dependencies                          |
+| ------------------------------ | ---------------------- | ---------------------------------------------------- |
+| `src/domain/**`                | Pure domain            | other `src/domain/**`, pure `src/contract/**`        |
+| `src/application/**`           | Use-case orchestration | `src/domain/**`, `src/engine/**`, `src/contract/**`  |
+| `src/application/ports/**`     | Port interfaces        | as application                                       |
+| `src/application/use-cases/**` | Concrete use cases     | as application                                       |
+| `src/engine/**`                | Existing pure core     | `src/contract/**` (types/helpers), other engine code |
+
+Inner layers must **never** import:
+
+- `src/http/**`, `src/ledger/**`, `src/workers/**`,
+  `src/adapters/**`, `src/composition/**`,
+  `src/app.ts`, `src/server.ts`
+- `fastify`, `drizzle-orm`, `drizzle-orm/sql`, `drizzle-orm/postgres-js`,
+  `drizzle-orm/pg-core`, `postgres`, `node:sqlite`
+- `node:process` or `process`, including `process.env`
+
+### Target outer-layer structure
+
+| Folder                     | Layer               | Notes                                                   |
+| -------------------------- | ------------------- | ------------------------------------------------------- |
+| `src/adapters/http/**`     | HTTP adapter        | Fastify routes/handlers; depends inward on application. |
+| `src/adapters/postgres/**` | Postgres adapter    | Drizzle/postgres-js; implements application ports.      |
+| `src/adapters/sqlite/**`   | SQLite adapter      | `node:sqlite`; implements application ports.            |
+| `src/composition/**`       | Dependency wiring   | Selects adapters, builds the runtime object graph.      |
+| `src/workers/**`           | Outer-layer runtime | May read env, run loops, call external clients, and     |
+|                            |                     | invoke application use cases. Engine/domain/application |
+|                            |                     | must never import workers.                              |
+
+Adapters may use framework and storage packages according to their
+responsibility. The boundary policy intentionally does **not** assert a final
+"adapters may import everything" graph in #37; the load-bearing guarantee is
+that inner layers cannot import adapters or framework modules.
+
+### Enforcement
+
+`npm run boundaries` runs two checks:
+
+1. `dependency-cruiser` against `src/**/*.ts` using the rules in
+   `.dependency-cruiser.cjs`. Forbidden imports fail the build.
+2. `scripts/check-boundary-env.sh` greps for `process.env` in
+   `src/engine/**`, `src/domain/**`, and `src/application/**`. Missing future
+   directories are skipped.
+
+The gate is intentionally separate from `npm run lint` so that architectural
+policy changes are explicit and reviewable.
+
+---
+
 ## Data flow
 
 ### Plan generation (`POST /v1/plan`)

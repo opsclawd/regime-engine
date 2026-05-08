@@ -40,3 +40,5 @@ jobs:
       - run: pnpm run format
 
       - run: pnpm run test
+
+      - run: pnpm run boundaries
