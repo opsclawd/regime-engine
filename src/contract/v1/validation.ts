@@ -6,7 +6,7 @@ import {
   malformedCandleError,
   unsupportedSchemaVersionError,
   validationErrorFromZod
-} from "../../http/errors.js";
+} from "./errors.js";
 import {
   SCHEMA_VERSION,
   type CandleIngestRequest,

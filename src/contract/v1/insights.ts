@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { SCHEMA_VERSION, type SchemaVersion } from "./types.js";
-import { unsupportedSchemaVersionError, validationErrorFromZod } from "../../http/errors.js";
+import { unsupportedSchemaVersionError, validationErrorFromZod } from "./errors.js";
 import { toCanonicalJson } from "./canonical.js";
 import { sha256Hex } from "./hash.js";
 
