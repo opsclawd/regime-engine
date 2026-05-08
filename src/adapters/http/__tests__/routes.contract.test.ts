@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { FastifyInstance } from "fastify";
-import { buildApp } from "../../app.js";
+import { buildApp } from "../../../app.js";
 
 const planRequestFixture = {
   schemaVersion: "1.0",

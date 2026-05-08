@@ -2,9 +2,9 @@ import { rmSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { afterEach, describe, expect, it } from "vitest";
-import { buildApp } from "../../app.js";
-import { planHashFromPlan } from "../../contract/v1/hash.js";
-import { createLedgerStore, getLedgerCounts } from "../../ledger/store.js";
+import { buildApp } from "../../../app.js";
+import { planHashFromPlan } from "../../../contract/v1/hash.js";
+import { createLedgerStore, getLedgerCounts } from "../../../ledger/store.js";
 
 const createdDbPaths: string[] = [];
 

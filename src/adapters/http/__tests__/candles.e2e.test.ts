@@ -2,7 +2,7 @@ import { rmSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { afterEach, describe, expect, it } from "vitest";
-import { buildApp } from "../../app.js";
+import { buildApp } from "../../../app.js";
 
 const FIFTEEN_MIN_MS = 15 * 60 * 1000;
 const createdDbPaths: string[] = [];

@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it } from "vitest";
 import { DatabaseSync } from "node:sqlite";
-import { buildApp } from "../../app.js";
-import { checkSqliteHealth } from "../../ledger/health.js";
+import { buildApp } from "../../../app.js";
+import { checkSqliteHealth } from "../../../ledger/health.js";
 
 describe("GET /health - happy path", () => {
   afterEach(() => {

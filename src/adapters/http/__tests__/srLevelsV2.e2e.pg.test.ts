@@ -1,7 +1,7 @@
 import { afterAll, afterEach, describe, expect, it } from "vitest";
-import { buildApp } from "../../app.js";
-import { createDb, type Db } from "../../ledger/pg/db.js";
-import { srThesesV2 } from "../../ledger/pg/schema/index.js";
+import { buildApp } from "../../../app.js";
+import { createDb, type Db } from "../../../ledger/pg/db.js";
+import { srThesesV2 } from "../../../ledger/pg/schema/index.js";
 
 const PG = process.env.DATABASE_URL ?? "postgres://test:test@localhost:5432/regime_engine_test";
 

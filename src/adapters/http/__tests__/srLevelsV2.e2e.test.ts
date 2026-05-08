@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from "vitest";
-import { buildApp } from "../../app.js";
+import { buildApp } from "../../../app.js";
 
 const validRequest = () => ({
   schemaVersion: "2.0",
