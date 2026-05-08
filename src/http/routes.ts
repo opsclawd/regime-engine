@@ -1,5 +1,5 @@
 import type { FastifyInstance, FastifyReply } from "fastify";
-import { buildOpenApiDocument } from "./openapi.js";
+import { buildOpenApiDocument } from "../adapters/http/openapi.js";
 import { createClmmExecutionResultHandler } from "./handlers/clmmExecutionResult.js";
 import { createExecutionResultHandler } from "./handlers/executionResult.js";
 import { createPlanHandler } from "./handlers/plan.js";
