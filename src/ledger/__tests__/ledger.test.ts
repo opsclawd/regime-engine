@@ -13,23 +13,28 @@ import {
   writePlanLedgerEntry
 } from "../writer.js";
 
+const FIFTEEN_MIN_MS = 15 * 60 * 1000;
+
 const makePlanRequestFixture = (): PlanRequest => {
+  const anchor = Math.floor(Date.now() / FIFTEEN_MIN_MS) * FIFTEEN_MIN_MS - FIFTEEN_MIN_MS;
   return {
     schemaVersion: SCHEMA_VERSION,
-    asOfUnixMs: 1_762_591_200_000,
+    asOfUnixMs: anchor,
     market: {
-      symbol: "SOLUSDC",
-      timeframe: "1h",
-      candles: [
-        {
-          unixMs: 1_762_591_200_000,
-          open: 200,
-          high: 210,
-          low: 195,
-          close: 205,
-          volume: 1_200
-        }
-      ]
+      symbol: "SOL/USDC",
+      source: "geckoterminal",
+      network: "solana",
+      poolAddress: "PoolLedger1",
+      timeframe: "15m"
+    },
+    position: {
+      positionId: "pos-ledger-1",
+      observedAtUnixMs: anchor,
+      lowerBoundPrice: 95,
+      upperBoundPrice: 110,
+      currentPrice: 100,
+      rangeState: "in-range",
+      breachQualified: false
     },
     portfolio: {
       navUsd: 10_000,
@@ -81,6 +86,12 @@ const makePlanResponseFixture = (asOfUnixMs: number): PlanResponse => {
     schemaVersion: SCHEMA_VERSION,
     planId: `plan-${asOfUnixMs}`,
     asOfUnixMs,
+    scope: {
+      kind: "position",
+      positionId: "pos-ledger-1",
+      poolAddress: "PoolLedger1",
+      symbol: "SOL/USDC"
+    },
     regime: "CHOP",
     targets: {
       solBps: 5_000,
@@ -113,6 +124,25 @@ const makePlanResponseFixture = (asOfUnixMs: number): PlanResponse => {
     ],
     telemetry: {
       validationPassed: true
+    },
+    marketData: {
+      source: "geckoterminal",
+      network: "solana",
+      poolAddress: "PoolLedger1",
+      requestedTimeframe: "15m",
+      sourceTimeframe: "15m",
+      candleCount: 140,
+      sourceCandleCount: 140,
+      freshness: {
+        generatedAtIso: new Date().toISOString(),
+        lastCandleUnixMs: asOfUnixMs - FIFTEEN_MIN_MS,
+        lastCandleIso: new Date(asOfUnixMs - FIFTEEN_MIN_MS).toISOString(),
+        ageSeconds: 900,
+        softStale: false,
+        hardStale: false,
+        softStaleSeconds: 4500,
+        hardStaleSeconds: 5400
+      }
     }
   };
 
@@ -139,7 +169,7 @@ describe("ledger writer", () => {
     writePlanLedgerEntry(store, {
       planRequest: request,
       planResponse: response,
-      receivedAtUnixMs: 1_762_591_300_000
+      receivedAtUnixMs: request.asOfUnixMs + 100_000
     });
 
     expect(getLedgerCounts(store)).toEqual({
@@ -187,7 +217,7 @@ describe("ledger writer", () => {
           usdcUnits: 6_020
         }
       },
-      receivedAtUnixMs: 1_762_591_400_000
+      receivedAtUnixMs: request.asOfUnixMs + 200_000
     });
 
     expect(getLedgerCounts(store)).toEqual({
@@ -274,8 +304,40 @@ describe.sequential("ledger wiring via HTTP stubs", () => {
     );
     temporaryDbPaths.push(dbPath);
     process.env.LEDGER_DB_PATH = dbPath;
+    process.env.CANDLES_INGEST_TOKEN = "test-token";
 
     const app = buildApp();
+
+    const anchor = Math.floor(Date.now() / FIFTEEN_MIN_MS) * FIFTEEN_MIN_MS - FIFTEEN_MIN_MS;
+    const ingestPayload = {
+      schemaVersion: "1.0",
+      source: "geckoterminal",
+      network: "solana",
+      poolAddress: "PoolLedger1",
+      symbol: "SOL/USDC",
+      timeframe: "15m",
+      sourceRecordedAtIso: new Date().toISOString(),
+      candles: Array.from({ length: 140 }, (_, i) => {
+        const close = 100 + Math.sin(i / 4) * 0.5;
+        return {
+          unixMs: anchor - (139 - i) * FIFTEEN_MIN_MS,
+          open: close - 0.1,
+          high: close + 0.5,
+          low: close - 0.5,
+          close,
+          volume: 1_000 + i
+        };
+      })
+    };
+
+    const ingestRes = await app.inject({
+      method: "POST",
+      url: "/v1/candles",
+      headers: { "X-Candles-Ingest-Token": "test-token" },
+      payload: ingestPayload
+    });
+    expect(ingestRes.statusCode).toBe(200);
+
     const planResponse = await app.inject({
       method: "POST",
       url: "/v1/plan",
@@ -292,7 +354,7 @@ describe.sequential("ledger wiring via HTTP stubs", () => {
         schemaVersion: SCHEMA_VERSION,
         planId: planBody.planId,
         planHash: planBody.planHash,
-        asOfUnixMs: 1_762_591_200_000,
+        asOfUnixMs: makePlanRequestFixture().asOfUnixMs,
         actionResults: [
           {
             actionType: "HOLD",
@@ -315,6 +377,7 @@ describe.sequential("ledger wiring via HTTP stubs", () => {
     expect(executionResponse.statusCode).toBe(200);
     await app.close();
     delete process.env.LEDGER_DB_PATH;
+    delete process.env.CANDLES_INGEST_TOKEN;
 
     const verificationStore = createLedgerStore(dbPath);
     expect(getLedgerCounts(verificationStore)).toEqual({
@@ -324,7 +387,7 @@ describe.sequential("ledger wiring via HTTP stubs", () => {
       srLevelBriefs: 0,
       srLevels: 0,
       clmmExecutionEvents: 0,
-      candleRevisions: 0
+      candleRevisions: 140
     });
     verificationStore.close();
   });
