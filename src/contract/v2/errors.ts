@@ -1,10 +1,5 @@
 import type { ZodIssue } from "zod";
-import {
-  type ErrorDetail,
-  zodIssueToDetails,
-  stableSortDetails,
-  ERROR_DETAIL_CODES
-} from "../../http/errors.js";
+import { type ErrorDetail, zodIssueToDetails, stableSortDetails } from "../errors.js";
 
 export const V2_SCHEMA_VERSION = "2.0" as const;
 export type V2SchemaVersion = typeof V2_SCHEMA_VERSION;
@@ -51,7 +46,7 @@ export const unsupportedSchemaVersionV2Error = (received: string): V2ContractVal
       details: [
         {
           path: "$.schemaVersion",
-          code: ERROR_DETAIL_CODES.INVALID_VALUE,
+          code: "INVALID_VALUE",
           message: "Invalid value"
         }
       ]

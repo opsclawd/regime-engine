@@ -6,7 +6,6 @@ import {
   unsupportedSchemaVersionV2Error,
   validationErrorV2FromZod
 } from "./errors.js";
-import { ERROR_DETAIL_CODES } from "../../http/errors.js";
 import { toCanonicalJson } from "../v1/canonical.js";
 import { sha256Hex } from "../v1/hash.js";
 
@@ -95,7 +94,7 @@ const duplicateThesisIdentityError = (duplicateIndex: number): V2ContractValidat
       details: [
         {
           path: `$.theses[${duplicateIndex}]`,
-          code: ERROR_DETAIL_CODES.INVALID_VALUE,
+          code: "INVALID_VALUE",
           message:
             "Duplicate (source, symbol, briefId, asset, sourceHandle) within a single request is not allowed"
         }
