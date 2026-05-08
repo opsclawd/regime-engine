@@ -81,8 +81,8 @@ Target layout (names can vary, responsibilities cannot):
   - `churn/` — budgets, cooldowns, stand-down
   - `allocation/` — targets, caps, vol targeting
   - `plan/` — plan builder orchestration
-- `src/http/` (I/O adapter)
-  - routes, handlers, error taxonomy, OpenAPI
+- `src/adapters/http/` (I/O adapter)
+  - routes, handlers, auth, OpenAPI
 - `src/ledger/` (I/O adapter)
   - `schema.sql` — append-only tables: `plan_requests`, `plans`, `execution_results`, `sr_level_briefs`, `sr_levels`, `clmm_execution_events`
   - `store.ts` — `node:sqlite` connection + canonical-JSON idempotency helpers
@@ -106,13 +106,13 @@ rewrite — it is an internal refactor that happens in stages.
 
 ### Status
 
-- **Today (#37):** boundary gate added (`npm run boundaries`) and target
-  structure documented. No source code is moved. Existing `src/engine/**`,
-  `src/contract/**`, `src/http/**`, `src/ledger/**`, and `src/workers/**`
-  folders remain in place.
+- **Today (#37 → #49):** boundary gate (`npm run boundaries`) and dep-cruiser rules
+  enforced. `src/http/**` has moved to `src/adapters/http/**`. Contract validation
+  error primitives now live in `src/contract/errors.ts` (neutral) and
+  `src/contract/v1/errors.ts` (v1-specific), no longer in HTTP. `HttpRouteDependencies`
+  is defined in the HTTP adapter — routes no longer import composition.
 - **Next (#38, #39, #40):** progressive extraction of domain, application
-  use-cases, and adapters out of the existing `src/http/**` and `src/ledger/**`
-  folders. Composition wiring lands at the end.
+  use-cases, and adapters. Composition wiring lands at the end.
 
 ### Target inner-layer structure
 
@@ -126,9 +126,9 @@ rewrite — it is an internal refactor that happens in stages.
 
 Inner layers must **never** import:
 
-- `src/http/**`, `src/ledger/**`, `src/workers/**`,
-  `src/adapters/**`, `src/composition/**`,
-  `src/app.ts`, `src/server.ts`
+- `src/ledger/**`, `src/workers/**`,
+  `src/adapters/**` (including `src/adapters/http/**`),
+  `src/composition/**`, `src/app.ts`, `src/server.ts`
 - `fastify`, `drizzle-orm`, `drizzle-orm/sql`, `drizzle-orm/postgres-js`,
   `drizzle-orm/pg-core`, `postgres`, `node:sqlite`
 - `node:process` or `process`, including `process.env`

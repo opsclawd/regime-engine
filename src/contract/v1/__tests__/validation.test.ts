@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { ContractValidationError, ERROR_CODES } from "../../../http/errors.js";
+import { ContractValidationError, ERROR_CODES } from "../errors.js";
 import {
   parseExecutionResultRequest,
   parsePlanRequest,

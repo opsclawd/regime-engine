@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { parseRegimeCurrentQuery } from "../validation.js";
-import { ContractValidationError } from "../../../http/errors.js";
+import { ContractValidationError } from "../errors.js";
 
 const baseQuery = {
   symbol: "SOL/USDC",
