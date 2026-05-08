@@ -1,16 +1,10 @@
 import { afterEach, describe, expect, it } from "vitest";
-import Fastify, { type FastifyInstance } from "fastify";
 import { DatabaseSync } from "node:sqlite";
-import { registerRoutes } from "../routes.js";
+import { buildApp } from "../../app.js";
 import { checkSqliteHealth } from "../../ledger/health.js";
 
 describe("GET /health - happy path", () => {
-  let app: FastifyInstance;
-
-  afterEach(async () => {
-    if (app) {
-      await app.close();
-    }
+  afterEach(() => {
     delete process.env.DATABASE_URL;
     delete process.env.LEDGER_DB_PATH;
   });
@@ -19,8 +13,7 @@ describe("GET /health - happy path", () => {
     process.env.LEDGER_DB_PATH = ":memory:";
     delete process.env.DATABASE_URL;
 
-    app = Fastify({ logger: false });
-    registerRoutes(app);
+    const app = buildApp();
 
     const response = await app.inject({ method: "GET", url: "/health" });
     expect(response.statusCode).toBe(200);
@@ -29,6 +22,8 @@ describe("GET /health - happy path", () => {
       postgres: "not_configured",
       sqlite: "ok"
     });
+
+    await app.close();
   });
 });
 

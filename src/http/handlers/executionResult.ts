@@ -1,45 +1,43 @@
 import type { FastifyReply, FastifyRequest } from "fastify";
-import { SCHEMA_VERSION, type ExecutionResultResponse } from "../../contract/v1/types.js";
+import { SCHEMA_VERSION } from "../../contract/v1/types.js";
 import { parseExecutionResultRequest } from "../../contract/v1/validation.js";
-import { type LedgerStore } from "../../ledger/store.js";
+import type { RecordExecutionResultUseCase } from "../../application/use-cases/recordExecutionResultUseCase.js";
 import {
-  LEDGER_ERROR_CODES,
-  LedgerWriteError,
-  writeExecutionResultLedgerEntry
-} from "../../ledger/writer.js";
+  ExecutionResultConflictError,
+  ExecutionResultPlanHashMismatchError,
+  ExecutionResultPlanNotFoundError
+} from "../../application/errors/ledgerErrors.js";
 import { ContractValidationError } from "../errors.js";
 
-export const createExecutionResultHandler = (store: LedgerStore) => {
+export const createExecutionResultHandler = (useCase: RecordExecutionResultUseCase) => {
   return async (request: FastifyRequest, reply: FastifyReply) => {
     try {
       const body = parseExecutionResultRequest(request.body);
-      const writeResult = writeExecutionResultLedgerEntry(store, {
-        executionResult: body
-      });
-
-      const response: ExecutionResultResponse = {
-        schemaVersion: SCHEMA_VERSION,
-        ok: true,
-        linkedPlanId: body.planId,
-        linkedPlanHash: body.planHash,
-        idempotent: writeResult.idempotent ? true : undefined
-      };
-
+      const response = await useCase(body);
       return reply.code(200).send(response);
     } catch (error) {
       if (error instanceof ContractValidationError) {
         return reply.code(error.statusCode).send(error.response);
       }
 
-      if (error instanceof LedgerWriteError) {
-        const statusCode = error.code === LEDGER_ERROR_CODES.PLAN_NOT_FOUND ? 404 : 409;
-        return reply.code(statusCode).send({
+      if (error instanceof ExecutionResultPlanNotFoundError) {
+        return reply.code(404).send({
           schemaVersion: SCHEMA_VERSION,
-          error: {
-            code: error.code,
-            message: error.message,
-            details: []
-          }
+          error: { code: "PLAN_NOT_FOUND", message: error.message, details: [] }
+        });
+      }
+
+      if (error instanceof ExecutionResultPlanHashMismatchError) {
+        return reply.code(409).send({
+          schemaVersion: SCHEMA_VERSION,
+          error: { code: "PLAN_HASH_MISMATCH", message: error.message, details: [] }
+        });
+      }
+
+      if (error instanceof ExecutionResultConflictError) {
+        return reply.code(409).send({
+          schemaVersion: SCHEMA_VERSION,
+          error: { code: "EXECUTION_RESULT_CONFLICT", message: error.message, details: [] }
         });
       }
 
