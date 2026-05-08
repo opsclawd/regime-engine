@@ -87,7 +87,7 @@ export interface ClockPort {
 The use case orchestrates the full policy through ports — never touches SQL, Drizzle, or SQLite APIs:
 
 ```typescript
-// src/application/use-cases/IngestCandlesUseCase.ts
+// src/application/use-cases/ingestCandlesUseCase.ts
 export const createIngestCandlesUseCase = (
   deps: IngestCandlesUseCaseDeps
 ): IngestCandlesUseCase => {
@@ -111,7 +111,7 @@ Both adapters implement `CandleWritePort.withIngestLock()` which scopes the sess
 **SQLite** — `BEGIN IMMEDIATE` locks the database, implicit commit on success, explicit `ROLLBACK` on error:
 
 ```typescript
-// src/adapters/sqlite/SqliteCandleRevisionUnitOfWork.ts
+// src/adapters/sqlite/sqliteCandleRevisionUnitOfWork.ts
 export const createSqliteCandleRevisionUnitOfWork = (store: LedgerStore): CandleWritePort => {
   return {
     withIngestLock: async (feed, _unixMsValues, fn) => {
@@ -136,7 +136,7 @@ export const createSqliteCandleRevisionUnitOfWork = (store: LedgerStore): Candle
 **Postgres** — uses Drizzle's `db.transaction()` with `pg_advisory_xact_lock`:
 
 ```typescript
-// src/adapters/postgres/PostgresCandleRevisionUnitOfWork.ts
+// src/adapters/postgres/postgresCandleRevisionUnitOfWork.ts
 export const createPostgresCandleRevisionUnitOfWork = (db: Db): CandleWritePort => {
   return {
     withIngestLock: async (feed, _unixMsValues, fn) => {
@@ -174,7 +174,7 @@ export const writeCandles = async (store, input, receivedAtUnixMs) => {
 Because the use case depends on `CandleWritePort` and `ClockPort`, tests inject in-memory fakes — no SQLite or PG required to test classification logic or revision policy.
 
 ```typescript
-// src/application/use-cases/__tests__/fakes/FakeCandleWritePort.ts
+// src/application/use-cases/__tests__/fakes/fakeCandleWritePort.ts
 export const createFakeCandleWritePort = (): CandleWritePort => ({
   withIngestLock: async (_feed, _unixMs, fn) => fn(fakeSession)
 });

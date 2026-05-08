@@ -21,11 +21,11 @@ import { createInsightsCurrentHandler } from "./handlers/insightsCurrent.js";
 import { createInsightsHistoryHandler } from "./handlers/insightsHistory.js";
 import { createSrLevelsV2IngestHandler } from "./handlers/srLevelsV2Ingest.js";
 import { createSrLevelsV2CurrentHandler } from "./handlers/srLevelsV2Current.js";
-import { createSqliteCandleReadAdapter } from "../adapters/sqlite/SqliteCandleReadAdapter.js";
-import { createSqliteCandleRevisionUnitOfWork } from "../adapters/sqlite/SqliteCandleRevisionUnitOfWork.js";
-import { createPostgresCandleReadAdapter } from "../adapters/postgres/PostgresCandleReadAdapter.js";
-import { createPostgresCandleRevisionUnitOfWork } from "../adapters/postgres/PostgresCandleRevisionUnitOfWork.js";
-import { createIngestCandlesUseCase } from "../application/use-cases/IngestCandlesUseCase.js";
+import { createSqliteCandleReadAdapter } from "../adapters/sqlite/sqliteCandleReadAdapter.js";
+import { createSqliteCandleRevisionUnitOfWork } from "../adapters/sqlite/sqliteCandleRevisionUnitOfWork.js";
+import { createPostgresCandleReadAdapter } from "../adapters/postgres/postgresCandleReadAdapter.js";
+import { createPostgresCandleRevisionUnitOfWork } from "../adapters/postgres/postgresCandleRevisionUnitOfWork.js";
+import { createIngestCandlesUseCase } from "../application/use-cases/ingestCandlesUseCase.js";
 import type { ClockPort } from "../application/ports/clock.js";
 
 export const registerRoutes = (app: FastifyInstance): StoreContext | null => {

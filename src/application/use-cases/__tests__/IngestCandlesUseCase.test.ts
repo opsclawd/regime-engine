@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { createIngestCandlesUseCase } from "../IngestCandlesUseCase.js";
-import { FakeCandleWritePort } from "./fakes/FakeCandleWritePort.js";
+import { createIngestCandlesUseCase } from "../ingestCandlesUseCase.js";
+import { FakeCandleWritePort } from "./fakes/fakeCandleWritePort.js";
 import type { CandleIngestRequest } from "../../../contract/v1/types.js";
 
 const FIFTEEN_MIN_MS = 15 * 60 * 1000;

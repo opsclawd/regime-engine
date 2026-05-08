@@ -5,9 +5,9 @@ import type {
   CandleRow,
   GetLatestCandlesParams
 } from "../contract/v1/types.js";
-import { createPostgresCandleRevisionUnitOfWork } from "../adapters/postgres/PostgresCandleRevisionUnitOfWork.js";
-import { createPostgresCandleReadAdapter } from "../adapters/postgres/PostgresCandleReadAdapter.js";
-import { createIngestCandlesUseCase } from "../application/use-cases/IngestCandlesUseCase.js";
+import { createPostgresCandleRevisionUnitOfWork } from "../adapters/postgres/postgresCandleRevisionUnitOfWork.js";
+import { createPostgresCandleReadAdapter } from "../adapters/postgres/postgresCandleReadAdapter.js";
+import { createIngestCandlesUseCase } from "../application/use-cases/ingestCandlesUseCase.js";
 
 export type { GetLatestCandlesParams, CandleRow };
 
