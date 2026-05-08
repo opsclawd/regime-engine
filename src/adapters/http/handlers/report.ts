@@ -1,7 +1,7 @@
 import type { FastifyReply, FastifyRequest } from "fastify";
-import { SCHEMA_VERSION } from "../../contract/v1/types.js";
-import type { GetWeeklyReportUseCase } from "../../application/use-cases/getWeeklyReportUseCase.js";
-import { ReportRangeApplicationError } from "../../application/errors/reportErrors.js";
+import { SCHEMA_VERSION } from "../../../contract/v1/types.js";
+import type { GetWeeklyReportUseCase } from "../../../application/use-cases/getWeeklyReportUseCase.js";
+import { ReportRangeApplicationError } from "../../../application/errors/reportErrors.js";
 
 const invalidReportRangeResponse = (message: string) => ({
   schemaVersion: SCHEMA_VERSION,

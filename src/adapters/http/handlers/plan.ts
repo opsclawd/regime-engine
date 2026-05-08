@@ -1,7 +1,7 @@
 import type { FastifyReply, FastifyRequest } from "fastify";
-import { parsePlanRequest } from "../../contract/v1/validation.js";
-import type { GeneratePlanUseCase } from "../../application/use-cases/generatePlanUseCase.js";
-import { ContractValidationError } from "../errors.js";
+import { parsePlanRequest } from "../../../contract/v1/validation.js";
+import type { GeneratePlanUseCase } from "../../../application/use-cases/generatePlanUseCase.js";
+import { ContractValidationError } from "../../../contract/v1/errors.js";
 
 export const createPlanHandler = (generatePlan: GeneratePlanUseCase) => {
   return async (request: FastifyRequest, reply: FastifyReply) => {

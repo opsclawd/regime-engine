@@ -1,13 +1,13 @@
 import type { FastifyReply, FastifyRequest } from "fastify";
-import { SCHEMA_VERSION } from "../../contract/v1/types.js";
-import { parseExecutionResultRequest } from "../../contract/v1/validation.js";
-import type { RecordExecutionResultUseCase } from "../../application/use-cases/recordExecutionResultUseCase.js";
+import { SCHEMA_VERSION } from "../../../contract/v1/types.js";
+import { parseExecutionResultRequest } from "../../../contract/v1/validation.js";
+import type { RecordExecutionResultUseCase } from "../../../application/use-cases/recordExecutionResultUseCase.js";
 import {
   ExecutionResultConflictError,
   ExecutionResultPlanHashMismatchError,
   ExecutionResultPlanNotFoundError
-} from "../../application/errors/ledgerErrors.js";
-import { ContractValidationError } from "../errors.js";
+} from "../../../application/errors/ledgerErrors.js";
+import { ContractValidationError } from "../../../contract/v1/errors.js";
 
 export const createExecutionResultHandler = (useCase: RecordExecutionResultUseCase) => {
   return async (request: FastifyRequest, reply: FastifyReply) => {

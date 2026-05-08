@@ -1,8 +1,8 @@
 import type { FastifyReply, FastifyRequest } from "fastify";
-import { SCHEMA_VERSION } from "../../contract/v1/types.js";
-import type { InsightCurrentResponse, InsightFreshness } from "../../contract/v1/insights.js";
-import { rowToInsightWire, InsightsStore } from "../../ledger/insightsStore.js";
-import { ERROR_CODES } from "../errors.js";
+import { SCHEMA_VERSION } from "../../../contract/v1/types.js";
+import type { InsightCurrentResponse, InsightFreshness } from "../../../contract/v1/insights.js";
+import { rowToInsightWire, InsightsStore } from "../../../ledger/insightsStore.js";
+import { ERROR_CODES } from "../../../contract/v1/errors.js";
 
 export const createInsightsCurrentHandler = (insightsStore: InsightsStore | null) => {
   return async (_request: FastifyRequest, reply: FastifyReply) => {

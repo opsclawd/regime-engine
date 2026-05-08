@@ -1,16 +1,16 @@
 import type { FastifyReply, FastifyRequest } from "fastify";
-import { SCHEMA_VERSION } from "../../contract/v1/types.js";
+import { SCHEMA_VERSION } from "../../../contract/v1/types.js";
 import type {
   InsightIngestCreatedResponse,
   InsightIngestAlreadyIngestedResponse
-} from "../../contract/v1/insights.js";
+} from "../../../contract/v1/insights.js";
 import {
   parseInsightIngestRequest,
   computeInsightCanonicalAndHash
-} from "../../contract/v1/insights.js";
-import { InsightsStore, InsightConflictError } from "../../ledger/insightsStore.js";
-import { AuthError, requireSharedSecret } from "../../adapters/http/auth.js";
-import { ContractValidationError, ERROR_CODES } from "../errors.js";
+} from "../../../contract/v1/insights.js";
+import { InsightsStore, InsightConflictError } from "../../../ledger/insightsStore.js";
+import { AuthError, requireSharedSecret } from "../auth.js";
+import { ContractValidationError, ERROR_CODES } from "../../../contract/v1/errors.js";
 
 export const createInsightsIngestHandler = (insightsStore: InsightsStore | null) => {
   return async (request: FastifyRequest, reply: FastifyReply) => {

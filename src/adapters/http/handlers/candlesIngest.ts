@@ -1,10 +1,10 @@
 import type { FastifyReply, FastifyRequest } from "fastify";
-import { SCHEMA_VERSION, type CandleIngestResponse } from "../../contract/v1/types.js";
-import { parseCandleIngestRequest } from "../../contract/v1/validation.js";
-import type { IngestCandlesUseCase } from "../../application/use-cases/ingestCandlesUseCase.js";
-import type { ClockPort } from "../../application/ports/clock.js";
-import { AuthError, requireSharedSecret } from "../../adapters/http/auth.js";
-import { ContractValidationError } from "../errors.js";
+import { SCHEMA_VERSION, type CandleIngestResponse } from "../../../contract/v1/types.js";
+import { parseCandleIngestRequest } from "../../../contract/v1/validation.js";
+import type { IngestCandlesUseCase } from "../../../application/use-cases/ingestCandlesUseCase.js";
+import type { ClockPort } from "../../../application/ports/clock.js";
+import { AuthError, requireSharedSecret } from "../auth.js";
+import { ContractValidationError } from "../../../contract/v1/errors.js";
 
 export interface CandlesIngestHandlerDeps {
   ingestCandles: IngestCandlesUseCase;

@@ -1,8 +1,8 @@
 import type { FastifyReply, FastifyRequest } from "fastify";
-import { SCHEMA_VERSION } from "../../contract/v1/types.js";
-import type { InsightHistoryResponse, InsightHistoryItem } from "../../contract/v1/insights.js";
-import { rowToInsightWire, InsightsStore } from "../../ledger/insightsStore.js";
-import { ERROR_CODES } from "../errors.js";
+import { SCHEMA_VERSION } from "../../../contract/v1/types.js";
+import type { InsightHistoryResponse, InsightHistoryItem } from "../../../contract/v1/insights.js";
+import { rowToInsightWire, InsightsStore } from "../../../ledger/insightsStore.js";
+import { ERROR_CODES } from "../../../contract/v1/errors.js";
 
 const DEFAULT_LIMIT = 50;
 const MAX_LIMIT = 200;

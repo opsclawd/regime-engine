@@ -1,7 +1,7 @@
 import type { FastifyReply, FastifyRequest } from "fastify";
-import { SCHEMA_VERSION } from "../../contract/v1/types.js";
-import { type LedgerStore } from "../../ledger/store.js";
-import { getCurrentSrLevels } from "../../ledger/srLevelsWriter.js";
+import { SCHEMA_VERSION } from "../../../contract/v1/types.js";
+import { type LedgerStore } from "../../../ledger/store.js";
+import { getCurrentSrLevels } from "../../../ledger/srLevelsWriter.js";
 
 export const createSrLevelsCurrentHandler = (store: LedgerStore) => {
   return async (request: FastifyRequest, reply: FastifyReply) => {

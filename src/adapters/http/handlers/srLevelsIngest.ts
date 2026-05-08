@@ -1,11 +1,11 @@
 import type { FastifyReply, FastifyRequest } from "fastify";
-import { SCHEMA_VERSION, type SrLevelBriefIngestResponse } from "../../contract/v1/types.js";
-import { parseSrLevelBriefRequest } from "../../contract/v1/validation.js";
-import { type LedgerStore } from "../../ledger/store.js";
-import { LedgerWriteError } from "../../ledger/writer.js";
-import { writeSrLevelBrief } from "../../ledger/srLevelsWriter.js";
-import { AuthError, requireSharedSecret } from "../../adapters/http/auth.js";
-import { ContractValidationError } from "../errors.js";
+import { SCHEMA_VERSION, type SrLevelBriefIngestResponse } from "../../../contract/v1/types.js";
+import { parseSrLevelBriefRequest } from "../../../contract/v1/validation.js";
+import { type LedgerStore } from "../../../ledger/store.js";
+import { LedgerWriteError } from "../../../ledger/writer.js";
+import { writeSrLevelBrief } from "../../../ledger/srLevelsWriter.js";
+import { AuthError, requireSharedSecret } from "../auth.js";
+import { ContractValidationError } from "../../../contract/v1/errors.js";
 
 export const createSrLevelsIngestHandler = (store: LedgerStore) => {
   return async (request: FastifyRequest, reply: FastifyReply) => {

@@ -1,11 +1,11 @@
 import type { FastifyReply, FastifyRequest } from "fastify";
-import { SrThesesV2Store } from "../../ledger/srThesesV2Store.js";
+import { SrThesesV2Store } from "../../../ledger/srThesesV2Store.js";
 import {
   internalErrorV2,
   serviceUnavailableV2Error,
   srThesisV2NotFoundError,
   validationErrorV2
-} from "../../contract/v2/errors.js";
+} from "../../../contract/v2/errors.js";
 
 export const createSrLevelsV2CurrentHandler = (store: SrThesesV2Store | null) => {
   return async (request: FastifyRequest, reply: FastifyReply) => {

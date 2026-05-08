@@ -1,8 +1,9 @@
 import type { FastifyReply, FastifyRequest } from "fastify";
-import { parseRegimeCurrentQuery } from "../../contract/v1/validation.js";
-import { candlesNotFoundError, ContractValidationError, type ErrorDetail } from "../errors.js";
-import type { GetCurrentRegimeUseCase } from "../../application/use-cases/getCurrentRegimeUseCase.js";
-import { RegimeCandlesNotFoundError } from "../../application/errors/regimeErrors.js";
+import { parseRegimeCurrentQuery } from "../../../contract/v1/validation.js";
+import { candlesNotFoundError, ContractValidationError } from "../../../contract/v1/errors.js";
+import type { ErrorDetail } from "../../../contract/errors.js";
+import type { GetCurrentRegimeUseCase } from "../../../application/use-cases/getCurrentRegimeUseCase.js";
+import { RegimeCandlesNotFoundError } from "../../../application/errors/regimeErrors.js";
 
 export const createRegimeCurrentHandler = (getCurrentRegime: GetCurrentRegimeUseCase) => {
   return async (request: FastifyRequest, reply: FastifyReply) => {
