@@ -1,6 +1,8 @@
 #!/usr/bin/env sh
 set -eu
 
+command -v rg >/dev/null 2>&1 || { echo "ripgrep (rg) is required but not found on PATH." >&2; exit 1; }
+
 status=0
 for dir in src/engine src/domain src/application; do
   if [ -d "$dir" ]; then
