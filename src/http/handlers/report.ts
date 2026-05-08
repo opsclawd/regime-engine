@@ -1,7 +1,7 @@
 import type { FastifyReply, FastifyRequest } from "fastify";
 import { SCHEMA_VERSION } from "../../contract/v1/types.js";
-import { type LedgerStore } from "../../ledger/store.js";
-import { generateWeeklyReport, ReportRangeError } from "../../report/weekly.js";
+import type { GetWeeklyReportUseCase } from "../../application/use-cases/getWeeklyReportUseCase.js";
+import { ReportRangeApplicationError } from "../../application/errors/reportErrors.js";
 
 const invalidReportRangeResponse = (message: string) => ({
   schemaVersion: SCHEMA_VERSION,
@@ -12,7 +12,7 @@ const invalidReportRangeResponse = (message: string) => ({
   }
 });
 
-export const createWeeklyReportHandler = (store: LedgerStore) => {
+export const createWeeklyReportHandler = (useCase: GetWeeklyReportUseCase) => {
   return async (
     request: FastifyRequest<{
       Querystring: {
@@ -34,19 +34,14 @@ export const createWeeklyReportHandler = (store: LedgerStore) => {
     }
 
     try {
-      const report = generateWeeklyReport({
-        store,
-        from,
-        to
-      });
-
+      const report = await useCase({ from, to });
       return reply.code(200).send({
         schemaVersion: SCHEMA_VERSION,
         markdown: report.markdown,
         summary: report.summary
       });
     } catch (error) {
-      if (error instanceof ReportRangeError) {
+      if (error instanceof ReportRangeApplicationError) {
         return reply.code(400).send(invalidReportRangeResponse(error.message));
       }
 

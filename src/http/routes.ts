@@ -1,19 +1,11 @@
 import type { FastifyInstance, FastifyReply } from "fastify";
-import { checkSqliteHealth, checkPgHealth } from "../ledger/health.js";
 import { buildOpenApiDocument } from "./openapi.js";
-import {
-  closeStoreContext,
-  createStoreContext,
-  type StoreContext
-} from "../ledger/storeContext.js";
-import { createLedgerStore } from "../ledger/store.js";
 import { createClmmExecutionResultHandler } from "./handlers/clmmExecutionResult.js";
 import { createExecutionResultHandler } from "./handlers/executionResult.js";
 import { createPlanHandler } from "./handlers/plan.js";
 import { createWeeklyReportHandler } from "./handlers/report.js";
 import { createCandlesIngestHandler } from "./handlers/candlesIngest.js";
 import { createRegimeCurrentHandler } from "./handlers/regimeCurrent.js";
-
 import { createSrLevelsIngestHandler } from "./handlers/srLevelsIngest.js";
 import { createSrLevelsCurrentHandler } from "./handlers/srLevelsCurrent.js";
 import { createInsightsIngestHandler } from "./handlers/insightsIngest.js";
@@ -21,113 +13,42 @@ import { createInsightsCurrentHandler } from "./handlers/insightsCurrent.js";
 import { createInsightsHistoryHandler } from "./handlers/insightsHistory.js";
 import { createSrLevelsV2IngestHandler } from "./handlers/srLevelsV2Ingest.js";
 import { createSrLevelsV2CurrentHandler } from "./handlers/srLevelsV2Current.js";
-import { createSqliteCandleReadAdapter } from "../adapters/sqlite/sqliteCandleReadAdapter.js";
-import { createSqliteCandleRevisionUnitOfWork } from "../adapters/sqlite/sqliteCandleRevisionUnitOfWork.js";
-import { createPostgresCandleReadAdapter } from "../adapters/postgres/postgresCandleReadAdapter.js";
-import { createPostgresCandleRevisionUnitOfWork } from "../adapters/postgres/postgresCandleRevisionUnitOfWork.js";
-import { createIngestCandlesUseCase } from "../application/use-cases/ingestCandlesUseCase.js";
-import { createGetCurrentRegimeUseCase } from "../application/use-cases/getCurrentRegimeUseCase.js";
-import { createGeneratePlanUseCase } from "../application/use-cases/generatePlanUseCase.js";
-import { createSqlitePlanLedgerWriteAdapter } from "../adapters/sqlite/sqlitePlanLedgerWriteAdapter.js";
-import type { ClockPort } from "../application/ports/clock.js";
+import type { ApplicationDependencies } from "../composition/buildApplication.js";
 
-export const registerRoutes = (app: FastifyInstance): StoreContext | null => {
-  const databasePath =
-    process.env.LEDGER_DB_PATH ??
-    (process.env.NODE_ENV === "test" ? ":memory:" : "tmp/ledger.sqlite");
-
-  const pgConnectionString = process.env.DATABASE_URL ?? "";
-
-  let storeContext: StoreContext | null = null;
-  let standaloneLedger: ReturnType<typeof createLedgerStore> | null = null;
-
-  if (pgConnectionString) {
-    storeContext = createStoreContext(databasePath, pgConnectionString);
-  } else {
-    standaloneLedger = createLedgerStore(databasePath);
-  }
-
-  app.addHook("onClose", async () => {
-    if (storeContext) {
-      await closeStoreContext(storeContext);
-    } else if (standaloneLedger) {
-      standaloneLedger.close();
-    }
-  });
-
-  const ledger = storeContext?.ledger ?? standaloneLedger!;
-  const pg = storeContext?.pg ?? null;
-  const insightsStore = storeContext?.insightsStore ?? null;
-  const srThesesV2Store = storeContext?.srThesesV2Store ?? null;
-
-  const clock: ClockPort = { nowUnixMs: () => Date.now() };
-
-  const candleReadPort = pg
-    ? createPostgresCandleReadAdapter(pg)
-    : createSqliteCandleReadAdapter(ledger);
-
-  const candleWritePort = pg
-    ? createPostgresCandleRevisionUnitOfWork(pg)
-    : createSqliteCandleRevisionUnitOfWork(ledger);
-
-  const ingestCandles = createIngestCandlesUseCase({ candleWritePort });
-
-  const getCurrentRegime = createGetCurrentRegimeUseCase({
-    candleReadPort,
-    clock,
-    engineVersion: process.env.npm_package_version ?? "0.0.0"
-  });
-
-  const planLedgerWritePort = createSqlitePlanLedgerWriteAdapter(ledger);
-  const generatePlan = createGeneratePlanUseCase({ planLedgerWritePort });
-
+export const registerRoutes = (app: FastifyInstance, deps: ApplicationDependencies): void => {
   app.get("/health", async (_req, reply: FastifyReply) => {
-    const sqlite = checkSqliteHealth(ledger);
-    const postgres = await checkPgHealth(pg);
-
-    const ok = sqlite.ok && postgres.ok;
-    if (!ok) {
+    const health = await deps.checkHealth();
+    if (!health.ok) {
       reply.code(503);
     }
-
-    return {
-      ok,
-      postgres: postgres.status,
-      sqlite: sqlite.status
-    };
+    return health;
   });
 
   app.get("/version", async () => {
-    const response: { name: string; version: string; commit?: string } = {
-      name: "regime-engine",
-      version: process.env.npm_package_version ?? "0.1.0"
-    };
-
-    if (process.env.COMMIT_SHA) {
-      response.commit = process.env.COMMIT_SHA;
-    }
-
-    return response;
+    return deps.versionInfo;
   });
 
   app.get("/v1/openapi.json", async () => {
     return buildOpenApiDocument();
   });
 
-  app.post("/v1/plan", createPlanHandler(generatePlan));
-  app.post("/v1/execution-result", createExecutionResultHandler(ledger));
-  app.post("/v1/clmm-execution-result", createClmmExecutionResultHandler(ledger));
-  app.get("/v1/report/weekly", createWeeklyReportHandler(ledger));
-  app.post("/v1/sr-levels", createSrLevelsIngestHandler(ledger));
-  app.get("/v1/sr-levels/current", createSrLevelsCurrentHandler(ledger));
-  app.post("/v1/candles", createCandlesIngestHandler({ ingestCandles, clock }));
-  app.get("/v1/regime/current", createRegimeCurrentHandler(getCurrentRegime));
-  app.post("/v1/insights/sol-usdc", createInsightsIngestHandler(insightsStore));
-  app.get("/v1/insights/sol-usdc/current", createInsightsCurrentHandler(insightsStore));
-  app.get("/v1/insights/sol-usdc/history", createInsightsHistoryHandler(insightsStore));
-
-  app.post("/v2/sr-levels", createSrLevelsV2IngestHandler(srThesesV2Store));
-  app.get("/v2/sr-levels/current", createSrLevelsV2CurrentHandler(srThesesV2Store));
-
-  return storeContext;
+  app.post("/v1/plan", createPlanHandler(deps.generatePlan));
+  app.post("/v1/execution-result", createExecutionResultHandler(deps.recordExecutionResult));
+  app.post(
+    "/v1/clmm-execution-result",
+    createClmmExecutionResultHandler(deps.recordClmmExecutionResult)
+  );
+  app.get("/v1/report/weekly", createWeeklyReportHandler(deps.getWeeklyReport));
+  app.post("/v1/sr-levels", createSrLevelsIngestHandler(deps.ledgerStore));
+  app.get("/v1/sr-levels/current", createSrLevelsCurrentHandler(deps.ledgerStore));
+  app.post(
+    "/v1/candles",
+    createCandlesIngestHandler({ ingestCandles: deps.ingestCandles, clock: deps.clock })
+  );
+  app.get("/v1/regime/current", createRegimeCurrentHandler(deps.getCurrentRegime));
+  app.post("/v1/insights/sol-usdc", createInsightsIngestHandler(deps.insightsStore));
+  app.get("/v1/insights/sol-usdc/current", createInsightsCurrentHandler(deps.insightsStore));
+  app.get("/v1/insights/sol-usdc/history", createInsightsHistoryHandler(deps.insightsStore));
+  app.post("/v2/sr-levels", createSrLevelsV2IngestHandler(deps.srThesesV2Store));
+  app.get("/v2/sr-levels/current", createSrLevelsV2CurrentHandler(deps.srThesesV2Store));
 };
