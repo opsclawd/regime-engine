@@ -13,9 +13,45 @@ import { createInsightsCurrentHandler } from "./handlers/insightsCurrent.js";
 import { createInsightsHistoryHandler } from "./handlers/insightsHistory.js";
 import { createSrLevelsV2IngestHandler } from "./handlers/srLevelsV2Ingest.js";
 import { createSrLevelsV2CurrentHandler } from "./handlers/srLevelsV2Current.js";
-import type { ApplicationDependencies } from "../composition/buildApplication.js";
+import type { ClockPort } from "../application/ports/clock.js";
+import type { GetCurrentRegimeUseCase } from "../application/use-cases/getCurrentRegimeUseCase.js";
+import type { GeneratePlanUseCase } from "../application/use-cases/generatePlanUseCase.js";
+import type { IngestCandlesUseCase } from "../application/use-cases/ingestCandlesUseCase.js";
+import type { RecordExecutionResultUseCase } from "../application/use-cases/recordExecutionResultUseCase.js";
+import type { RecordClmmExecutionResultUseCase } from "../application/use-cases/recordClmmExecutionResultUseCase.js";
+import type { GetWeeklyReportUseCase } from "../application/use-cases/getWeeklyReportUseCase.js";
+import type { LedgerStore } from "../ledger/store.js";
+import type { InsightsStore } from "../ledger/insightsStore.js";
+import type { SrThesesV2Store } from "../ledger/srThesesV2Store.js";
 
-export const registerRoutes = (app: FastifyInstance, deps: ApplicationDependencies): void => {
+export interface VersionInfo {
+  name: string;
+  version: string;
+  commit?: string;
+}
+
+export interface HealthResult {
+  ok: boolean;
+  postgres: "ok" | "unavailable" | "not_configured";
+  sqlite: "ok" | "unavailable";
+}
+
+export interface HttpRouteDependencies {
+  clock: ClockPort;
+  ingestCandles: IngestCandlesUseCase;
+  getCurrentRegime: GetCurrentRegimeUseCase;
+  generatePlan: GeneratePlanUseCase;
+  recordExecutionResult: RecordExecutionResultUseCase;
+  recordClmmExecutionResult: RecordClmmExecutionResultUseCase;
+  getWeeklyReport: GetWeeklyReportUseCase;
+  ledgerStore: LedgerStore;
+  insightsStore: InsightsStore | null;
+  srThesesV2Store: SrThesesV2Store | null;
+  versionInfo: VersionInfo;
+  checkHealth(): Promise<HealthResult>;
+}
+
+export const registerRoutes = (app: FastifyInstance, deps: HttpRouteDependencies): void => {
   app.get("/health", async (_req, reply: FastifyReply) => {
     const health = await deps.checkHealth();
     if (!health.ok) {
