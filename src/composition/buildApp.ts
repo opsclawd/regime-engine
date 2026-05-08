@@ -1,5 +1,5 @@
 import Fastify, { type FastifyInstance } from "fastify";
-import { registerRoutes } from "../http/routes.js";
+import { registerRoutes } from "../adapters/http/routes.js";
 import { buildStoreContext } from "./buildStoreContext.js";
 import { buildApplication } from "./buildApplication.js";
 
