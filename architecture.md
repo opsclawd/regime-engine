@@ -169,24 +169,26 @@ policy changes are explicit and reviewable.
 
 ### Plan generation (`POST /v1/plan`)
 
-1. **Validate request** (contract v1).
-2. **Compute features** from candles (pure).
-3. **Classify regime** with hysteresis (pure).
-4. **Apply churn governor** (pure; uses autopilotState counters + cooldowns).
-5. **Compute allocation targets**
-   - partial shifts by regime
-   - turnover + delta caps
-   - vol targeting (pure)
-6. **Apply CHOP gate**
-   - `allowClmm = true` only if `regime == CHOP` AND not stand-down (pure)
-7. **Build plan**
-   - actions: `REQUEST_*` / `HOLD` / `STAND_DOWN`
-   - reasons + telemetry
-8. **Canonicalize + hash**
-   - canonical JSON + `planHash` (pure)
-9. **Persist**
-   - write request + plan rows (ledger adapter)
-10. **Return PlanResponse** (HTTP adapter)
+1. **Validate request** (contract v1, position-scoped).
+2. **Validate position freshness** (`asOfUnixMs - position.observedAtUnixMs <= 60s`,
+   else `503 PLAN_POSITION_STATE_STALE`).
+3. **Build candle read plan** for the requested timeframe (`15m` or `1h`).
+4. **Read closed candles** from `CandleReadPort` for
+   `(market.source, market.network, market.poolAddress, "15m")`.
+5. **Aggregate to 1h on the fly** when `timeframe = "1h"`; filter to the closed
+   derived cutoff. Insufficient closed/derived candles → `503 PLAN_MARKET_DATA_UNAVAILABLE`.
+6. **Compute indicators, classify regime, evaluate freshness and CLMM
+   suitability** using the same helpers as `GET /v1/regime/current`.
+7. **Apply position recommendation policy:**
+   1. Qualified out-of-range → `REQUEST_EXIT_CLMM`.
+   2. `BLOCKED` suitability with `activeClmm` → `REQUEST_EXIT_CLMM`.
+   3. Stand-down active → `STAND_DOWN`.
+   4. Otherwise → `HOLD`.
+8. **Build the plan response** with `scope.kind = "position"`, `scope.positionId`,
+   advisory `targets`, market metadata, telemetry, and reasons.
+9. **Canonicalize + hash** (deterministic `planHash`).
+10. **Persist** request + plan rows through `PlanLedgerWritePort`.
+11. **Return PlanResponse** (HTTP adapter).
 
 ### Execution result ingestion (`POST /v1/execution-result`)
 

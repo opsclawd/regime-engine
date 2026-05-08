@@ -966,3 +966,20 @@ Returns weekly report output built from ledger only:
 - Hash mismatch on `/v1/execution-result`: Autopilot posted a mutated plan or stale planHash; it must post the exact `(planId, planHash)` returned by `/v1/plan`.
 - Report is empty: no ledger rows in the requested window, or execution results were never posted.
 - Regime flaps in fixtures: hysteresis thresholds too tight or `confirmBars/minHoldBars` misconfigured; fix policy defaults and lock with fixtures + snapshot tests.
+
+## Milestone 47 — Position-scoped /v1/plan
+
+- `POST /v1/plan` is now a position-scoped, store-backed recommendation
+  endpoint. Inline `market.candles` is removed; the request supplies
+  `market.{symbol, source, network, poolAddress, timeframe}` and a full
+  `position` block.
+- The MVP action set is restricted to `HOLD`, `STAND_DOWN`, and `REQUEST_EXIT_CLMM`.
+- New error codes: `PLAN_MARKET_DATA_UNAVAILABLE`, `PLAN_POSITION_STATE_STALE`
+  (both 503), `INVALID_POSITION_OBSERVED_AT`, `BREACH_QUALIFIED_AT_REQUIRED`,
+  `INVALID_BREACH_QUALIFIED_AT` (400).
+- The legacy `src/engine/plan/buildPlan.ts` was removed; the new pure module
+  is `src/engine/plan/positionPlan.ts`.
+- `GeneratePlanUseCase` now depends on `CandleReadPort`, `ClockPort`,
+  `engineVersion`, and `PlanLedgerWritePort`.
+- Plans persist with the same `(planId, planHash)` shape, so
+  `/v1/execution-result` linkage is unchanged.

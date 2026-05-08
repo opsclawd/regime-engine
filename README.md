@@ -20,7 +20,12 @@ Server endpoints:
 - `GET /health`
 - `GET /version`
 - `GET /v1/openapi.json`
-- `POST /v1/plan`
+- `POST /v1/plan` — position-scoped CLMM recommendation. Reads stored closed
+  candles for `(market.source, market.network, market.poolAddress, market.timeframe)`
+  and returns one of `HOLD`, `STAND_DOWN`, or `REQUEST_EXIT_CLMM` against the
+  caller-supplied LP position state, portfolio, and autopilot state. No inline
+  candles. Plans are persisted to the existing plan ledger with `planId` /
+  `planHash` and link cleanly to `POST /v1/execution-result`.
 - `POST /v1/execution-result`
 - `POST /v1/clmm-execution-result`
 - `GET /v1/report/weekly?from=YYYY-MM-DD&to=YYYY-MM-DD`
