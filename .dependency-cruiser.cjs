@@ -104,11 +104,22 @@ module.exports = {
     {
       name: "adapters-no-composition-or-entry",
       comment:
-        "src/adapters/** is outer-layer code. It must not import composition wiring or runtime entry points.",
+        "src/adapters/** is outer-layer code. It must not import composition wiring or runtime entry points. " +
+        "Test files are exempted — e2e tests need app startup.",
       severity: "error",
-      from: { path: "^src/adapters/" },
+      from: { path: "^src/adapters/(?!.*__tests__)" },
       to: {
         path: "^src/composition/|^src/(app|server)\\.ts$"
+      }
+    },
+    {
+      name: "contract-no-adapters",
+      comment:
+        "src/contract/** describes wire types and validation. It must not import outer adapters or composition wiring.",
+      severity: "error",
+      from: { path: "^src/contract/" },
+      to: {
+        path: "^src/(adapters|composition|http|ledger|workers)/|^src/(app|server)\\.ts$"
       }
     }
   ],
