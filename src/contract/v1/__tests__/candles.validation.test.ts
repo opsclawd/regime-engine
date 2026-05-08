@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { parseCandleIngestRequest } from "../validation.js";
-import { ContractValidationError } from "../../../http/errors.js";
+import { ContractValidationError } from "../errors.js";
 
 const FIFTEEN_MIN_MS = 15 * 60 * 1000;
 

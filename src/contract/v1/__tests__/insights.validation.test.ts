@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { parseInsightIngestRequest } from "../insights.js";
-import { ContractValidationError } from "../../../http/errors.js";
+import { ContractValidationError } from "../errors.js";
 
 const validPayload = () => ({
   schemaVersion: "1.0",
