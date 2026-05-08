@@ -1,6 +1,6 @@
 export interface RegimeApplicationErrorDetail {
-  code: string;
   path: string;
+  code: string;
   message: string;
 }
 

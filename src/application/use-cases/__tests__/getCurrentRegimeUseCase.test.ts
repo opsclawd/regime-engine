@@ -5,6 +5,7 @@ import { FakeClockPort } from "./fakes/fakeClockPort.js";
 import { RegimeCandlesNotFoundError } from "../../errors/regimeErrors.js";
 import { MARKET_REGIME_CONFIG } from "../../../engine/marketRegime/config.js";
 import type { CandleRow, RegimeCurrentQuery } from "../../../contract/v1/types.js";
+import type { CandleReadPort } from "../../ports/candlePorts.js";
 
 const FIFTEEN_MIN_MS = 15 * 60 * 1000;
 const ONE_HOUR_MS = 60 * 60 * 1000;
@@ -127,6 +128,22 @@ describe("GetCurrentRegimeUseCase", () => {
     expect(error.details[0].message).toMatch(
       /Skipped: \d+ incomplete, \d+ gaps, \d+ misaligned, \d+ non-integer/
     );
+  });
+
+  it("re-throws unexpected errors from the candle read port", async () => {
+    const clock = new FakeClockPort(FIXED_NOW);
+    const port = {
+      getLatestCandlesForFeed: async () => {
+        throw new Error("DB connection lost");
+      }
+    } as unknown as CandleReadPort;
+    const useCase = createGetCurrentRegimeUseCase({
+      candleReadPort: port,
+      clock,
+      engineVersion: "9.9.9"
+    });
+
+    await expect(useCase(baseQuery)).rejects.toThrow("DB connection lost");
   });
 
   it("calls the candle read port with the read plan parameters and the parsed query feed", async () => {

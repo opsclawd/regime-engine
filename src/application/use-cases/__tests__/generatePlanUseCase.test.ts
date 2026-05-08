@@ -86,6 +86,18 @@ describe("GeneratePlanUseCase", () => {
     expect(port.calls[0].planResponse).toBe(response);
   });
 
+  it("re-throws unexpected errors from the plan ledger write port", async () => {
+    const port = {
+      writePlan: async () => {
+        throw new Error("Ledger write failed");
+      }
+    } as unknown as FakePlanLedgerWritePort;
+    const useCase = createGeneratePlanUseCase({ planLedgerWritePort: port });
+    const body = makePlanRequest();
+
+    await expect(useCase(body)).rejects.toThrow("Ledger write failed");
+  });
+
   it("returns the same instance that was written through the port", async () => {
     const port = new FakePlanLedgerWritePort();
     const useCase = createGeneratePlanUseCase({ planLedgerWritePort: port });
