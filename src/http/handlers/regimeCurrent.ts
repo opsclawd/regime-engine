@@ -1,9 +1,7 @@
 import type { FastifyReply, FastifyRequest } from "fastify";
 import { parseRegimeCurrentQuery } from "../../contract/v1/validation.js";
 import { candlesNotFoundError, ContractValidationError } from "../errors.js";
-import type { LedgerStore } from "../../ledger/store.js";
-import { getLatestCandlesForFeed } from "../../ledger/candlesWriter.js";
-import type { CandleStore } from "../../ledger/candleStore.js";
+import type { CandleReadPort } from "../../application/ports/candlePorts.js";
 import {
   MARKET_REGIME_CONFIG,
   MARKET_REGIME_CONFIG_VERSION
@@ -12,7 +10,7 @@ import { buildRegimeCurrent } from "../../engine/marketRegime/buildRegimeCurrent
 import { buildRegimeCandleReadPlan } from "../../engine/marketRegime/regimeCandleReadPlan.js";
 import { aggregate15mTo1h } from "../../engine/candles/aggregateCandles.js";
 
-export const createRegimeCurrentHandler = (store: LedgerStore, candleStore?: CandleStore) => {
+export const createRegimeCurrentHandler = (candleReadPort: CandleReadPort) => {
   return async (request: FastifyRequest, reply: FastifyReply) => {
     try {
       const query = parseRegimeCurrentQuery(request.query);
@@ -24,25 +22,15 @@ export const createRegimeCurrentHandler = (store: LedgerStore, candleStore?: Can
         nowUnixMs
       });
 
-      const sourceCandles = candleStore
-        ? await candleStore.getLatestCandlesForFeed({
-            symbol: query.symbol,
-            source: query.source,
-            network: query.network,
-            poolAddress: query.poolAddress,
-            timeframe: plan.sourceTimeframe,
-            closedCandleCutoffUnixMs: plan.sourceCutoffUnixMs,
-            limit: plan.sourceLimit
-          })
-        : getLatestCandlesForFeed(store, {
-            symbol: query.symbol,
-            source: query.source,
-            network: query.network,
-            poolAddress: query.poolAddress,
-            timeframe: plan.sourceTimeframe,
-            closedCandleCutoffUnixMs: plan.sourceCutoffUnixMs,
-            limit: plan.sourceLimit
-          });
+      const sourceCandles = await candleReadPort.getLatestCandlesForFeed({
+        symbol: query.symbol,
+        source: query.source,
+        network: query.network,
+        poolAddress: query.poolAddress,
+        timeframe: plan.sourceTimeframe,
+        closedCandleCutoffUnixMs: plan.sourceCutoffUnixMs,
+        limit: plan.sourceLimit
+      });
 
       if (sourceCandles.length === 0) {
         throw candlesNotFoundError(

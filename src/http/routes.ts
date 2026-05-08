@@ -21,6 +21,12 @@ import { createInsightsCurrentHandler } from "./handlers/insightsCurrent.js";
 import { createInsightsHistoryHandler } from "./handlers/insightsHistory.js";
 import { createSrLevelsV2IngestHandler } from "./handlers/srLevelsV2Ingest.js";
 import { createSrLevelsV2CurrentHandler } from "./handlers/srLevelsV2Current.js";
+import { createSqliteCandleReadAdapter } from "../adapters/sqlite/SqliteCandleReadAdapter.js";
+import { createSqliteCandleRevisionUnitOfWork } from "../adapters/sqlite/SqliteCandleRevisionUnitOfWork.js";
+import { createPostgresCandleReadAdapter } from "../adapters/postgres/PostgresCandleReadAdapter.js";
+import { createPostgresCandleRevisionUnitOfWork } from "../adapters/postgres/PostgresCandleRevisionUnitOfWork.js";
+import { createIngestCandlesUseCase } from "../application/use-cases/IngestCandlesUseCase.js";
+import type { ClockPort } from "../application/ports/clock.js";
 
 export const registerRoutes = (app: FastifyInstance): StoreContext | null => {
   const databasePath =
@@ -50,6 +56,18 @@ export const registerRoutes = (app: FastifyInstance): StoreContext | null => {
   const pg = storeContext?.pg ?? null;
   const insightsStore = storeContext?.insightsStore ?? null;
   const srThesesV2Store = storeContext?.srThesesV2Store ?? null;
+
+  const clock: ClockPort = { nowUnixMs: () => Date.now() };
+
+  const candleReadPort = pg
+    ? createPostgresCandleReadAdapter(pg)
+    : createSqliteCandleReadAdapter(ledger);
+
+  const candleWritePort = pg
+    ? createPostgresCandleRevisionUnitOfWork(pg)
+    : createSqliteCandleRevisionUnitOfWork(ledger);
+
+  const ingestCandles = createIngestCandlesUseCase({ candleWritePort });
 
   app.get("/health", async (_req, reply: FastifyReply) => {
     const sqlite = checkSqliteHealth(ledger);
@@ -90,8 +108,8 @@ export const registerRoutes = (app: FastifyInstance): StoreContext | null => {
   app.get("/v1/report/weekly", createWeeklyReportHandler(ledger));
   app.post("/v1/sr-levels", createSrLevelsIngestHandler(ledger));
   app.get("/v1/sr-levels/current", createSrLevelsCurrentHandler(ledger));
-  app.post("/v1/candles", createCandlesIngestHandler(ledger, storeContext?.candleStore));
-  app.get("/v1/regime/current", createRegimeCurrentHandler(ledger, storeContext?.candleStore));
+  app.post("/v1/candles", createCandlesIngestHandler({ ingestCandles, clock }));
+  app.get("/v1/regime/current", createRegimeCurrentHandler(candleReadPort));
   app.post("/v1/insights/sol-usdc", createInsightsIngestHandler(insightsStore));
   app.get("/v1/insights/sol-usdc/current", createInsightsCurrentHandler(insightsStore));
   app.get("/v1/insights/sol-usdc/history", createInsightsHistoryHandler(insightsStore));

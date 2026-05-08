@@ -1,22 +1,23 @@
 import type { FastifyReply, FastifyRequest } from "fastify";
 import { SCHEMA_VERSION, type CandleIngestResponse } from "../../contract/v1/types.js";
 import { parseCandleIngestRequest } from "../../contract/v1/validation.js";
-import type { LedgerStore } from "../../ledger/store.js";
-import { writeCandles } from "../../ledger/candlesWriter.js";
-import type { CandleStore } from "../../ledger/candleStore.js";
+import type { IngestCandlesUseCase } from "../../application/use-cases/IngestCandlesUseCase.js";
+import type { ClockPort } from "../../application/ports/clock.js";
 import { AuthError, requireSharedSecret } from "../auth.js";
 import { ContractValidationError } from "../errors.js";
 
-export const createCandlesIngestHandler = (store: LedgerStore, candleStore?: CandleStore) => {
+export interface CandlesIngestHandlerDeps {
+  ingestCandles: IngestCandlesUseCase;
+  clock: ClockPort;
+}
+
+export const createCandlesIngestHandler = (deps: CandlesIngestHandlerDeps) => {
   return async (request: FastifyRequest, reply: FastifyReply) => {
     try {
       requireSharedSecret(request.headers, "X-Candles-Ingest-Token", "CANDLES_INGEST_TOKEN");
 
       const body = parseCandleIngestRequest(request.body);
-
-      const result = candleStore
-        ? await candleStore.writeCandles(body, Date.now())
-        : await Promise.resolve(writeCandles(store, body, Date.now()));
+      const result = await deps.ingestCandles(body, deps.clock.nowUnixMs());
 
       const response: CandleIngestResponse = {
         schemaVersion: SCHEMA_VERSION,
