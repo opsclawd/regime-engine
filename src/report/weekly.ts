@@ -212,7 +212,7 @@ export const generateWeeklyReport = (input: {
       asOfUnixMs: row.as_of_unix_ms,
       request: asRecord(row.request_json) as {
         market: {
-          candles: Array<{
+          candles?: Array<{
             unixMs: number;
             close: number;
           }>;

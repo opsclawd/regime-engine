@@ -20,6 +20,12 @@ export const createPlanStubHandler = (store: LedgerStore) => {
         schemaVersion: SCHEMA_VERSION,
         planId: `stub-${body.asOfUnixMs}`,
         asOfUnixMs: body.asOfUnixMs,
+        scope: {
+          kind: "position",
+          positionId: body.position.positionId,
+          poolAddress: body.market.poolAddress,
+          symbol: body.market.symbol
+        },
         regime: "CHOP",
         targets: {
           solBps: 5_000,
@@ -51,8 +57,26 @@ export const createPlanStubHandler = (store: LedgerStore) => {
           }
         ],
         telemetry: {
-          candleCount: body.market.candles.length,
           validationPassed: true
+        },
+        marketData: {
+          source: body.market.source,
+          network: body.market.network,
+          poolAddress: body.market.poolAddress,
+          requestedTimeframe: body.market.timeframe,
+          sourceTimeframe: body.market.timeframe,
+          candleCount: 0,
+          sourceCandleCount: 0,
+          freshness: {
+            generatedAtIso: new Date(body.asOfUnixMs).toISOString(),
+            lastCandleUnixMs: body.asOfUnixMs,
+            lastCandleIso: new Date(body.asOfUnixMs).toISOString(),
+            ageSeconds: 0,
+            softStale: false,
+            hardStale: false,
+            softStaleSeconds: 1500,
+            hardStaleSeconds: 2100
+          }
         }
       };
 

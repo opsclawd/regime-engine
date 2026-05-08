@@ -7,7 +7,7 @@ export interface BaselineInputs {
     asOfUnixMs: number;
     request: {
       market: {
-        candles: Array<{
+        candles?: Array<{
           unixMs: number;
           close: number;
         }>;
@@ -43,7 +43,7 @@ const buildPriceSeries = (
   const candlesByUnixMs = new Map<number, number>();
 
   for (const entry of planRequests) {
-    for (const candle of entry.request.market.candles) {
+    for (const candle of entry.request.market.candles ?? []) {
       if (candle.unixMs < window.fromUnixMs || candle.unixMs > window.toUnixMs) {
         continue;
       }
