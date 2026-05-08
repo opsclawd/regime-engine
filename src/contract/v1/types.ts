@@ -61,17 +61,39 @@ export interface RegimeState {
   pendingBars: number;
 }
 
+export type RangeState = "in-range" | "below-range" | "above-range";
+export type PlanScopeKind = "position";
+export type MvpPlanActionType = "HOLD" | "STAND_DOWN" | "REQUEST_EXIT_CLMM";
+
+export interface PlanRequestPosition {
+  positionId: string;
+  walletId?: string;
+  observedAtUnixMs: number;
+  breachQualifiedAtUnixMs?: number;
+  lowerBoundPrice: number;
+  upperBoundPrice: number;
+  currentPrice: number;
+  rangeState: RangeState;
+  breachQualified: boolean;
+  distanceToLowerPct?: number;
+  distanceToUpperPct?: number;
+  liquidityUsd?: number;
+  unclaimedFeesUsd?: number;
+  inventorySkewSolPct?: number;
+  inventorySkewUsdcPct?: number;
+}
+
 export interface PlanRequest {
   schemaVersion: SchemaVersion;
   asOfUnixMs: number;
   market: {
     symbol: string;
-    // Deliberately loose — plan computation is timeframe-agnostic;
-    // only the candle ingestion and regime-read endpoints enforce
-    // CandleIngestTimeframe / RegimeReadTimeframe.
-    timeframe: string;
-    candles: Candle[];
+    source: string;
+    network: string;
+    poolAddress: string;
+    timeframe: RegimeReadTimeframe;
   };
+  position: PlanRequestPosition;
   portfolio: {
     navUsd: number;
     solUnits: number;
@@ -100,11 +122,32 @@ export interface PlanAction {
   reasonCode: string;
 }
 
+export interface PlanScope {
+  kind: PlanScopeKind;
+  positionId: string;
+  poolAddress: string;
+  symbol: string;
+}
+
+export interface PlanMarketData {
+  source: string;
+  network: string;
+  poolAddress: string;
+  requestedTimeframe: RegimeReadTimeframe;
+  sourceTimeframe: string;
+  candleCount: number;
+  sourceCandleCount: number;
+  freshness: RegimeCurrentFreshness;
+  derivedTimeframe?: string;
+  aggregationVersion?: string;
+}
+
 export interface PlanResponse {
   schemaVersion: SchemaVersion;
   planId: string;
   planHash: string;
   asOfUnixMs: number;
+  scope: PlanScope;
   regime: Regime;
   targets: {
     solBps: number;
@@ -120,6 +163,7 @@ export interface PlanResponse {
   nextRegimeState: RegimeState;
   reasons: PlanReason[];
   telemetry: Record<string, number | string | boolean>;
+  marketData: PlanMarketData;
 }
 
 export interface ExecutionResultRequest {
