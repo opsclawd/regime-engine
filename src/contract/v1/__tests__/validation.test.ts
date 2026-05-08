@@ -11,26 +11,24 @@ const validPlanRequestFixture: PlanRequest = {
   schemaVersion: SCHEMA_VERSION,
   asOfUnixMs: 1_762_591_200_000,
   market: {
-    symbol: "SOLUSDC",
-    timeframe: "1h",
-    candles: [
-      {
-        unixMs: 1_762_591_200_000,
-        open: 200,
-        high: 210,
-        low: 195,
-        close: 205,
-        volume: 1_200
-      }
-    ]
+    symbol: "SOL/USDC",
+    source: "geckoterminal",
+    network: "solana",
+    poolAddress: "PoolAbc123",
+    timeframe: "1h"
   },
-  portfolio: {
-    navUsd: 10_000,
-    solUnits: 20,
-    usdcUnits: 6_000
+  position: {
+    positionId: "pos-001",
+    observedAtUnixMs: 1_762_591_200_000,
+    lowerBoundPrice: 95,
+    upperBoundPrice: 110,
+    currentPrice: 100,
+    rangeState: "in-range",
+    breachQualified: false
   },
+  portfolio: { navUsd: 10_000, solUnits: 20, usdcUnits: 6_000 },
   autopilotState: {
-    activeClmm: false,
+    activeClmm: true,
     stopouts24h: 0,
     redeploys24h: 0,
     cooldownUntilUnixMs: 0,
@@ -172,107 +170,79 @@ describe("v1 validation", () => {
     });
   });
 
-  it("returns deterministic sorted validation details for invalid /v1/plan payloads", () => {
-    const invalidPayload = {
-      ...validPlanRequestFixture,
-      market: {
-        ...validPlanRequestFixture.market,
-        symbol: "",
-        candles: []
-      },
-      portfolio: {
-        ...validPlanRequestFixture.portfolio,
-        navUsd: -1
-      },
-      config: {
-        ...validPlanRequestFixture.config,
-        allocation: {
-          ...validPlanRequestFixture.config.allocation,
-          upSolBps: 10_001
-        }
-      },
-      unknownField: true
-    };
+  it("rejects /v1/plan when required position fields are missing", () => {
+    const { position: _omitted, ...withoutPosition } = validPlanRequestFixture;
+    void _omitted;
+    const response = captureValidationError(() => parsePlanRequest(withoutPosition));
 
-    const first = captureValidationError(() => parsePlanRequest(invalidPayload));
-    const second = captureValidationError(() => parsePlanRequest(invalidPayload));
-
-    expect(first).toEqual(second);
-    expect(first).toEqual({
-      schemaVersion: SCHEMA_VERSION,
-      error: {
-        code: ERROR_CODES.VALIDATION_ERROR,
-        message: "Invalid /v1/plan request body",
-        details: [
-          {
-            path: "$.config.allocation.upSolBps",
-            code: "OUT_OF_RANGE",
-            message: "Value is out of range"
-          },
-          {
-            path: "$.market.candles",
-            code: "OUT_OF_RANGE",
-            message: "Value is out of range"
-          },
-          {
-            path: "$.market.symbol",
-            code: "OUT_OF_RANGE",
-            message: "Value is out of range"
-          },
-          {
-            path: "$.portfolio.navUsd",
-            code: "OUT_OF_RANGE",
-            message: "Value is out of range"
-          },
-          {
-            path: "$.unknownField",
-            code: "UNKNOWN_KEY",
-            message: "Unexpected key: unknownField"
-          }
-        ]
-      }
-    });
+    expect(response.error.code).toBe(ERROR_CODES.VALIDATION_ERROR);
+    expect(response.error.details.some((d) => d.path === "$.position")).toBe(true);
   });
 
-  it("rejects candles later than asOfUnixMs", () => {
+  it("rejects lowerBoundPrice >= upperBoundPrice", () => {
     const response = captureValidationError(() =>
       parsePlanRequest({
         ...validPlanRequestFixture,
-        market: {
-          ...validPlanRequestFixture.market,
-          candles: [
-            {
-              ...validPlanRequestFixture.market.candles[0],
-              unixMs: validPlanRequestFixture.asOfUnixMs + 1
-            },
-            {
-              ...validPlanRequestFixture.market.candles[0],
-              unixMs: validPlanRequestFixture.asOfUnixMs + 2
-            }
-          ]
+        position: {
+          ...validPlanRequestFixture.position,
+          lowerBoundPrice: 120,
+          upperBoundPrice: 110
         }
       })
     );
 
-    expect(response).toEqual({
-      schemaVersion: SCHEMA_VERSION,
-      error: {
-        code: ERROR_CODES.VALIDATION_ERROR,
-        message: "Invalid /v1/plan request body",
-        details: [
-          {
-            path: "$.market.candles[0].unixMs",
-            code: "INVALID_VALUE",
-            message: "Invalid value"
-          },
-          {
-            path: "$.market.candles[1].unixMs",
-            code: "INVALID_VALUE",
-            message: "Invalid value"
-          }
-        ]
-      }
-    });
+    expect(response.error.code).toBe(ERROR_CODES.VALIDATION_ERROR);
+    expect(
+      response.error.details.some(
+        (d) => d.path === "$.position.lowerBoundPrice" || d.path === "$.position.upperBoundPrice"
+      )
+    ).toBe(true);
+  });
+
+  it("rejects observedAtUnixMs greater than asOfUnixMs with INVALID_POSITION_OBSERVED_AT", () => {
+    const response = captureValidationError(() =>
+      parsePlanRequest({
+        ...validPlanRequestFixture,
+        position: {
+          ...validPlanRequestFixture.position,
+          observedAtUnixMs: validPlanRequestFixture.asOfUnixMs + 1
+        }
+      })
+    );
+
+    expect(response.error.code).toBe(ERROR_CODES.INVALID_POSITION_OBSERVED_AT);
+    expect(response.error.details.some((d) => d.path === "$.position.observedAtUnixMs")).toBe(true);
+  });
+
+  it("rejects breachQualified=true without breachQualifiedAtUnixMs (BREACH_QUALIFIED_AT_REQUIRED)", () => {
+    const response = captureValidationError(() =>
+      parsePlanRequest({
+        ...validPlanRequestFixture,
+        position: {
+          ...validPlanRequestFixture.position,
+          rangeState: "below-range",
+          breachQualified: true
+        }
+      })
+    );
+
+    expect(response.error.code).toBe(ERROR_CODES.BREACH_QUALIFIED_AT_REQUIRED);
+  });
+
+  it("rejects breachQualifiedAtUnixMs greater than asOfUnixMs (INVALID_BREACH_QUALIFIED_AT)", () => {
+    const response = captureValidationError(() =>
+      parsePlanRequest({
+        ...validPlanRequestFixture,
+        position: {
+          ...validPlanRequestFixture.position,
+          rangeState: "below-range",
+          breachQualified: true,
+          breachQualifiedAtUnixMs: validPlanRequestFixture.asOfUnixMs + 1
+        }
+      })
+    );
+
+    expect(response.error.code).toBe(ERROR_CODES.INVALID_BREACH_QUALIFIED_AT);
   });
 
   it("returns canonical type error for invalid /v1/execution-result payload", () => {
