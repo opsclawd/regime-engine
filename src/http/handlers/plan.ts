@@ -1,21 +1,13 @@
 import type { FastifyReply, FastifyRequest } from "fastify";
 import { parsePlanRequest } from "../../contract/v1/validation.js";
-import { type LedgerStore } from "../../ledger/store.js";
-import { writePlanLedgerEntry } from "../../ledger/writer.js";
-import { buildPlan } from "../../engine/plan/buildPlan.js";
+import type { GeneratePlanUseCase } from "../../application/use-cases/generatePlanUseCase.js";
 import { ContractValidationError } from "../errors.js";
 
-export const createPlanHandler = (store: LedgerStore) => {
+export const createPlanHandler = (generatePlan: GeneratePlanUseCase) => {
   return async (request: FastifyRequest, reply: FastifyReply) => {
     try {
       const body = parsePlanRequest(request.body);
-      const plan = buildPlan(body, body.regimeState);
-
-      writePlanLedgerEntry(store, {
-        planRequest: body,
-        planResponse: plan
-      });
-
+      const plan = await generatePlan(body);
       return reply.code(200).send(plan);
     } catch (error) {
       if (error instanceof ContractValidationError) {
