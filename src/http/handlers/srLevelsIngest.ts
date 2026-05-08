@@ -4,7 +4,7 @@ import { parseSrLevelBriefRequest } from "../../contract/v1/validation.js";
 import { type LedgerStore } from "../../ledger/store.js";
 import { LedgerWriteError } from "../../ledger/writer.js";
 import { writeSrLevelBrief } from "../../ledger/srLevelsWriter.js";
-import { AuthError, requireSharedSecret } from "../auth.js";
+import { AuthError, requireSharedSecret } from "../../adapters/http/auth.js";
 import { ContractValidationError } from "../errors.js";
 
 export const createSrLevelsIngestHandler = (store: LedgerStore) => {

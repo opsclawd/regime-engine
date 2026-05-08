@@ -9,7 +9,7 @@ import {
   computeInsightCanonicalAndHash
 } from "../../contract/v1/insights.js";
 import { InsightsStore, InsightConflictError } from "../../ledger/insightsStore.js";
-import { AuthError, requireSharedSecret } from "../auth.js";
+import { AuthError, requireSharedSecret } from "../../adapters/http/auth.js";
 import { ContractValidationError, ERROR_CODES } from "../errors.js";
 
 export const createInsightsIngestHandler = (insightsStore: InsightsStore | null) => {

@@ -14,7 +14,7 @@ import {
   internalErrorV2
 } from "../../contract/v2/errors.js";
 import { SrThesesV2Store, SrThesisV2ConflictError } from "../../ledger/srThesesV2Store.js";
-import { safeEqual } from "../auth.js";
+import { safeEqual } from "../../adapters/http/auth.js";
 
 const ENV_VAR = "OPENCLAW_INGEST_TOKEN";
 const HEADER = "x-ingest-token";

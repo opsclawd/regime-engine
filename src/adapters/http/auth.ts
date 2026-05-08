@@ -1,5 +1,5 @@
 import { timingSafeEqual } from "node:crypto";
-import { SCHEMA_VERSION } from "../contract/v1/types.js";
+import { SCHEMA_VERSION } from "../../contract/v1/types.js";
 import type { IncomingHttpHeaders } from "node:http";
 
 export class AuthError extends Error {

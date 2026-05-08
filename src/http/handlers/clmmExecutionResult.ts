@@ -3,7 +3,7 @@ import { SCHEMA_VERSION } from "../../contract/v1/types.js";
 import { parseClmmExecutionEventRequest } from "../../contract/v1/validation.js";
 import type { RecordClmmExecutionResultUseCase } from "../../application/use-cases/recordClmmExecutionResultUseCase.js";
 import { ClmmExecutionEventConflictError } from "../../application/errors/ledgerErrors.js";
-import { AuthError, requireSharedSecret } from "../auth.js";
+import { AuthError, requireSharedSecret } from "../../adapters/http/auth.js";
 import { ContractValidationError } from "../errors.js";
 
 export const createClmmExecutionResultHandler = (useCase: RecordClmmExecutionResultUseCase) => {

@@ -3,7 +3,7 @@ import { SCHEMA_VERSION, type CandleIngestResponse } from "../../contract/v1/typ
 import { parseCandleIngestRequest } from "../../contract/v1/validation.js";
 import type { IngestCandlesUseCase } from "../../application/use-cases/ingestCandlesUseCase.js";
 import type { ClockPort } from "../../application/ports/clock.js";
-import { AuthError, requireSharedSecret } from "../auth.js";
+import { AuthError, requireSharedSecret } from "../../adapters/http/auth.js";
 import { ContractValidationError } from "../errors.js";
 
 export interface CandlesIngestHandlerDeps {
