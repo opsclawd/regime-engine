@@ -125,6 +125,11 @@ describe("GET /v1/regime/current", () => {
     expect(Array.isArray(body.clmmSuitability.reasons)).toBe(true);
     expect(Array.isArray(body.marketReasons)).toBe(true);
     expect(body.freshness).toBeDefined();
+    expect(body.freshness).not.toHaveProperty("lastCandleUnixMs");
+    expect(body.freshness).not.toHaveProperty("lastCandleIso");
+    expect(body.freshness.lastCandleCloseUnixMs).toBe(
+      body.freshness.lastCandleOpenUnixMs + FIFTEEN_MIN_MS
+    );
     expect(body.telemetry).toBeDefined();
   });
 
@@ -202,9 +207,18 @@ describe("GET /v1/regime/current", () => {
     expect(res.statusCode).toBe(200);
     const body = res.json();
 
-    expect(body.freshness.lastCandleUnixMs).toBeLessThan(Date.now());
+    expect(body.freshness.lastCandleOpenUnixMs).toBeLessThan(Date.now());
 
-    expect(body.freshness.lastCandleUnixMs % ONE_HOUR_MS).toBe(0);
+    expect(body.freshness.lastCandleOpenUnixMs % ONE_HOUR_MS).toBe(0);
+
+    expect(body.freshness.lastCandleCloseUnixMs).toBe(
+      body.freshness.lastCandleOpenUnixMs + ONE_HOUR_MS
+    );
+
+    expect(body.freshness).not.toHaveProperty("lastCandleUnixMs");
+    expect(body.freshness).not.toHaveProperty("lastCandleIso");
+    expect(body.freshness).toHaveProperty("lastCandleOpenIso");
+    expect(body.freshness).toHaveProperty("lastCandleCloseIso");
   });
 
   it("returns 404 CANDLES_NOT_FOUND when no derived 1h bars survive the cutoff", async () => {
