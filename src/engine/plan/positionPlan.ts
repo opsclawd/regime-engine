@@ -251,6 +251,7 @@ export const buildPositionPlan = (input: PositionPlanInput): PlanResponse => {
     position: stripUndefined(input.position as unknown as Record<string, unknown>),
     portfolio: input.portfolio,
     autopilotState: input.autopilotState,
+    config: input.config,
     regimeState: input.regimeState ?? null
   };
   const requestHash = sha256Hex(toCanonicalJson(requestSignature));

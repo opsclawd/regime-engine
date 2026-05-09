@@ -144,6 +144,20 @@ export const generateWeeklyReport = (input: {
     request_json: string;
   }>;
 
+  const fallbackCandles = input.store.db
+    .prepare(
+      `
+        SELECT unix_ms, close
+        FROM candle_revisions
+        WHERE unix_ms BETWEEN ? AND ?
+        ORDER BY unix_ms ASC
+      `
+    )
+    .all(window.fromUnixMs, window.toUnixMs) as Array<{
+    unix_ms: number;
+    close: number;
+  }>;
+
   const regimeCounts = {
     UP: 0,
     DOWN: 0,
@@ -228,6 +242,10 @@ export const generateWeeklyReport = (input: {
           };
         };
       }
+    })),
+    fallbackCandles: fallbackCandles.map((c) => ({
+      unixMs: c.unix_ms,
+      close: c.close
     }))
   });
 

@@ -24,6 +24,10 @@ export interface BaselineInputs {
       };
     };
   }>;
+  fallbackCandles?: Array<{
+    unixMs: number;
+    close: number;
+  }>;
 }
 
 export interface BaselineSummary {
@@ -38,12 +42,22 @@ const roundUsd = (value: number): number => {
 
 const buildPriceSeries = (
   planRequests: BaselineInputs["planRequests"],
-  window: BaselineInputs["window"]
+  window: BaselineInputs["window"],
+  fallbackCandles?: BaselineInputs["fallbackCandles"]
 ): Array<{ unixMs: number; close: number }> => {
   const candlesByUnixMs = new Map<number, number>();
 
   for (const entry of planRequests) {
     for (const candle of entry.request.market.candles ?? []) {
+      if (candle.unixMs < window.fromUnixMs || candle.unixMs > window.toUnixMs) {
+        continue;
+      }
+      candlesByUnixMs.set(candle.unixMs, candle.close);
+    }
+  }
+
+  if (candlesByUnixMs.size === 0 && fallbackCandles) {
+    for (const candle of fallbackCandles) {
       if (candle.unixMs < window.fromUnixMs || candle.unixMs > window.toUnixMs) {
         continue;
       }
@@ -124,7 +138,7 @@ export const computeBaselines = (input: BaselineInputs): BaselineSummary => {
   const sortedRequests = [...input.planRequests].sort(
     (left, right) => left.asOfUnixMs - right.asOfUnixMs
   );
-  const priceSeries = buildPriceSeries(sortedRequests, input.window);
+  const priceSeries = buildPriceSeries(sortedRequests, input.window, input.fallbackCandles);
   const baselineConfig = sortedRequests[0]?.request.config.baselines;
   const initialNavUsd = sortedRequests[0]?.request.portfolio.navUsd ?? 0;
 

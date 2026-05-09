@@ -72,7 +72,103 @@ export const buildOpenApiDocument = () => {
             required: true,
             content: {
               "application/json": {
-                schema: { $ref: "#/components/schemas/PlanRequest" }
+                schema: {
+                  type: "object",
+                  required: [
+                    "schemaVersion",
+                    "asOfUnixMs",
+                    "market",
+                    "position",
+                    "portfolio",
+                    "autopilotState",
+                    "config"
+                  ],
+                  properties: {
+                    schemaVersion: { type: "string", enum: ["1.0"] },
+                    asOfUnixMs: { type: "number" },
+                    market: {
+                      type: "object",
+                      required: ["symbol", "source", "network", "poolAddress", "timeframe"],
+                      properties: {
+                        symbol: { type: "string" },
+                        source: { type: "string" },
+                        network: { type: "string" },
+                        poolAddress: { type: "string" },
+                        timeframe: { type: "string", enum: ["15m", "1h"] }
+                      }
+                    },
+                    position: {
+                      type: "object",
+                      required: [
+                        "positionId",
+                        "observedAtUnixMs",
+                        "lowerBoundPrice",
+                        "upperBoundPrice",
+                        "currentPrice",
+                        "rangeState",
+                        "breachQualified"
+                      ],
+                      properties: {
+                        positionId: { type: "string" },
+                        observedAtUnixMs: { type: "number" },
+                        lowerBoundPrice: { type: "number" },
+                        upperBoundPrice: { type: "number" },
+                        currentPrice: { type: "number" },
+                        rangeState: {
+                          type: "string",
+                          enum: ["in-range", "below-range", "above-range"]
+                        },
+                        breachQualified: { type: "boolean" },
+                        breachQualifiedAtUnixMs: { type: "number" },
+                        distanceToLowerPct: { type: "number" },
+                        distanceToUpperPct: { type: "number" },
+                        liquidityUsd: { type: "number" },
+                        unclaimedFeesUsd: { type: "number" },
+                        inventorySkewSolPct: { type: "number" },
+                        inventorySkewUsdcPct: { type: "number" }
+                      }
+                    },
+                    portfolio: {
+                      type: "object",
+                      required: ["navUsd", "solUnits", "usdcUnits"],
+                      properties: {
+                        navUsd: { type: "number" },
+                        solUnits: { type: "number" },
+                        usdcUnits: { type: "number" }
+                      }
+                    },
+                    autopilotState: {
+                      type: "object",
+                      required: [
+                        "activeClmm",
+                        "stopouts24h",
+                        "redeploys24h",
+                        "cooldownUntilUnixMs",
+                        "standDownUntilUnixMs",
+                        "strikeCount"
+                      ],
+                      properties: {
+                        activeClmm: { type: "boolean" },
+                        stopouts24h: { type: "number" },
+                        redeploys24h: { type: "number" },
+                        cooldownUntilUnixMs: { type: "number" },
+                        standDownUntilUnixMs: { type: "number" },
+                        strikeCount: { type: "number" }
+                      }
+                    },
+                    config: {
+                      type: "object",
+                      required: ["regime", "allocation", "churn", "baselines"],
+                      properties: {
+                        regime: { type: "object" },
+                        allocation: { type: "object" },
+                        churn: { type: "object" },
+                        baselines: { type: "object" }
+                      }
+                    },
+                    regimeState: { type: "object" }
+                  }
+                }
               }
             }
           },
@@ -81,7 +177,39 @@ export const buildOpenApiDocument = () => {
               description: "Position-scoped plan with HOLD / STAND_DOWN / REQUEST_EXIT_CLMM",
               content: {
                 "application/json": {
-                  schema: { $ref: "#/components/schemas/PlanResponse" }
+                  schema: {
+                    type: "object",
+                    required: [
+                      "schemaVersion",
+                      "planId",
+                      "planHash",
+                      "asOfUnixMs",
+                      "scope",
+                      "regime",
+                      "targets",
+                      "actions",
+                      "constraints",
+                      "nextRegimeState",
+                      "reasons",
+                      "telemetry",
+                      "marketData"
+                    ],
+                    properties: {
+                      schemaVersion: { type: "string" },
+                      planId: { type: "string" },
+                      planHash: { type: "string" },
+                      asOfUnixMs: { type: "number" },
+                      scope: { type: "object" },
+                      regime: { type: "string" },
+                      targets: { type: "object" },
+                      actions: { type: "array" },
+                      constraints: { type: "object" },
+                      nextRegimeState: { type: "object" },
+                      reasons: { type: "array" },
+                      telemetry: { type: "object" },
+                      marketData: { type: "object" }
+                    }
+                  }
                 }
               }
             },
@@ -89,7 +217,22 @@ export const buildOpenApiDocument = () => {
               description: "Validation error (invalid request body)",
               content: {
                 "application/json": {
-                  schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+                  schema: {
+                    type: "object",
+                    required: ["schemaVersion", "error"],
+                    properties: {
+                      schemaVersion: { type: "string" },
+                      error: {
+                        type: "object",
+                        required: ["code", "message"],
+                        properties: {
+                          code: { type: "string" },
+                          message: { type: "string" },
+                          details: { type: "array" }
+                        }
+                      }
+                    }
+                  }
                 }
               }
             },
@@ -97,7 +240,22 @@ export const buildOpenApiDocument = () => {
               description: "Service unavailable (stale market data or position state)",
               content: {
                 "application/json": {
-                  schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+                  schema: {
+                    type: "object",
+                    required: ["schemaVersion", "error"],
+                    properties: {
+                      schemaVersion: { type: "string" },
+                      error: {
+                        type: "object",
+                        required: ["code", "message"],
+                        properties: {
+                          code: { type: "string" },
+                          message: { type: "string" },
+                          details: { type: "array" }
+                        }
+                      }
+                    }
+                  }
                 }
               }
             }
