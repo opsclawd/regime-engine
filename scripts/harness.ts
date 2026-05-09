@@ -17,7 +17,20 @@ interface HarnessExecutionFixture {
   };
 }
 
+interface HarnessCandleRow {
+  unixMs: number;
+  open: number;
+  high: number;
+  low: number;
+  close: number;
+  volume: number;
+}
+
 interface HarnessStepFixture {
+  candles?: {
+    sourceRecordedAtIso: string;
+    rows: HarnessCandleRow[];
+  };
   request: Record<string, unknown>;
   execution?: HarnessExecutionFixture;
 }
@@ -60,6 +73,35 @@ const loadFixtureSteps = (fixturePath: string): HarnessStepFixture[] => {
   return [JSON.parse(readFileSync(resolvedPath, "utf8")) as HarnessStepFixture];
 };
 
+const FIFTEEN_MIN_MS = 15 * 60 * 1000;
+
+const shiftStepTimestamps = (step: HarnessStepFixture, offset: number): HarnessStepFixture => {
+  const shifted: HarnessStepFixture = {
+    request: JSON.parse(
+      JSON.stringify(step.request, (_, value) =>
+        typeof value === "number" && value > 0 && String(value).length >= 13
+          ? value + offset
+          : value
+      )
+    ),
+    execution: step.execution
+  };
+
+  if (step.candles) {
+    shifted.candles = {
+      sourceRecordedAtIso: new Date(
+        new Date(step.candles.sourceRecordedAtIso).getTime() + offset
+      ).toISOString(),
+      rows: step.candles.rows.map((row) => ({
+        ...row,
+        unixMs: row.unixMs + offset
+      }))
+    };
+  }
+
+  return shifted;
+};
+
 const toActionResults = (actionTypes: string[], status: "SUCCESS" | "FAILED" | "SKIPPED") => {
   if (actionTypes.length === 0) {
     return [
@@ -79,17 +121,25 @@ const toActionResults = (actionTypes: string[], status: "SUCCESS" | "FAILED" | "
 const main = async (): Promise<void> => {
   const args = parseArgs(process.argv.slice(2));
   const fixture = args.fixture ?? "./fixtures/demo";
-  const from = args.from ?? "2026-01-01";
-  const to = args.to ?? "2026-01-31";
 
   const fixtureSteps = loadFixtureSteps(fixture);
   if (fixtureSteps.length === 0) {
     throw new Error(`No fixture steps found in ${fixture}`);
   }
 
+  const nowAnchor = Math.floor(Date.now() / FIFTEEN_MIN_MS) * FIFTEEN_MIN_MS - FIFTEEN_MIN_MS;
+  const shiftedSteps = fixtureSteps.map((step) => {
+    const asOf = (step.request as { asOfUnixMs: number }).asOfUnixMs;
+    return shiftStepTimestamps(step, nowAnchor - asOf);
+  });
+
+  const from = args.from ?? new Date(nowAnchor - 30 * 86400000).toISOString().slice(0, 10);
+  const to = args.to ?? new Date(nowAnchor + 86400000).toISOString().slice(0, 10);
+
   const ledgerPath = resolve("tmp/harness-ledger.sqlite");
   rmSync(ledgerPath, { force: true });
   process.env.LEDGER_DB_PATH = ledgerPath;
+  process.env.CANDLES_INGEST_TOKEN = process.env.CANDLES_INGEST_TOKEN ?? "harness-token";
 
   const app = buildApp();
   let regimeState: RegimeState | undefined;
@@ -100,11 +150,29 @@ const main = async (): Promise<void> => {
     actionCount: number;
   }> = [];
 
-  for (let index = 0; index < fixtureSteps.length; index += 1) {
-    const step = fixtureSteps[index];
+  for (let index = 0; index < shiftedSteps.length; index += 1) {
+    const step = shiftedSteps[index];
     const requestPayload = structuredClone(step.request) as Record<string, unknown>;
     if (!("regimeState" in requestPayload) && regimeState) {
       requestPayload.regimeState = regimeState;
+    }
+    if (step.candles) {
+      const market = requestPayload.market as Record<string, unknown> | undefined;
+      await app.inject({
+        method: "POST",
+        url: "/v1/candles",
+        headers: { "X-Candles-Ingest-Token": process.env.CANDLES_INGEST_TOKEN ?? "harness-token" },
+        payload: {
+          schemaVersion: "1.0",
+          source: (market?.source as string) ?? "geckoterminal",
+          network: (market?.network as string) ?? "solana",
+          poolAddress: (market?.poolAddress as string) ?? "",
+          symbol: (market?.symbol as string) ?? "",
+          timeframe: "15m",
+          sourceRecordedAtIso: step.candles.sourceRecordedAtIso,
+          candles: step.candles.rows
+        }
+      });
     }
     const planResponse = await app.inject({
       method: "POST",
@@ -194,7 +262,7 @@ const main = async (): Promise<void> => {
   await app.close();
 
   process.stdout.write(
-    `Harness completed with ${fixtureSteps.length} steps.\n` +
+    `Harness completed with ${shiftedSteps.length} steps.\n` +
       `Ledger: ${ledgerPath}\n` +
       `Markdown report: ${markdownPath}\n` +
       `JSON report: ${jsonPath}\n`
