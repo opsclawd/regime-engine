@@ -86,8 +86,8 @@ export const buildRegimeCurrent = (input: BuildRegimeCurrentInput): RegimeCurren
   const telemetry = computeIndicators(candles, config.indicators);
   const { regime, reasons: regimeReasons } = classifyMarketRegime(telemetry, config.regime);
 
-  const lastCandleUnixMs = candles[candles.length - 1].unixMs;
-  const freshness = computeFreshness(nowUnixMs, lastCandleUnixMs, {
+  const lastCandleOpenUnixMs = candles[candles.length - 1].unixMs;
+  const freshness = computeFreshness(nowUnixMs, lastCandleOpenUnixMs, config.timeframeMs, {
     softStaleMs: config.freshness.softStaleMs,
     hardStaleMs: config.freshness.hardStaleMs
   });
