@@ -338,8 +338,10 @@ export interface RegimeCurrentTelemetry {
 
 export interface RegimeCurrentFreshness {
   generatedAtIso: string;
-  lastCandleUnixMs: number;
-  lastCandleIso: string;
+  lastCandleOpenUnixMs: number;
+  lastCandleOpenIso: string;
+  lastCandleCloseUnixMs: number;
+  lastCandleCloseIso: string;
   ageSeconds: number;
   softStale: boolean;
   hardStale: boolean;
