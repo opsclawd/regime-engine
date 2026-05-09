@@ -26,7 +26,7 @@ const fixedInput: PositionPlanInput = {
     standDownUntilUnixMs: 0,
     strikeCount: 0
   },
-  regimeState: { current: "CHOP", barsInRegime: 4, pending: null, pendingBars: 0 },
+  nextRegimeState: { current: "CHOP", barsInRegime: 5, pending: null, pendingBars: 0 },
   config: {
     regime: {
       confirmBars: 1,

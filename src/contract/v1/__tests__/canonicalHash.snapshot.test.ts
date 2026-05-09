@@ -49,6 +49,7 @@ const fixedInput: PositionPlanInput = {
     },
     baselines: { dcaIntervalDays: 7, dcaAmountUsd: 100, usdcCarryApr: 0.04 }
   },
+  nextRegimeState: { current: "CHOP", barsInRegime: 5, pending: null, pendingBars: 0 },
   market: {
     feed: {
       symbol: "SOL/USDC",

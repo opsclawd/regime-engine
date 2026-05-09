@@ -5,7 +5,7 @@ import { MARKET_REGIME_CONFIG } from "../../engine/marketRegime/config.js";
 import { aggregate15mTo1h } from "../../engine/candles/aggregateCandles.js";
 import { buildRegimeCandleReadPlan } from "../../engine/marketRegime/regimeCandleReadPlan.js";
 import { computeIndicators } from "../../engine/features/indicators.js";
-import { classifyMarketRegime } from "../../engine/marketRegime/classifyMarketRegime.js";
+import { classifyRegimeForPlan } from "../../engine/marketRegime/classifyRegimeForPlan.js";
 import { computeFreshness } from "../../engine/marketRegime/freshness.js";
 import { evaluateMarketClmmSuitability } from "../../engine/marketRegime/evaluateMarketClmmSuitability.js";
 import { buildPositionPlan } from "../../engine/plan/positionPlan.js";
@@ -100,7 +100,11 @@ export const createGeneratePlanUseCase = (deps: GeneratePlanUseCaseDeps): Genera
     }
 
     const indicators = computeIndicators(candlesToClassify, config.indicators);
-    const { regime, reasons: regimeReasons } = classifyMarketRegime(indicators, config.regime);
+    const {
+      regime,
+      nextState: nextRegimeState,
+      reasons: regimeReasons
+    } = classifyRegimeForPlan(indicators, config.regime, body.regimeState);
 
     const lastCandleUnixMs = candlesToClassify[candlesToClassify.length - 1].unixMs;
     const freshness = computeFreshness(body.asOfUnixMs, lastCandleUnixMs, {
@@ -134,7 +138,7 @@ export const createGeneratePlanUseCase = (deps: GeneratePlanUseCaseDeps): Genera
       position: body.position,
       portfolio: body.portfolio,
       autopilotState: body.autopilotState,
-      regimeState: body.regimeState,
+      nextRegimeState,
       config: body.config,
       schemaVersion: body.schemaVersion,
       market: {

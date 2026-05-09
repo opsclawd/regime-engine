@@ -42,7 +42,7 @@ export interface PositionPlanInput {
   position: PlanRequestPosition;
   portfolio: PlanRequest["portfolio"];
   autopilotState: PlanRequest["autopilotState"];
-  regimeState?: RegimeState;
+  nextRegimeState: RegimeState;
   config: PlanRequest["config"];
   market: PositionPlanMarketContext;
   schemaVersion?: PlanRequest["schemaVersion"];
@@ -121,29 +121,6 @@ const buildReasons = (input: {
   return reasons;
 };
 
-const computeNextRegimeState = (input: {
-  current: Regime;
-  prior: RegimeState | undefined;
-}): RegimeState => {
-  if (!input.prior) {
-    return { current: input.current, barsInRegime: 1, pending: null, pendingBars: 0 };
-  }
-  if (input.prior.current === input.current) {
-    return {
-      current: input.current,
-      barsInRegime: input.prior.barsInRegime + 1,
-      pending: null,
-      pendingBars: 0
-    };
-  }
-  return {
-    current: input.current,
-    barsInRegime: 1,
-    pending: null,
-    pendingBars: 0
-  };
-};
-
 const computeTelemetry = (input: {
   indicators: IndicatorTelemetry;
   position: PlanRequestPosition;
@@ -202,10 +179,7 @@ export const buildPositionPlan = (input: PositionPlanInput): PlanResponse => {
     allowClmm
   };
 
-  const nextRegimeState = computeNextRegimeState({
-    current: input.market.regime,
-    prior: input.regimeState
-  });
+  const nextRegimeState = input.nextRegimeState;
 
   const reasons = buildReasons({
     market: input.market,
@@ -252,7 +226,7 @@ export const buildPositionPlan = (input: PositionPlanInput): PlanResponse => {
     portfolio: input.portfolio,
     autopilotState: input.autopilotState,
     config: input.config,
-    regimeState: input.regimeState ?? null
+    nextRegimeState: input.nextRegimeState
   };
   const requestHash = sha256Hex(toCanonicalJson(requestSignature));
   const planId = `plan-${requestHash.slice(0, 16)}`;

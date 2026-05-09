@@ -98,6 +98,12 @@ const makeInput = (overrides: {
     sourceTimeframe: "15m",
     derivedTimeframe: "1h",
     aggregationVersion: "ohlcv-agg-v1"
+  },
+  nextRegimeState: {
+    current: overrides.regime ?? "CHOP",
+    barsInRegime: 1,
+    pending: null,
+    pendingBars: 0
   }
 });
 
@@ -198,5 +204,36 @@ describe("buildPositionPlan action precedence", () => {
     expect(plan.marketData.aggregationVersion).toBe("ohlcv-agg-v1");
     expect(plan.marketData.candleCount).toBe(50);
     expect(plan.marketData.sourceCandleCount).toBe(200);
+  });
+
+  it("respects regime hysteresis: pending confirmation prevents regime flip", () => {
+    const pendingInput = makeInput({ regime: "CHOP", activeClmm: true });
+    pendingInput.market.regime = "CHOP";
+    pendingInput.market.clmmSuitability = { status: "ALLOWED", reasons: [] };
+    pendingInput.nextRegimeState = {
+      current: "CHOP",
+      barsInRegime: 10,
+      pending: "UP",
+      pendingBars: 0
+    };
+    const plan = buildPositionPlan(pendingInput);
+    expect(plan.regime).toBe("CHOP");
+    expect(plan.nextRegimeState.pending).toBe("UP");
+    expect(plan.nextRegimeState.current).toBe("CHOP");
+  });
+
+  it("respects regime hysteresis: minHoldBars prevents immediate regime flip", () => {
+    const holdInput = makeInput({ activeClmm: true });
+    holdInput.market.regime = "UP";
+    holdInput.market.clmmSuitability = { status: "ALLOWED", reasons: [] };
+    holdInput.nextRegimeState = {
+      current: "UP",
+      barsInRegime: 1,
+      pending: null,
+      pendingBars: 0
+    };
+    const plan = buildPositionPlan(holdInput);
+    expect(plan.regime).toBe("UP");
+    expect(plan.nextRegimeState).toEqual(holdInput.nextRegimeState);
   });
 });
