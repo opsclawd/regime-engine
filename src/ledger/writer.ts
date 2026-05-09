@@ -6,7 +6,7 @@ import type {
   PlanRequest,
   PlanResponse
 } from "../contract/v1/types.js";
-import { findPlanHashByPlanId, runInTransaction, type LedgerStore } from "./store.js";
+import { validatePlanForExecutionResult, runInTransaction, type LedgerStore } from "./store.js";
 
 export const LEDGER_ERROR_CODES = {
   PLAN_NOT_FOUND: "PLAN_NOT_FOUND",
@@ -84,16 +84,20 @@ export const writeExecutionResultLedgerEntry = (
   }
 ): { inserted: boolean; idempotent: boolean } => {
   const receivedAtUnixMs = input.receivedAtUnixMs ?? Date.now();
-  const storedPlanHash = findPlanHashByPlanId(store, input.executionResult.planId);
+  const validation = validatePlanForExecutionResult(
+    store,
+    input.executionResult.planId,
+    input.executionResult.planHash
+  );
 
-  if (!storedPlanHash) {
+  if (validation.kind === "not_found") {
     throw new LedgerWriteError(
       LEDGER_ERROR_CODES.PLAN_NOT_FOUND,
       `No plan found for planId "${input.executionResult.planId}".`
     );
   }
 
-  if (storedPlanHash !== input.executionResult.planHash) {
+  if (validation.kind === "hash_mismatch") {
     throw new LedgerWriteError(
       LEDGER_ERROR_CODES.PLAN_HASH_MISMATCH,
       `planHash mismatch for planId "${input.executionResult.planId}".`

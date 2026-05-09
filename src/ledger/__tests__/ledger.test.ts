@@ -232,6 +232,79 @@ describe("ledger writer", () => {
     store.close();
   });
 
+  it("accepts execution result for earlier plan hash when same planId has later revision", () => {
+    const store = createLedgerStore(":memory:");
+    const request = makePlanRequestFixture();
+    const firstResponse = makePlanResponseFixture(request.asOfUnixMs);
+    const secondResponse = makePlanResponseFixture(request.asOfUnixMs + 60_000);
+    secondResponse.planId = firstResponse.planId;
+    secondResponse.planHash = planHashFromPlan({
+      ...secondResponse,
+      planId: secondResponse.planId
+    } as Omit<PlanResponse, "planHash">);
+
+    writePlanLedgerEntry(store, { planRequest: request, planResponse: firstResponse });
+    writePlanLedgerEntry(store, { planRequest: request, planResponse: secondResponse });
+
+    const result = writeExecutionResultLedgerEntry(store, {
+      executionResult: {
+        schemaVersion: SCHEMA_VERSION,
+        planId: firstResponse.planId,
+        planHash: firstResponse.planHash,
+        asOfUnixMs: request.asOfUnixMs,
+        actionResults: [{ actionType: "HOLD", status: "SUCCESS" }],
+        costs: { txFeesUsd: 0.02, priorityFeesUsd: 0.01, slippageUsd: 0.12 },
+        portfolioAfter: { navUsd: 10_020, solUnits: 20, usdcUnits: 6_020 }
+      },
+      receivedAtUnixMs: request.asOfUnixMs + 200_000
+    });
+
+    expect(result.inserted).toBe(true);
+    expect(getLedgerCounts(store).executionResults).toBe(1);
+    store.close();
+  });
+
+  it("rejects execution result with wrong planHash even when planId exists", () => {
+    const store = createLedgerStore(":memory:");
+    const request = makePlanRequestFixture();
+    const response = makePlanResponseFixture(request.asOfUnixMs);
+
+    writePlanLedgerEntry(store, { planRequest: request, planResponse: response });
+
+    expect(() =>
+      writeExecutionResultLedgerEntry(store, {
+        executionResult: {
+          schemaVersion: SCHEMA_VERSION,
+          planId: response.planId,
+          planHash: "wrong-hash",
+          asOfUnixMs: request.asOfUnixMs,
+          actionResults: [{ actionType: "HOLD", status: "FAILED" }],
+          costs: { txFeesUsd: 0.02, priorityFeesUsd: 0.01, slippageUsd: 0.12 },
+          portfolioAfter: { navUsd: 10_000, solUnits: 20, usdcUnits: 6_000 }
+        }
+      })
+    ).toThrow(LedgerWriteError);
+
+    try {
+      writeExecutionResultLedgerEntry(store, {
+        executionResult: {
+          schemaVersion: SCHEMA_VERSION,
+          planId: response.planId,
+          planHash: "wrong-hash",
+          asOfUnixMs: request.asOfUnixMs,
+          actionResults: [{ actionType: "HOLD", status: "FAILED" }],
+          costs: { txFeesUsd: 0.02, priorityFeesUsd: 0.01, slippageUsd: 0.12 },
+          portfolioAfter: { navUsd: 10_000, solUnits: 20, usdcUnits: 6_000 }
+        }
+      });
+    } catch (error) {
+      expect(error).toBeInstanceOf(LedgerWriteError);
+      expect((error as LedgerWriteError).code).toBe(LEDGER_ERROR_CODES.PLAN_HASH_MISMATCH);
+    }
+
+    store.close();
+  });
+
   it("rejects execution results when no linked plan exists", () => {
     const store = createLedgerStore(":memory:");
 
