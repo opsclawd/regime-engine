@@ -144,19 +144,35 @@ export const generateWeeklyReport = (input: {
     request_json: string;
   }>;
 
-  const fallbackCandles = input.store.db
-    .prepare(
-      `
-        SELECT unix_ms, close
-        FROM candle_revisions
-        WHERE unix_ms BETWEEN ? AND ?
-        ORDER BY unix_ms ASC
-      `
+  const distinctFeeds = [
+    ...new Set(
+      planRequests.map((row) => {
+        const req = asRecord(row.request_json) as {
+          market?: { symbol?: string; source?: string; network?: string; poolAddress?: string };
+        };
+        const m = req.market ?? {};
+        return `${m.source ?? ""}|${m.network ?? ""}|${m.poolAddress ?? ""}`;
+      })
     )
-    .all(window.fromUnixMs, window.toUnixMs) as Array<{
-    unix_ms: number;
-    close: number;
-  }>;
+  ];
+
+  const fallbackCandles =
+    distinctFeeds.length > 0
+      ? (input.store.db
+          .prepare(
+            `
+            SELECT cr.unix_ms, cr.close
+            FROM candle_revisions cr
+            WHERE cr.unix_ms BETWEEN ? AND ?
+              AND cr.source || '|' || cr.network || '|' || cr.pool_address IN (${distinctFeeds.map(() => "?").join(", ")})
+            ORDER BY cr.unix_ms ASC
+          `
+          )
+          .all(window.fromUnixMs, window.toUnixMs, ...distinctFeeds) as Array<{
+          unix_ms: number;
+          close: number;
+        }>)
+      : [];
 
   const regimeCounts = {
     UP: 0,
