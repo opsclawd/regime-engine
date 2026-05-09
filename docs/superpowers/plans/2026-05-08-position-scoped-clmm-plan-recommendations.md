@@ -32,7 +32,7 @@
 
 **Modify — contract validation:**
 
-- `src/contract/v1/validation.ts` — replace `planRequestSchema` with the position-scoped schema (no `market.candles`, requires `market.{source, network, poolAddress, timeframe}`, requires the `position` block, validates `lowerBoundPrice < upperBoundPrice`, `breachQualified` boolean required, `rangeState` enum, `position.observedAtUnixMs` non-negative integer). Add a `superRefine` for `observedAtUnixMs <= asOfUnixMs` and `breachQualifiedAtUnixMs` rules. The position-staleness check (60_000ms) and breach-qualified-at-required check are _not_ expressed in the Zod schema — they are enforced in the use case so they can map to `503` and to specific error codes.
+- `src/contract/v1/validation.ts` — replace `planRequestSchema` with the position-scoped schema (no `market.candles`, requires `market.{source, network, poolAddress, timeframe}`, requires the `position` block, validates `lowerBoundPrice < upperBoundPrice`, `breachQualified` boolean required, `rangeState` enum, `position.observedAtUnixMs` non-negative integer). Add a `superRefine` for `observedAtUnixMs <= asOfUnixMs` and `breachQualifiedAtUnixMs` rules. The position-staleness check (60*000ms) and breach-qualified-at-required check are \_not* expressed in the Zod schema — they are enforced in the use case so they can map to `503` and to specific error codes.
 
 **Modify — contract errors:**
 

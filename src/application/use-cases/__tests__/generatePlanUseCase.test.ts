@@ -100,7 +100,6 @@ describe("GeneratePlanUseCase", () => {
     const useCase = createGeneratePlanUseCase({
       candleReadPort,
       clock,
-      engineVersion: "9.9.9",
       planLedgerWritePort
     });
 
@@ -125,7 +124,6 @@ describe("GeneratePlanUseCase", () => {
     const useCase = createGeneratePlanUseCase({
       candleReadPort,
       clock,
-      engineVersion: "9.9.9",
       planLedgerWritePort
     });
 
@@ -140,7 +138,6 @@ describe("GeneratePlanUseCase", () => {
     const useCase = createGeneratePlanUseCase({
       candleReadPort,
       clock,
-      engineVersion: "9.9.9",
       planLedgerWritePort
     });
 
@@ -154,7 +151,6 @@ describe("GeneratePlanUseCase", () => {
     const useCase = createGeneratePlanUseCase({
       candleReadPort,
       clock,
-      engineVersion: "9.9.9",
       planLedgerWritePort
     });
 
@@ -175,7 +171,6 @@ describe("GeneratePlanUseCase", () => {
     const useCase = createGeneratePlanUseCase({
       candleReadPort,
       clock,
-      engineVersion: "9.9.9",
       planLedgerWritePort
     });
 
@@ -187,7 +182,6 @@ describe("GeneratePlanUseCase", () => {
     const useCase = createGeneratePlanUseCase({
       candleReadPort,
       clock,
-      engineVersion: "9.9.9",
       planLedgerWritePort
     });
 

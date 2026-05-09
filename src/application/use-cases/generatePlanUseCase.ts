@@ -22,7 +22,6 @@ const POSITION_OBSERVATION_MAX_AGE_MS = 60_000;
 export interface GeneratePlanUseCaseDeps {
   candleReadPort: CandleReadPort;
   clock: ClockPort;
-  engineVersion: string;
   planLedgerWritePort: PlanLedgerWritePort;
 }
 

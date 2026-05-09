@@ -91,11 +91,9 @@ export const buildApplication = (ctx: RuntimeStoreContext): ApplicationDependenc
     clock,
     engineVersion: process.env.npm_package_version ?? "0.0.0"
   });
-  const engineVersion = process.env.npm_package_version ?? "0.0.0";
   const generatePlan = createGeneratePlanUseCase({
     candleReadPort,
     clock,
-    engineVersion,
     planLedgerWritePort
   });
   const recordExecutionResult = createRecordExecutionResultUseCase({
