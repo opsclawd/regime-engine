@@ -47,17 +47,15 @@ const buildPriceSeries = (
 ): Array<{ unixMs: number; close: number }> => {
   const candlesByUnixMs = new Map<number, number>();
 
-  for (const entry of planRequests) {
-    for (const candle of entry.request.market.candles ?? []) {
-      if (candle.unixMs < window.fromUnixMs || candle.unixMs > window.toUnixMs) {
-        continue;
-      }
-      candlesByUnixMs.set(candle.unixMs, candle.close);
+  for (const candle of fallbackCandles ?? []) {
+    if (candle.unixMs < window.fromUnixMs || candle.unixMs > window.toUnixMs) {
+      continue;
     }
+    candlesByUnixMs.set(candle.unixMs, candle.close);
   }
 
-  if (candlesByUnixMs.size === 0 && fallbackCandles) {
-    for (const candle of fallbackCandles) {
+  for (const entry of planRequests) {
+    for (const candle of entry.request.market.candles ?? []) {
       if (candle.unixMs < window.fromUnixMs || candle.unixMs > window.toUnixMs) {
         continue;
       }
