@@ -70,8 +70,10 @@ const fixedInput: PositionPlanInput = {
     },
     freshness: {
       generatedAtIso: "2026-05-08T12:00:00.000Z",
-      lastCandleUnixMs: AS_OF - 60_000,
-      lastCandleIso: "2026-05-08T11:59:00.000Z",
+      lastCandleOpenUnixMs: AS_OF - 60 * 60 * 1000,
+      lastCandleOpenIso: "2026-05-08T11:00:00.000Z",
+      lastCandleCloseUnixMs: AS_OF - 60_000,
+      lastCandleCloseIso: "2026-05-08T11:59:00.000Z",
       ageSeconds: 60,
       softStale: false,
       hardStale: false,
