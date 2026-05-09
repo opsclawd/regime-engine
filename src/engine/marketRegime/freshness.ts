@@ -5,8 +5,10 @@ export interface FreshnessConfig {
 
 export interface FreshnessResult {
   generatedAtIso: string;
-  lastCandleUnixMs: number;
-  lastCandleIso: string;
+  lastCandleOpenUnixMs: number;
+  lastCandleOpenIso: string;
+  lastCandleCloseUnixMs: number;
+  lastCandleCloseIso: string;
   ageSeconds: number;
   softStale: boolean;
   hardStale: boolean;
@@ -16,14 +18,23 @@ export interface FreshnessResult {
 
 export const computeFreshness = (
   nowUnixMs: number,
-  lastCandleUnixMs: number,
+  lastCandleOpenUnixMs: number,
+  timeframeMs: number,
   config: FreshnessConfig
 ): FreshnessResult => {
-  const ageMs = Math.max(0, nowUnixMs - lastCandleUnixMs);
+  if (!Number.isFinite(timeframeMs) || timeframeMs <= 0) {
+    throw new Error("timeframeMs must be a positive finite number");
+  }
+
+  const lastCandleCloseUnixMs = lastCandleOpenUnixMs + timeframeMs;
+  const ageMs = Math.max(0, nowUnixMs - lastCandleCloseUnixMs);
+
   return {
     generatedAtIso: new Date(nowUnixMs).toISOString(),
-    lastCandleUnixMs,
-    lastCandleIso: new Date(lastCandleUnixMs).toISOString(),
+    lastCandleOpenUnixMs,
+    lastCandleOpenIso: new Date(lastCandleOpenUnixMs).toISOString(),
+    lastCandleCloseUnixMs,
+    lastCandleCloseIso: new Date(lastCandleCloseUnixMs).toISOString(),
     ageSeconds: Math.floor(ageMs / 1000),
     softStale: ageMs >= config.softStaleMs,
     hardStale: ageMs >= config.hardStaleMs,

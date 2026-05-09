@@ -85,8 +85,10 @@ const buildFixture = (asOfUnixMs: number): { input: PositionPlanInput; request: 
       },
       freshness: {
         generatedAtIso: "2026-05-08T12:00:00.000Z",
-        lastCandleUnixMs: asOfUnixMs - 60_000,
-        lastCandleIso: "2026-05-08T11:59:00.000Z",
+        lastCandleOpenUnixMs: asOfUnixMs - 60 * 60 * 1000,
+        lastCandleOpenIso: "2026-05-08T11:00:00.000Z",
+        lastCandleCloseUnixMs: asOfUnixMs - 60_000,
+        lastCandleCloseIso: "2026-05-08T11:59:00.000Z",
         ageSeconds: 60,
         softStale: false,
         hardStale: false,

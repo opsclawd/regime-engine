@@ -110,8 +110,8 @@ export const createGeneratePlanUseCase = (deps: GeneratePlanUseCaseDeps): Genera
       body.regimeState
     );
 
-    const lastCandleUnixMs = candlesToClassify[candlesToClassify.length - 1].unixMs;
-    const freshness = computeFreshness(body.asOfUnixMs, lastCandleUnixMs, {
+    const lastCandleOpenUnixMs = candlesToClassify[candlesToClassify.length - 1].unixMs;
+    const freshness = computeFreshness(body.asOfUnixMs, lastCandleOpenUnixMs, config.timeframeMs, {
       softStaleMs: config.freshness.softStaleMs,
       hardStaleMs: config.freshness.hardStaleMs
     });
