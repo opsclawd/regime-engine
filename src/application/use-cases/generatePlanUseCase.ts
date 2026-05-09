@@ -1,5 +1,4 @@
 import type { CandleReadPort } from "../ports/candlePorts.js";
-import type { ClockPort } from "../ports/clock.js";
 import type { PlanLedgerWritePort } from "../ports/planLedgerPort.js";
 import type { PlanRequest, PlanResponse } from "../../contract/v1/types.js";
 import { MARKET_REGIME_CONFIG } from "../../engine/marketRegime/config.js";
@@ -21,7 +20,6 @@ const POSITION_OBSERVATION_MAX_AGE_MS = 60_000;
 
 export interface GeneratePlanUseCaseDeps {
   candleReadPort: CandleReadPort;
-  clock: ClockPort;
   planLedgerWritePort: PlanLedgerWritePort;
 }
 
@@ -42,10 +40,9 @@ export const createGeneratePlanUseCase = (deps: GeneratePlanUseCaseDeps): Genera
     }
 
     const config = MARKET_REGIME_CONFIG[body.market.timeframe];
-    const nowUnixMs = deps.clock.nowUnixMs();
     const readPlan = buildRegimeCandleReadPlan({
       requestedTimeframe: body.market.timeframe,
-      nowUnixMs
+      nowUnixMs: body.asOfUnixMs
     });
 
     const sourceCandles = await deps.candleReadPort.getLatestCandlesForFeed({
@@ -106,7 +103,7 @@ export const createGeneratePlanUseCase = (deps: GeneratePlanUseCaseDeps): Genera
     const { regime, reasons: regimeReasons } = classifyMarketRegime(indicators, config.regime);
 
     const lastCandleUnixMs = candlesToClassify[candlesToClassify.length - 1].unixMs;
-    const freshness = computeFreshness(nowUnixMs, lastCandleUnixMs, {
+    const freshness = computeFreshness(body.asOfUnixMs, lastCandleUnixMs, {
       softStaleMs: config.freshness.softStaleMs,
       hardStaleMs: config.freshness.hardStaleMs
     });

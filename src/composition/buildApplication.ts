@@ -93,7 +93,6 @@ export const buildApplication = (ctx: RuntimeStoreContext): ApplicationDependenc
   });
   const generatePlan = createGeneratePlanUseCase({
     candleReadPort,
-    clock,
     planLedgerWritePort
   });
   const recordExecutionResult = createRecordExecutionResultUseCase({

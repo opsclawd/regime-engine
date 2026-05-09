@@ -2,7 +2,6 @@ import { describe, expect, it } from "vitest";
 import { createGeneratePlanUseCase } from "../generatePlanUseCase.js";
 import { FakePlanLedgerWritePort } from "./fakes/fakePlanLedgerWritePort.js";
 import { FakeCandleReadPort } from "./fakes/fakeCandleReadPort.js";
-import { FakeClockPort } from "./fakes/fakeClockPort.js";
 import {
   PlanMarketDataUnavailableError,
   PlanPositionStateStaleError
@@ -86,9 +85,8 @@ const makeRequest = (overrides: Partial<PlanRequest> = {}): PlanRequest => ({
 
 const buildDeps = (rows: CandleRow[]) => {
   const candleReadPort = new FakeCandleReadPort({ "15m": rows });
-  const clock = new FakeClockPort(FIXED_NOW);
   const planLedgerWritePort = new FakePlanLedgerWritePort();
-  return { candleReadPort, clock, planLedgerWritePort };
+  return { candleReadPort, planLedgerWritePort };
 };
 
 const enoughDerived1hSourceRows = () =>
@@ -96,10 +94,9 @@ const enoughDerived1hSourceRows = () =>
 
 describe("GeneratePlanUseCase", () => {
   it("returns a position-scoped plan and writes once on the happy path", async () => {
-    const { candleReadPort, clock, planLedgerWritePort } = buildDeps(enoughDerived1hSourceRows());
+    const { candleReadPort, planLedgerWritePort } = buildDeps(enoughDerived1hSourceRows());
     const useCase = createGeneratePlanUseCase({
       candleReadPort,
-      clock,
       planLedgerWritePort
     });
 
@@ -120,10 +117,9 @@ describe("GeneratePlanUseCase", () => {
   });
 
   it("raises PlanPositionStateStaleError when observedAtUnixMs is older than 60s", async () => {
-    const { candleReadPort, clock, planLedgerWritePort } = buildDeps(enoughDerived1hSourceRows());
+    const { candleReadPort, planLedgerWritePort } = buildDeps(enoughDerived1hSourceRows());
     const useCase = createGeneratePlanUseCase({
       candleReadPort,
-      clock,
       planLedgerWritePort
     });
 
@@ -134,10 +130,9 @@ describe("GeneratePlanUseCase", () => {
   });
 
   it("raises PlanMarketDataUnavailableError when no closed candles are available", async () => {
-    const { candleReadPort, clock, planLedgerWritePort } = buildDeps([]);
+    const { candleReadPort, planLedgerWritePort } = buildDeps([]);
     const useCase = createGeneratePlanUseCase({
       candleReadPort,
-      clock,
       planLedgerWritePort
     });
 
@@ -145,12 +140,11 @@ describe("GeneratePlanUseCase", () => {
   });
 
   it("raises PlanMarketDataUnavailableError when closed candles exist but are insufficient", async () => {
-    const { candleReadPort, clock, planLedgerWritePort } = buildDeps(
+    const { candleReadPort, planLedgerWritePort } = buildDeps(
       buildSequential15mRows(8, FIXED_NOW - ONE_HOUR_MS)
     );
     const useCase = createGeneratePlanUseCase({
       candleReadPort,
-      clock,
       planLedgerWritePort
     });
 
@@ -158,7 +152,7 @@ describe("GeneratePlanUseCase", () => {
   });
 
   it("raises PlanMarketDataUnavailableError when derived 1h aggregation produces no complete bars", async () => {
-    const { candleReadPort, clock, planLedgerWritePort } = buildDeps([
+    const { candleReadPort, planLedgerWritePort } = buildDeps([
       {
         unixMs: FIXED_NOW - 200 * ONE_HOUR_MS,
         open: 100,
@@ -170,7 +164,6 @@ describe("GeneratePlanUseCase", () => {
     ]);
     const useCase = createGeneratePlanUseCase({
       candleReadPort,
-      clock,
       planLedgerWritePort
     });
 
@@ -178,10 +171,9 @@ describe("GeneratePlanUseCase", () => {
   });
 
   it("emits REQUEST_EXIT_CLMM for a qualified below-range position", async () => {
-    const { candleReadPort, clock, planLedgerWritePort } = buildDeps(enoughDerived1hSourceRows());
+    const { candleReadPort, planLedgerWritePort } = buildDeps(enoughDerived1hSourceRows());
     const useCase = createGeneratePlanUseCase({
       candleReadPort,
-      clock,
       planLedgerWritePort
     });
 
