@@ -13,7 +13,7 @@ exports[`weekly report > generates deterministic ledger-only markdown + JSON sna
 
 ## Churn
 - Stand-down Plans: 0
-- HOLD Plans: 0
+- HOLD Plans: 2
 - Stand-down Rate: 0
 
 ## Execution
@@ -23,20 +23,20 @@ exports[`weekly report > generates deterministic ledger-only markdown + JSON sna
 - Costs (tx/priority/slippage): 0.12/0.03/0.22
 
 ## Baselines
-- SOL HODL Final NAV: 8936.484739
-- SOL DCA Final NAV: 9946.824237
-- USDC Carry Final NAV: 10050.958904"
+- SOL HODL Final NAV: 10000
+- SOL DCA Final NAV: 10000
+- USDC Carry Final NAV: 10033.972603"
 `;
 
 exports[`weekly report > generates deterministic ledger-only markdown + JSON snapshots 2`] = `
 {
   "baselines": {
-    "solDcaFinalNavUsd": 9946.824237,
-    "solHodlFinalNavUsd": 8936.484739,
-    "usdcCarryFinalNavUsd": 10050.958904,
+    "solDcaFinalNavUsd": 10000,
+    "solHodlFinalNavUsd": 10000,
+    "usdcCarryFinalNavUsd": 10033.972603,
   },
   "churn": {
-    "holdPlans": 0,
+    "holdPlans": 2,
     "standDownPct": 0,
     "standDownPlans": 0,
   },

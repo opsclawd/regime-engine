@@ -144,6 +144,38 @@ export const generateWeeklyReport = (input: {
     request_json: string;
   }>;
 
+  const baselineFeed = planRequests
+    .map((row) => {
+      const m = (
+        asRecord(row.request_json) as {
+          market?: { source?: string; network?: string; poolAddress?: string };
+        }
+      ).market;
+      if (m?.source && m?.network && m?.poolAddress) {
+        return `${m.source}|${m.network}|${m.poolAddress}`;
+      }
+      return undefined;
+    })
+    .find((key): key is string => key !== undefined);
+
+  const fallbackCandles =
+    baselineFeed !== undefined
+      ? (input.store.db
+          .prepare(
+            `
+            SELECT cr.unix_ms, cr.close
+            FROM candle_revisions cr
+            WHERE cr.unix_ms BETWEEN ? AND ?
+              AND cr.source || '|' || cr.network || '|' || cr.pool_address = ?
+            ORDER BY cr.unix_ms ASC, cr.source_recorded_at_unix_ms ASC, cr.id ASC
+          `
+          )
+          .all(window.fromUnixMs, window.toUnixMs, baselineFeed) as Array<{
+          unix_ms: number;
+          close: number;
+        }>)
+      : [];
+
   const regimeCounts = {
     UP: 0,
     DOWN: 0,
@@ -212,7 +244,7 @@ export const generateWeeklyReport = (input: {
       asOfUnixMs: row.as_of_unix_ms,
       request: asRecord(row.request_json) as {
         market: {
-          candles: Array<{
+          candles?: Array<{
             unixMs: number;
             close: number;
           }>;
@@ -228,6 +260,10 @@ export const generateWeeklyReport = (input: {
           };
         };
       }
+    })),
+    fallbackCandles: fallbackCandles.map((c) => ({
+      unixMs: c.unix_ms,
+      close: c.close
     }))
   });
 

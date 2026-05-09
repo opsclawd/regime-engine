@@ -14,7 +14,12 @@ export const ERROR_CODES = {
   SERVICE_UNAVAILABLE: "SERVICE_UNAVAILABLE",
   INSIGHT_NOT_FOUND: "INSIGHT_NOT_FOUND",
   INSIGHT_RUN_CONFLICT: "INSIGHT_RUN_CONFLICT",
-  INTERNAL_ERROR: "INTERNAL_ERROR"
+  INTERNAL_ERROR: "INTERNAL_ERROR",
+  PLAN_MARKET_DATA_UNAVAILABLE: "PLAN_MARKET_DATA_UNAVAILABLE",
+  PLAN_POSITION_STATE_STALE: "PLAN_POSITION_STATE_STALE",
+  INVALID_POSITION_OBSERVED_AT: "INVALID_POSITION_OBSERVED_AT",
+  BREACH_QUALIFIED_AT_REQUIRED: "BREACH_QUALIFIED_AT_REQUIRED",
+  INVALID_BREACH_QUALIFIED_AT: "INVALID_BREACH_QUALIFIED_AT"
 } as const;
 
 export type ErrorCode = (typeof ERROR_CODES)[keyof typeof ERROR_CODES];
@@ -121,5 +126,55 @@ export const candlesNotFoundError = (
   return new ContractValidationError(404, {
     schemaVersion: SCHEMA_VERSION,
     error: { code: ERROR_CODES.CANDLES_NOT_FOUND, message, details }
+  });
+};
+
+export const planMarketDataUnavailableError = (
+  message: string,
+  details: ErrorDetail[] = []
+): ContractValidationError => {
+  return new ContractValidationError(503, {
+    schemaVersion: SCHEMA_VERSION,
+    error: { code: ERROR_CODES.PLAN_MARKET_DATA_UNAVAILABLE, message, details }
+  });
+};
+
+export const planPositionStateStaleError = (
+  message: string,
+  details: ErrorDetail[] = []
+): ContractValidationError => {
+  return new ContractValidationError(503, {
+    schemaVersion: SCHEMA_VERSION,
+    error: { code: ERROR_CODES.PLAN_POSITION_STATE_STALE, message, details }
+  });
+};
+
+export const invalidPositionObservedAtError = (
+  message: string,
+  details: ErrorDetail[] = []
+): ContractValidationError => {
+  return new ContractValidationError(400, {
+    schemaVersion: SCHEMA_VERSION,
+    error: { code: ERROR_CODES.INVALID_POSITION_OBSERVED_AT, message, details }
+  });
+};
+
+export const breachQualifiedAtRequiredError = (
+  message: string,
+  details: ErrorDetail[] = []
+): ContractValidationError => {
+  return new ContractValidationError(400, {
+    schemaVersion: SCHEMA_VERSION,
+    error: { code: ERROR_CODES.BREACH_QUALIFIED_AT_REQUIRED, message, details }
+  });
+};
+
+export const invalidBreachQualifiedAtError = (
+  message: string,
+  details: ErrorDetail[] = []
+): ContractValidationError => {
+  return new ContractValidationError(400, {
+    schemaVersion: SCHEMA_VERSION,
+    error: { code: ERROR_CODES.INVALID_BREACH_QUALIFIED_AT, message, details }
   });
 };

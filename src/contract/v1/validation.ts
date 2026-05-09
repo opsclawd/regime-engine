@@ -2,7 +2,10 @@ import { z } from "zod";
 import {
   ContractValidationError,
   batchTooLargeError,
+  breachQualifiedAtRequiredError,
   duplicateCandleInBatchError,
+  invalidBreachQualifiedAtError,
+  invalidPositionObservedAtError,
   malformedCandleError,
   unsupportedSchemaVersionError,
   validationErrorFromZod
@@ -23,16 +26,40 @@ const nonNegativeNumberSchema = z.number().nonnegative();
 const bpsSchema = z.number().int().min(0).max(10_000);
 const regimeSchema = z.enum(["UP", "DOWN", "CHOP"]);
 
-const candleSchema = z
+const RANGE_STATES = ["in-range", "below-range", "above-range"] as const;
+const PLAN_TIMEFRAMES = ["15m", "1h"] as const;
+const finitePositiveNumber = z
+  .number()
+  .refine((value) => Number.isFinite(value) && value > 0, "must be finite positive");
+
+const planRequestPositionSchema = z
   .object({
-    unixMs: unixMsSchema,
-    open: nonNegativeNumberSchema,
-    high: nonNegativeNumberSchema,
-    low: nonNegativeNumberSchema,
-    close: nonNegativeNumberSchema,
-    volume: nonNegativeNumberSchema
+    positionId: z.string().min(1),
+    walletId: z.string().min(1).optional(),
+    observedAtUnixMs: unixMsSchema,
+    breachQualifiedAtUnixMs: unixMsSchema.optional(),
+    lowerBoundPrice: finitePositiveNumber,
+    upperBoundPrice: finitePositiveNumber,
+    currentPrice: finitePositiveNumber,
+    rangeState: z.enum(RANGE_STATES),
+    breachQualified: z.boolean(),
+    distanceToLowerPct: z.number().optional(),
+    distanceToUpperPct: z.number().optional(),
+    liquidityUsd: nonNegativeNumberSchema.optional(),
+    unclaimedFeesUsd: nonNegativeNumberSchema.optional(),
+    inventorySkewSolPct: z.number().optional(),
+    inventorySkewUsdcPct: z.number().optional()
   })
-  .strict();
+  .strict()
+  .superRefine((position, ctx) => {
+    if (position.lowerBoundPrice >= position.upperBoundPrice) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["lowerBoundPrice"],
+        message: "lowerBoundPrice must be less than upperBoundPrice"
+      });
+    }
+  });
 
 const planRequestSchema = z
   .object({
@@ -41,10 +68,13 @@ const planRequestSchema = z
     market: z
       .object({
         symbol: z.string().min(1),
-        timeframe: z.string().min(1),
-        candles: z.array(candleSchema).min(1)
+        source: z.string().min(1),
+        network: z.string().min(1),
+        poolAddress: z.string().min(1),
+        timeframe: z.enum(PLAN_TIMEFRAMES)
       })
       .strict(),
+    position: planRequestPositionSchema,
     portfolio: z
       .object({
         navUsd: nonNegativeNumberSchema,
@@ -111,20 +141,7 @@ const planRequestSchema = z
       })
       .strict()
   })
-  .strict()
-  .superRefine((payload, context) => {
-    payload.market.candles.forEach((candle, index) => {
-      if (candle.unixMs <= payload.asOfUnixMs) {
-        return;
-      }
-
-      context.addIssue({
-        code: z.ZodIssueCode.custom,
-        path: ["market", "candles", index, "unixMs"],
-        message: "Candle unixMs must be less than or equal to asOfUnixMs"
-      });
-    });
-  });
+  .strict();
 
 const executionResultRequestSchema = z
   .object({
@@ -195,7 +212,53 @@ const parseWithSchema = <T>(raw: unknown, schema: z.ZodType<T>, message: string)
 };
 
 export const parsePlanRequest = (raw: unknown): PlanRequest => {
-  return parseWithSchema(raw, planRequestSchema, "Invalid /v1/plan request body");
+  const parsed = parseWithSchema(raw, planRequestSchema, "Invalid /v1/plan request body");
+
+  if (parsed.position.observedAtUnixMs > parsed.asOfUnixMs) {
+    throw invalidPositionObservedAtError(
+      `position.observedAtUnixMs (${parsed.position.observedAtUnixMs}) must not exceed ` +
+        `asOfUnixMs (${parsed.asOfUnixMs})`,
+      [
+        {
+          path: "$.position.observedAtUnixMs",
+          code: "INVALID_VALUE",
+          message: "observedAtUnixMs is in the future relative to asOfUnixMs"
+        }
+      ]
+    );
+  }
+
+  if (parsed.position.breachQualified && parsed.position.breachQualifiedAtUnixMs === undefined) {
+    throw breachQualifiedAtRequiredError(
+      "position.breachQualified=true requires position.breachQualifiedAtUnixMs",
+      [
+        {
+          path: "$.position.breachQualifiedAtUnixMs",
+          code: "REQUIRED",
+          message: "breachQualifiedAtUnixMs is required when breachQualified is true"
+        }
+      ]
+    );
+  }
+
+  if (
+    parsed.position.breachQualifiedAtUnixMs !== undefined &&
+    parsed.position.breachQualifiedAtUnixMs > parsed.asOfUnixMs
+  ) {
+    throw invalidBreachQualifiedAtError(
+      `position.breachQualifiedAtUnixMs (${parsed.position.breachQualifiedAtUnixMs}) must not ` +
+        `exceed asOfUnixMs (${parsed.asOfUnixMs})`,
+      [
+        {
+          path: "$.position.breachQualifiedAtUnixMs",
+          code: "INVALID_VALUE",
+          message: "breachQualifiedAtUnixMs is in the future relative to asOfUnixMs"
+        }
+      ]
+    );
+  }
+
+  return parsed;
 };
 
 export const parseExecutionResultRequest = (raw: unknown): ExecutionResultRequest => {

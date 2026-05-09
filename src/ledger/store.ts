@@ -79,14 +79,31 @@ export const getLedgerCounts = (store: LedgerStore) => {
   };
 };
 
-export const findPlanHashByPlanId = (store: LedgerStore, planId: string): string | null => {
-  const row = store.db
-    .prepare("SELECT plan_hash FROM plans WHERE plan_id = ? ORDER BY id DESC LIMIT 1")
-    .get(planId) as { plan_hash: string } | undefined;
+export type PlanValidationResult =
+  | { kind: "found" }
+  | { kind: "not_found" }
+  | { kind: "hash_mismatch" };
 
-  if (!row) {
-    return null;
+export const validatePlanForExecutionResult = (
+  store: LedgerStore,
+  planId: string,
+  planHash: string
+): PlanValidationResult => {
+  const anyPlan = store.db.prepare("SELECT id FROM plans WHERE plan_id = ? LIMIT 1").get(planId) as
+    | { id: number }
+    | undefined;
+
+  if (!anyPlan) {
+    return { kind: "not_found" };
   }
 
-  return row.plan_hash;
+  const matchingPlan = store.db
+    .prepare("SELECT id FROM plans WHERE plan_id = ? AND plan_hash = ? LIMIT 1")
+    .get(planId, planHash) as { id: number } | undefined;
+
+  if (!matchingPlan) {
+    return { kind: "hash_mismatch" };
+  }
+
+  return { kind: "found" };
 };

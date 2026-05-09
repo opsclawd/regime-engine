@@ -5,13 +5,101 @@ import { afterEach, describe, expect, it } from "vitest";
 import { buildApp } from "../../../app.js";
 import { createLedgerStore, getLedgerCounts } from "../../../ledger/store.js";
 
+const FIFTEEN_MIN_MS = 15 * 60 * 1000;
 const createdDbPaths: string[] = [];
+
+const EXEC_POOL = "PoolExecE2E1";
+
+const buildRecentCandles = (count: number) => {
+  const anchor = Math.floor(Date.now() / FIFTEEN_MIN_MS) * FIFTEEN_MIN_MS - FIFTEEN_MIN_MS;
+  return Array.from({ length: count }, (_, i) => {
+    const close = 100 + i * 0.75 + Math.sin(i / 3) * 0.5;
+    return {
+      unixMs: anchor - (count - 1 - i) * FIFTEEN_MIN_MS,
+      open: close - 0.2,
+      high: close + 0.8,
+      low: close - 0.9,
+      close,
+      volume: 1_000 + i * 11
+    };
+  });
+};
+
+const buildIngestPayload = (count: number) => ({
+  schemaVersion: "1.0",
+  source: "geckoterminal",
+  network: "solana",
+  poolAddress: EXEC_POOL,
+  symbol: "SOL/USDC",
+  timeframe: "15m",
+  sourceRecordedAtIso: new Date().toISOString(),
+  candles: buildRecentCandles(count)
+});
+
+const buildPlanPayload = () => {
+  const anchor = Math.floor(Date.now() / FIFTEEN_MIN_MS) * FIFTEEN_MIN_MS - FIFTEEN_MIN_MS;
+  return {
+    schemaVersion: "1.0",
+    asOfUnixMs: anchor,
+    market: {
+      symbol: "SOL/USDC",
+      source: "geckoterminal",
+      network: "solana",
+      poolAddress: EXEC_POOL,
+      timeframe: "15m"
+    },
+    position: {
+      positionId: "pos-exec-e2e-1",
+      observedAtUnixMs: anchor,
+      lowerBoundPrice: 95,
+      upperBoundPrice: 110,
+      currentPrice: 100,
+      rangeState: "in-range",
+      breachQualified: false
+    },
+    portfolio: { navUsd: 10_000, solUnits: 20, usdcUnits: 6_000 },
+    autopilotState: {
+      activeClmm: false,
+      stopouts24h: 0,
+      redeploys24h: 0,
+      cooldownUntilUnixMs: 0,
+      standDownUntilUnixMs: 0,
+      strikeCount: 0
+    },
+    config: {
+      regime: {
+        confirmBars: 2,
+        minHoldBars: 3,
+        enterUpTrend: 0.6,
+        exitUpTrend: 0.35,
+        enterDownTrend: -0.6,
+        exitDownTrend: -0.35,
+        chopVolRatioMax: 1.4
+      },
+      allocation: {
+        upSolBps: 8_000,
+        downSolBps: 1_500,
+        chopSolBps: 5_000,
+        maxDeltaExposureBpsPerDay: 1_000,
+        maxTurnoverPerDayBps: 600
+      },
+      churn: {
+        maxStopouts24h: 2,
+        maxRedeploys24h: 2,
+        cooldownMsAfterStopout: 86_400_000,
+        standDownTriggerStrikes: 2
+      },
+      baselines: { dcaIntervalDays: 7, dcaAmountUsd: 250, usdcCarryApr: 0.06 }
+    }
+  };
+};
 
 afterEach(() => {
   for (const path of createdDbPaths.splice(0, createdDbPaths.length)) {
     rmSync(path, { force: true });
   }
   delete process.env.LEDGER_DB_PATH;
+  delete process.env.CANDLES_INGEST_TOKEN;
 });
 
 describe("/v1/execution-result e2e", () => {
@@ -22,72 +110,23 @@ describe("/v1/execution-result e2e", () => {
     );
     createdDbPaths.push(dbPath);
     process.env.LEDGER_DB_PATH = dbPath;
+    process.env.CANDLES_INGEST_TOKEN = "test-token";
 
     const app = buildApp();
+
+    const ingest = await app.inject({
+      method: "POST",
+      url: "/v1/candles",
+      headers: { "X-Candles-Ingest-Token": "test-token" },
+      payload: buildIngestPayload(200)
+    });
+    expect(ingest.statusCode).toBe(200);
+
+    const planPayload = buildPlanPayload();
     const planResponse = await app.inject({
       method: "POST",
       url: "/v1/plan",
-      payload: {
-        schemaVersion: "1.0",
-        asOfUnixMs: 1_762_591_200_000,
-        market: {
-          symbol: "SOLUSDC",
-          timeframe: "1h",
-          candles: Array.from({ length: 24 }, (_, index) => {
-            const close = 100 + index * 0.75 + Math.sin(index / 3) * 0.5;
-            return {
-              unixMs: 1_762_591_200_000 - (23 - index) * 3_600_000,
-              open: close - 0.2,
-              high: close + 0.8,
-              low: close - 0.9,
-              close,
-              volume: 1_000 + index * 11
-            };
-          })
-        },
-        portfolio: {
-          navUsd: 10_000,
-          solUnits: 20,
-          usdcUnits: 6_000
-        },
-        autopilotState: {
-          activeClmm: false,
-          stopouts24h: 0,
-          redeploys24h: 0,
-          cooldownUntilUnixMs: 0,
-          standDownUntilUnixMs: 0,
-          strikeCount: 0
-        },
-        config: {
-          regime: {
-            confirmBars: 2,
-            minHoldBars: 3,
-            enterUpTrend: 0.6,
-            exitUpTrend: 0.35,
-            enterDownTrend: -0.6,
-            exitDownTrend: -0.35,
-            chopVolRatioMax: 1.4
-          },
-          allocation: {
-            upSolBps: 8_000,
-            downSolBps: 1_500,
-            chopSolBps: 5_000,
-            maxDeltaExposureBpsPerDay: 1_000,
-            maxTurnoverPerDayBps: 600
-          },
-          churn: {
-            maxStopouts24h: 2,
-            maxRedeploys24h: 2,
-            cooldownMsAfterStopout: 86_400_000,
-            standDownTriggerStrikes: 2
-          },
-          baselines: {
-            dcaIntervalDays: 7,
-            dcaAmountUsd: 250,
-            usdcCarryApr: 0.06
-          }
-        }
-      }
+      payload: planPayload
     });
     expect(planResponse.statusCode).toBe(200);
     const plan = planResponse.json() as { planId: string; planHash: string };
@@ -96,7 +135,7 @@ describe("/v1/execution-result e2e", () => {
       schemaVersion: "1.0",
       planId: plan.planId,
       planHash: plan.planHash,
-      asOfUnixMs: 1_762_591_300_000,
+      asOfUnixMs: planPayload.asOfUnixMs + 100_000,
       actionResults: [
         {
           actionType: "REQUEST_REBALANCE",
@@ -210,7 +249,7 @@ describe("/v1/execution-result e2e", () => {
       srLevelBriefs: 0,
       srLevels: 0,
       clmmExecutionEvents: 0,
-      candleRevisions: 0
+      candleRevisions: 200
     });
     verificationStore.close();
   });

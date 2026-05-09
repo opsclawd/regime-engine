@@ -2,76 +2,103 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { FastifyInstance } from "fastify";
 import { buildApp } from "../../../app.js";
 
-const planRequestFixture = {
-  schemaVersion: "1.0",
-  asOfUnixMs: 1_762_591_200_000,
-  market: {
-    symbol: "SOLUSDC",
-    timeframe: "1h",
-    candles: [
-      {
-        unixMs: 1_762_591_200_000,
-        open: 200,
-        high: 210,
-        low: 195,
-        close: 205,
-        volume: 1_200
-      }
-    ]
-  },
-  portfolio: {
-    navUsd: 10_000,
-    solUnits: 20,
-    usdcUnits: 6_000
-  },
-  autopilotState: {
-    activeClmm: false,
-    stopouts24h: 0,
-    redeploys24h: 0,
-    cooldownUntilUnixMs: 0,
-    standDownUntilUnixMs: 0,
-    strikeCount: 0
-  },
-  config: {
-    regime: {
-      confirmBars: 2,
-      minHoldBars: 3,
-      enterUpTrend: 0.6,
-      exitUpTrend: 0.4,
-      enterDownTrend: -0.6,
-      exitDownTrend: -0.4,
-      chopVolRatioMax: 1.25
+const FIFTEEN_MIN_MS = 15 * 60 * 1000;
+
+const buildIngestPayload = (count: number, poolAddress: string) => {
+  const anchor = Math.floor(Date.now() / FIFTEEN_MIN_MS) * FIFTEEN_MIN_MS - FIFTEEN_MIN_MS;
+  return {
+    schemaVersion: "1.0",
+    source: "geckoterminal",
+    network: "solana",
+    poolAddress,
+    symbol: "SOL/USDC",
+    timeframe: "15m",
+    sourceRecordedAtIso: new Date().toISOString(),
+    candles: Array.from({ length: count }, (_, i) => {
+      const close = 100 + Math.sin(i / 4) * 0.5;
+      return {
+        unixMs: anchor - (count - 1 - i) * FIFTEEN_MIN_MS,
+        open: close - 0.1,
+        high: close + 0.5,
+        low: close - 0.5,
+        close,
+        volume: 1_000 + i
+      };
+    })
+  };
+};
+
+const buildPlanRequestFixture = (poolAddress: string) => {
+  const anchor = Math.floor(Date.now() / FIFTEEN_MIN_MS) * FIFTEEN_MIN_MS - FIFTEEN_MIN_MS;
+  return {
+    schemaVersion: "1.0",
+    asOfUnixMs: anchor,
+    market: {
+      symbol: "SOL/USDC",
+      source: "geckoterminal",
+      network: "solana",
+      poolAddress,
+      timeframe: "15m"
     },
-    allocation: {
-      upSolBps: 7_500,
-      downSolBps: 2_000,
-      chopSolBps: 5_000,
-      maxDeltaExposureBpsPerDay: 1_500,
-      maxTurnoverPerDayBps: 2_000
+    position: {
+      positionId: "pos-contract-1",
+      observedAtUnixMs: anchor,
+      lowerBoundPrice: 95,
+      upperBoundPrice: 110,
+      currentPrice: 100,
+      rangeState: "in-range",
+      breachQualified: false
     },
-    churn: {
-      maxStopouts24h: 2,
-      maxRedeploys24h: 2,
-      cooldownMsAfterStopout: 86_400_000,
-      standDownTriggerStrikes: 2
+    portfolio: { navUsd: 10_000, solUnits: 20, usdcUnits: 6_000 },
+    autopilotState: {
+      activeClmm: true,
+      stopouts24h: 0,
+      redeploys24h: 0,
+      cooldownUntilUnixMs: 0,
+      standDownUntilUnixMs: 0,
+      strikeCount: 0
     },
-    baselines: {
-      dcaIntervalDays: 7,
-      dcaAmountUsd: 250,
-      usdcCarryApr: 0.06
+    config: {
+      regime: {
+        confirmBars: 2,
+        minHoldBars: 3,
+        enterUpTrend: 0.6,
+        exitUpTrend: 0.4,
+        enterDownTrend: -0.6,
+        exitDownTrend: -0.4,
+        chopVolRatioMax: 1.25
+      },
+      allocation: {
+        upSolBps: 7_500,
+        downSolBps: 2_000,
+        chopSolBps: 5_000,
+        maxDeltaExposureBpsPerDay: 1_500,
+        maxTurnoverPerDayBps: 2_000
+      },
+      churn: {
+        maxStopouts24h: 2,
+        maxRedeploys24h: 2,
+        cooldownMsAfterStopout: 86_400_000,
+        standDownTriggerStrikes: 2
+      },
+      baselines: { dcaIntervalDays: 7, dcaAmountUsd: 250, usdcCarryApr: 0.06 }
     }
-  }
-} as const;
+  };
+};
+
+const PLAN_POOL = "PoolPlanContract1";
 
 describe("HTTP route contract stubs", () => {
   let app: FastifyInstance;
 
   beforeAll(() => {
+    process.env.CANDLES_INGEST_TOKEN = "test-token";
     app = buildApp();
   });
 
   afterAll(async () => {
     await app.close();
+    delete process.env.CANDLES_INGEST_TOKEN;
   });
 
   it("serves /health", async () => {
@@ -160,6 +187,15 @@ describe("HTTP route contract stubs", () => {
   });
 
   it("returns plan response for /v1/plan", async () => {
+    const ingest = await app.inject({
+      method: "POST",
+      url: "/v1/candles",
+      headers: { "X-Candles-Ingest-Token": "test-token" },
+      payload: buildIngestPayload(140, PLAN_POOL)
+    });
+    expect(ingest.statusCode).toBe(200);
+
+    const planRequestFixture = buildPlanRequestFixture(PLAN_POOL);
     const response = await app.inject({
       method: "POST",
       url: "/v1/plan",
@@ -222,49 +258,12 @@ describe("HTTP route contract stubs", () => {
     );
   });
 
-  it("rejects /v1/plan candles later than asOfUnixMs", async () => {
-    const response = await app.inject({
-      method: "POST",
-      url: "/v1/plan",
-      payload: {
-        ...planRequestFixture,
-        market: {
-          ...planRequestFixture.market,
-          candles: [
-            {
-              ...planRequestFixture.market.candles[0],
-              unixMs: planRequestFixture.asOfUnixMs + 1
-            }
-          ]
-        }
-      }
-    });
-
-    expect(response.statusCode).toBe(400);
-    expect(response.json()).toEqual({
-      schemaVersion: "1.0",
-      error: {
-        code: "VALIDATION_ERROR",
-        message: "Invalid /v1/plan request body",
-        details: [
-          {
-            path: "$.market.candles[0].unixMs",
-            code: "INVALID_VALUE",
-            message: "Invalid value"
-          }
-        ]
-      }
-    });
-  });
-
   it("returns stub acknowledgement for /v1/execution-result", async () => {
+    const planRequestFixture = buildPlanRequestFixture(PLAN_POOL);
     const planResponse = await app.inject({
       method: "POST",
       url: "/v1/plan",
-      payload: {
-        ...planRequestFixture,
-        asOfUnixMs: planRequestFixture.asOfUnixMs + 1
-      }
+      payload: planRequestFixture
     });
 
     const planBody = planResponse.json() as { planId: string; planHash: string };
@@ -275,7 +274,7 @@ describe("HTTP route contract stubs", () => {
         schemaVersion: "1.0",
         planId: planBody.planId,
         planHash: planBody.planHash,
-        asOfUnixMs: 1_762_591_200_001,
+        asOfUnixMs: planRequestFixture.asOfUnixMs + 1,
         actionResults: [
           {
             actionType: "REQUEST_REBALANCE",
@@ -302,5 +301,74 @@ describe("HTTP route contract stubs", () => {
       linkedPlanId: planBody.planId,
       linkedPlanHash: planBody.planHash
     });
+  });
+
+  it("returns 503 PLAN_MARKET_DATA_UNAVAILABLE when no candles are stored", async () => {
+    const planRequestFixture = buildPlanRequestFixture("PoolNoneStored");
+    const response = await app.inject({
+      method: "POST",
+      url: "/v1/plan",
+      payload: planRequestFixture
+    });
+    expect(response.statusCode).toBe(503);
+    expect(response.json()).toEqual(
+      expect.objectContaining({
+        schemaVersion: "1.0",
+        error: expect.objectContaining({ code: "PLAN_MARKET_DATA_UNAVAILABLE" })
+      })
+    );
+  });
+
+  it("returns 503 PLAN_POSITION_STATE_STALE for stale position observations", async () => {
+    const poolAddress = "PoolPlanContractStale";
+    const ingest = await app.inject({
+      method: "POST",
+      url: "/v1/candles",
+      headers: { "X-Candles-Ingest-Token": "test-token" },
+      payload: buildIngestPayload(140, poolAddress)
+    });
+    expect(ingest.statusCode).toBe(200);
+
+    const planRequestFixture = buildPlanRequestFixture(poolAddress);
+    const response = await app.inject({
+      method: "POST",
+      url: "/v1/plan",
+      payload: {
+        ...planRequestFixture,
+        position: {
+          ...planRequestFixture.position,
+          observedAtUnixMs: planRequestFixture.asOfUnixMs - 60_001
+        }
+      }
+    });
+    expect(response.statusCode).toBe(503);
+    expect(response.json()).toEqual(
+      expect.objectContaining({
+        error: expect.objectContaining({ code: "PLAN_POSITION_STATE_STALE" })
+      })
+    );
+  });
+
+  it("never emits REQUEST_REBALANCE or REQUEST_ENTER_CLMM for the public position-scoped path", async () => {
+    const poolAddress = "PoolPlanContractNoRebal";
+    const ingest = await app.inject({
+      method: "POST",
+      url: "/v1/candles",
+      headers: { "X-Candles-Ingest-Token": "test-token" },
+      payload: buildIngestPayload(140, poolAddress)
+    });
+    expect(ingest.statusCode).toBe(200);
+
+    const planRequestFixture = buildPlanRequestFixture(poolAddress);
+    const response = await app.inject({
+      method: "POST",
+      url: "/v1/plan",
+      payload: planRequestFixture
+    });
+    const body = response.json() as { actions: Array<{ type: string }> };
+    for (const a of body.actions) {
+      expect(a.type).not.toBe("REQUEST_REBALANCE");
+      expect(a.type).not.toBe("REQUEST_ENTER_CLMM");
+    }
   });
 });

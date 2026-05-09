@@ -3,7 +3,7 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { afterEach, describe, expect, it } from "vitest";
 import { buildApp } from "../../app.js";
-import { buildPlan } from "../../engine/plan/buildPlan.js";
+import { buildPositionPlan, type PositionPlanInput } from "../../engine/plan/positionPlan.js";
 import { createLedgerStore } from "../../ledger/store.js";
 import { writeExecutionResultLedgerEntry, writePlanLedgerEntry } from "../../ledger/writer.js";
 import { generateWeeklyReport } from "../weekly.js";
@@ -18,32 +18,23 @@ afterEach(() => {
   delete process.env.LEDGER_DB_PATH;
 });
 
-const buildRequestFixture = (asOfUnixMs: number, driftPerBar: number): PlanRequest => {
-  return {
-    schemaVersion: "1.0",
+const POOL_ADDRESS = "PoolWeekly1";
+
+const buildFixture = (asOfUnixMs: number): { input: PositionPlanInput; request: PlanRequest } => {
+  const input: PositionPlanInput = {
     asOfUnixMs,
-    market: {
-      symbol: "SOLUSDC",
-      timeframe: "1h",
-      candles: Array.from({ length: 28 }, (_, index) => {
-        const close = 100 + driftPerBar * index + Math.sin(index / 3) * 0.4;
-        return {
-          unixMs: asOfUnixMs - (27 - index) * 3_600_000,
-          open: close - 0.2,
-          high: close + 0.8,
-          low: close - 0.9,
-          close,
-          volume: 1_000 + index * 9
-        };
-      })
+    position: {
+      positionId: `pos-weekly-${asOfUnixMs}`,
+      observedAtUnixMs: asOfUnixMs,
+      lowerBoundPrice: 100,
+      upperBoundPrice: 120,
+      currentPrice: 110,
+      rangeState: "in-range",
+      breachQualified: false
     },
-    portfolio: {
-      navUsd: 10_000,
-      solUnits: 20,
-      usdcUnits: 6_000
-    },
+    portfolio: { navUsd: 10_000, solUnits: 20, usdcUnits: 6_000 },
     autopilotState: {
-      activeClmm: false,
+      activeClmm: true,
       stopouts24h: 0,
       redeploys24h: 0,
       cooldownUntilUnixMs: 0,
@@ -52,8 +43,8 @@ const buildRequestFixture = (asOfUnixMs: number, driftPerBar: number): PlanReque
     },
     config: {
       regime: {
-        confirmBars: 2,
-        minHoldBars: 3,
+        confirmBars: 1,
+        minHoldBars: 0,
         enterUpTrend: 0.6,
         exitUpTrend: 0.35,
         enterDownTrend: -0.6,
@@ -61,45 +52,93 @@ const buildRequestFixture = (asOfUnixMs: number, driftPerBar: number): PlanReque
         chopVolRatioMax: 1.4
       },
       allocation: {
-        upSolBps: 8_000,
-        downSolBps: 1_500,
-        chopSolBps: 5_000,
-        maxDeltaExposureBpsPerDay: 1_000,
-        maxTurnoverPerDayBps: 600
+        upSolBps: 7000,
+        downSolBps: 1000,
+        chopSolBps: 4000,
+        maxDeltaExposureBpsPerDay: 2000,
+        maxTurnoverPerDayBps: 5000
       },
       churn: {
-        maxStopouts24h: 2,
-        maxRedeploys24h: 2,
-        cooldownMsAfterStopout: 86_400_000,
-        standDownTriggerStrikes: 2
+        maxStopouts24h: 3,
+        maxRedeploys24h: 3,
+        cooldownMsAfterStopout: 0,
+        standDownTriggerStrikes: 3
       },
-      baselines: {
-        dcaIntervalDays: 7,
-        dcaAmountUsd: 250,
-        usdcCarryApr: 0.06
-      }
+      baselines: { dcaIntervalDays: 7, dcaAmountUsd: 100, usdcCarryApr: 0.04 }
+    },
+    nextRegimeState: { current: "CHOP", barsInRegime: 1, pending: null, pendingBars: 0 },
+    market: {
+      feed: {
+        symbol: "SOL/USDC",
+        source: "geckoterminal",
+        network: "solana",
+        poolAddress: POOL_ADDRESS,
+        requestedTimeframe: "1h"
+      },
+      regime: "CHOP",
+      telemetry: {
+        realizedVolShort: 0.01,
+        realizedVolLong: 0.01,
+        volRatio: 1.0,
+        trendStrength: 0.0,
+        compression: 0.5
+      },
+      freshness: {
+        generatedAtIso: "2026-05-08T12:00:00.000Z",
+        lastCandleUnixMs: asOfUnixMs - 60_000,
+        lastCandleIso: "2026-05-08T11:59:00.000Z",
+        ageSeconds: 60,
+        softStale: false,
+        hardStale: false,
+        softStaleSeconds: 1500,
+        hardStaleSeconds: 2100
+      },
+      clmmSuitability: { status: "ALLOWED", reasons: [] },
+      candleCount: 50,
+      sourceCandleCount: 200,
+      sourceTimeframe: "15m",
+      derivedTimeframe: "1h",
+      aggregationVersion: "ohlcv-agg-v1"
     }
   };
+
+  const request: PlanRequest = {
+    schemaVersion: "1.0",
+    asOfUnixMs,
+    market: {
+      symbol: "SOL/USDC",
+      source: "geckoterminal",
+      network: "solana",
+      poolAddress: POOL_ADDRESS,
+      timeframe: "1h"
+    },
+    position: input.position,
+    portfolio: input.portfolio,
+    autopilotState: input.autopilotState,
+    config: input.config
+  };
+
+  return { input, request };
 };
 
 describe("weekly report", () => {
   it("generates deterministic ledger-only markdown + JSON snapshots", () => {
     const store = createLedgerStore(":memory:");
-    const firstRequest = buildRequestFixture(Date.parse("2026-01-05T00:00:00.000Z"), 0.5);
-    const secondRequest = buildRequestFixture(Date.parse("2026-01-12T00:00:00.000Z"), -0.4);
+    const first = buildFixture(Date.parse("2026-01-05T00:00:00.000Z"));
+    const second = buildFixture(Date.parse("2026-01-12T00:00:00.000Z"));
 
-    const firstPlan = buildPlan(firstRequest);
-    const secondPlan = buildPlan(secondRequest);
+    const firstPlan = buildPositionPlan(first.input);
+    const secondPlan = buildPositionPlan(second.input);
 
     writePlanLedgerEntry(store, {
-      planRequest: firstRequest,
+      planRequest: first.request,
       planResponse: firstPlan,
-      receivedAtUnixMs: firstRequest.asOfUnixMs
+      receivedAtUnixMs: first.request.asOfUnixMs
     });
     writePlanLedgerEntry(store, {
-      planRequest: secondRequest,
+      planRequest: second.request,
       planResponse: secondPlan,
-      receivedAtUnixMs: secondRequest.asOfUnixMs
+      receivedAtUnixMs: second.request.asOfUnixMs
     });
 
     writeExecutionResultLedgerEntry(store, {
@@ -107,7 +146,7 @@ describe("weekly report", () => {
         schemaVersion: "1.0",
         planId: firstPlan.planId,
         planHash: firstPlan.planHash,
-        asOfUnixMs: firstRequest.asOfUnixMs,
+        asOfUnixMs: first.request.asOfUnixMs,
         actionResults: [
           {
             actionType: firstPlan.actions[0]?.type ?? "HOLD",
@@ -132,7 +171,7 @@ describe("weekly report", () => {
         schemaVersion: "1.0",
         planId: secondPlan.planId,
         planHash: secondPlan.planHash,
-        asOfUnixMs: secondRequest.asOfUnixMs,
+        asOfUnixMs: second.request.asOfUnixMs,
         actionResults: [
           {
             actionType: secondPlan.actions[0]?.type ?? "HOLD",
@@ -171,28 +210,25 @@ describe("weekly report", () => {
     createdDbPaths.push(dbPath);
     process.env.LEDGER_DB_PATH = dbPath;
 
-    const app = buildApp();
+    const store = createLedgerStore(dbPath);
+    const fixture = buildFixture(Date.parse("2026-01-08T00:00:00.000Z"));
+    const plan = buildPositionPlan(fixture.input);
 
-    const request = buildRequestFixture(Date.parse("2026-01-08T00:00:00.000Z"), 0.3);
-    const planResponse = await app.inject({
-      method: "POST",
-      url: "/v1/plan",
-      payload: request
+    writePlanLedgerEntry(store, {
+      planRequest: fixture.request,
+      planResponse: plan,
+      receivedAtUnixMs: fixture.request.asOfUnixMs
     });
-    expect(planResponse.statusCode).toBe(200);
-    const plan = planResponse.json() as { planId: string; planHash: string };
 
-    const executionResponse = await app.inject({
-      method: "POST",
-      url: "/v1/execution-result",
-      payload: {
+    writeExecutionResultLedgerEntry(store, {
+      executionResult: {
         schemaVersion: "1.0",
         planId: plan.planId,
         planHash: plan.planHash,
-        asOfUnixMs: request.asOfUnixMs,
+        asOfUnixMs: fixture.request.asOfUnixMs,
         actionResults: [
           {
-            actionType: "REQUEST_REBALANCE",
+            actionType: "HOLD",
             status: "SUCCESS"
           }
         ],
@@ -208,7 +244,9 @@ describe("weekly report", () => {
         }
       }
     });
-    expect(executionResponse.statusCode).toBe(200);
+    store.close();
+
+    const app = buildApp();
 
     const reportResponse = await app.inject({
       method: "GET",
