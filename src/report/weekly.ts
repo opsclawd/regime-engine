@@ -144,16 +144,19 @@ export const generateWeeklyReport = (input: {
     request_json: string;
   }>;
 
-  const firstRequest =
-    planRequests.length > 0
-      ? (asRecord(planRequests[0].request_json) as {
+  const baselineFeed = planRequests
+    .map((row) => {
+      const m = (
+        asRecord(row.request_json) as {
           market?: { source?: string; network?: string; poolAddress?: string };
-        })
-      : undefined;
-
-  const baselineFeed = firstRequest
-    ? `${firstRequest.market?.source ?? ""}|${firstRequest.market?.network ?? ""}|${firstRequest.market?.poolAddress ?? ""}`
-    : undefined;
+        }
+      ).market;
+      if (m?.source && m?.network && m?.poolAddress) {
+        return `${m.source}|${m.network}|${m.poolAddress}`;
+      }
+      return undefined;
+    })
+    .find((key): key is string => key !== undefined);
 
   const fallbackCandles =
     baselineFeed !== undefined
