@@ -68,7 +68,10 @@ describe("computeFreshness", () => {
   it("does not return legacy lastCandleUnixMs or lastCandleIso fields", () => {
     const open = Date.parse("2026-04-26T01:00:00.000Z");
     const now = open + 5 * ONE_MIN_MS;
-    const result = computeFreshness(now, open, ONE_HOUR_MS, config) as Record<string, unknown>;
+    const result = computeFreshness(now, open, ONE_HOUR_MS, config) as unknown as Record<
+      string,
+      unknown
+    >;
 
     expect(result.lastCandleUnixMs).toBeUndefined();
     expect(result.lastCandleIso).toBeUndefined();
