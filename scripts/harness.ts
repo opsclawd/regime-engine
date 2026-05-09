@@ -128,9 +128,10 @@ const main = async (): Promise<void> => {
   }
 
   const nowAnchor = Math.floor(Date.now() / FIFTEEN_MIN_MS) * FIFTEEN_MIN_MS - FIFTEEN_MIN_MS;
+  const firstAsOf = (fixtureSteps[0].request as { asOfUnixMs: number }).asOfUnixMs;
+  const globalOffset = nowAnchor - firstAsOf;
   const shiftedSteps = fixtureSteps.map((step) => {
-    const asOf = (step.request as { asOfUnixMs: number }).asOfUnixMs;
-    return shiftStepTimestamps(step, nowAnchor - asOf);
+    return shiftStepTimestamps(step, globalOffset);
   });
 
   const from = args.from ?? new Date(nowAnchor - 30 * 86400000).toISOString().slice(0, 10);
