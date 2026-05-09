@@ -144,31 +144,30 @@ export const generateWeeklyReport = (input: {
     request_json: string;
   }>;
 
-  const distinctFeeds = [
-    ...new Set(
-      planRequests.map((row) => {
-        const req = asRecord(row.request_json) as {
-          market?: { symbol?: string; source?: string; network?: string; poolAddress?: string };
-        };
-        const m = req.market ?? {};
-        return `${m.source ?? ""}|${m.network ?? ""}|${m.poolAddress ?? ""}`;
-      })
-    )
-  ];
+  const firstRequest =
+    planRequests.length > 0
+      ? (asRecord(planRequests[0].request_json) as {
+          market?: { source?: string; network?: string; poolAddress?: string };
+        })
+      : undefined;
+
+  const baselineFeed = firstRequest
+    ? `${firstRequest.market?.source ?? ""}|${firstRequest.market?.network ?? ""}|${firstRequest.market?.poolAddress ?? ""}`
+    : undefined;
 
   const fallbackCandles =
-    distinctFeeds.length > 0
+    baselineFeed !== undefined
       ? (input.store.db
           .prepare(
             `
             SELECT cr.unix_ms, cr.close
             FROM candle_revisions cr
             WHERE cr.unix_ms BETWEEN ? AND ?
-              AND cr.source || '|' || cr.network || '|' || cr.pool_address IN (${distinctFeeds.map(() => "?").join(", ")})
+              AND cr.source || '|' || cr.network || '|' || cr.pool_address = ?
             ORDER BY cr.unix_ms ASC, cr.source_recorded_at_unix_ms ASC
           `
           )
-          .all(window.fromUnixMs, window.toUnixMs, ...distinctFeeds) as Array<{
+          .all(window.fromUnixMs, window.toUnixMs, baselineFeed) as Array<{
           unix_ms: number;
           close: number;
         }>)
