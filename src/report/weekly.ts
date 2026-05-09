@@ -167,7 +167,7 @@ export const generateWeeklyReport = (input: {
             FROM candle_revisions cr
             WHERE cr.unix_ms BETWEEN ? AND ?
               AND cr.source || '|' || cr.network || '|' || cr.pool_address = ?
-            ORDER BY cr.unix_ms ASC, cr.source_recorded_at_unix_ms ASC
+            ORDER BY cr.unix_ms ASC, cr.source_recorded_at_unix_ms ASC, cr.id ASC
           `
           )
           .all(window.fromUnixMs, window.toUnixMs, baselineFeed) as Array<{
