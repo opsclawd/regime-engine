@@ -104,7 +104,11 @@ export const createGeneratePlanUseCase = (deps: GeneratePlanUseCaseDeps): Genera
       regime,
       nextState: nextRegimeState,
       reasons: regimeReasons
-    } = classifyRegimeForPlan(indicators, config.regime, body.regimeState);
+    } = classifyRegimeForPlan(
+      indicators,
+      { ...config.regime, ...body.config.regime },
+      body.regimeState
+    );
 
     const lastCandleUnixMs = candlesToClassify[candlesToClassify.length - 1].unixMs;
     const freshness = computeFreshness(body.asOfUnixMs, lastCandleUnixMs, {
