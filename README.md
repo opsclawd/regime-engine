@@ -1,253 +1,220 @@
-# Regime Engine Microservice
+# Regime Engine
 
-Deterministic policy + analytics service for SOL/USDC. This service does not execute trades. It emits REQUEST\_\* actions, persists truth records, and generates ledger-only weekly reports.
+Regime Engine is the deterministic market-regime, support/resistance, insight-store, and execution-result ledger service for the SOL/USDC CLMM Autopilot system.
 
-## Scope boundary
+It does not own the mobile app, wallet connection, position execution flow, Orca transaction assembly, or user signing surface. Those belong to `clmm-v2`.
 
-- Regime Engine (this repo): computes plans, stores truth ledger, serves reports.
-- CLMM Autopilot (external service): executes on-chain, posts execution results back.
-- No Orca/Jupiter/Solana RPC execution code is implemented here.
+This repo exists to answer one question reliably: **what is the current market/strategy context for SOL/USDC, and what has the system already observed or recorded?**
 
-## Quickstart
+## Current state
+
+Regime Engine currently provides:
+
+- a Fastify HTTP service with health, version, OpenAPI, plan, execution-result, regime, S/R, insight, and report endpoints;
+- a GeckoTerminal collector worker that posts normalized `15m` SOL/USDC candles into the service;
+- append-only candle revision ingestion with idempotent/revise/reject behavior;
+- current regime classification from stored `15m` candles, with `1h` reads derived from complete stored `15m` candles;
+- S/R level ingestion and current-read endpoints;
+- v2 S/R thesis ingestion and current-read endpoints;
+- SOL/USDC policy-insight ingestion, current-read, and history endpoints;
+- CLMM execution-result recording from `clmm-v2`;
+- weekly ledger reports;
+- SQLite ledger storage for plans/execution events and Postgres storage under the `regime_engine` schema for features that need JSONB, arrays, indexing, and concurrent reads.
+
+Regime Engine emits recommendations and stores evidence. It does not submit transactions or handle wallet approval.
+
+## How the three repos work together today
+
+```text
+                    GeckoTerminal / market candles
+                                |
+                                v
+                         regime-engine
+              regime, S/R, S/R theses, policy insights
+                                ^
+                                | execution result events
+                                |
+Wallet + App  <---- BFF/API + Worker ----> Orca / Jupiter / Solana RPC
+  clmm-v2          positions, alerts,
+                   previews, signing,
+                   submission, history
+                                |
+                                | read-only bundle API
+                                v
+              sol-usdc-clmm-intelligence
+       OpenClaw routines, evidence memory, advisory outputs
+```
+
+Today:
+
+- `clmm-v2` is the operational product. It watches supported positions, qualifies breach triggers, prepares execution previews, obtains user approval, submits signed payloads, reconciles outcomes, and sends terminal execution events here.
+- `regime-engine` is the deterministic analytics and ledger service. It stores market candles, computes regime state, stores S/R and policy-insight blocks, and records execution-result events.
+- `sol-usdc-clmm-intelligence` is the advisory/evidence pipeline. It pulls CLMM bundles from `clmm-v2`, runs OpenClaw-backed analysis using durable policies and memory, and can publish policy insights into this service.
+
+## Mature system vision
+
+The mature system is a closed feedback loop:
+
+1. `regime-engine` maintains canonical market context for SOL/USDC: candles, regime classification, CLMM suitability, support/resistance, and policy insights.
+2. `clmm-v2` uses that context alongside live position state to decide what the user should see: hold, watch, prepare exit, refresh quote, or execute a user-approved exit.
+3. `sol-usdc-clmm-intelligence` periodically adds higher-level research context and policy insight blocks, then posts those blocks into this service.
+4. `clmm-v2` posts execution outcomes back into this service.
+5. Regime Engine becomes the audit-friendly analytical memory for measuring signal quality, stale recommendations, false positives, fee capture, and avoided downside.
+
+A future proof layer may include a minimal Anchor receipt/claim program that records one execution receipt per epoch after a completed user-approved execution. That proof layer is not part of Regime Engine today. Regime Engine remains the off-chain analytics and ledger service.
+
+## Runtime surfaces
+
+### Web service
+
+Run locally:
 
 ```bash
-pnpm install
 pnpm run dev
 ```
 
-Server endpoints:
+Important endpoints:
 
-- `GET /health`
-- `GET /version`
-- `GET /v1/openapi.json`
-- `POST /v1/plan` — position-scoped CLMM recommendation. Reads stored closed
-  candles for `(market.source, market.network, market.poolAddress, market.timeframe)`
-  and returns one of `HOLD`, `STAND_DOWN`, or `REQUEST_EXIT_CLMM` against the
-  caller-supplied LP position state, portfolio, and autopilot state. No inline
-  candles. Plans are persisted to the existing plan ledger with `planId` /
-  `planHash` and link cleanly to `POST /v1/execution-result`.
-- `POST /v1/execution-result`
-- `POST /v1/clmm-execution-result`
-- `GET /v1/report/weekly?from=YYYY-MM-DD&to=YYYY-MM-DD`
-- `POST /v1/sr-levels`
-- `GET /v1/sr-levels/current?symbol=SYMBOL&source=SOURCE`
-- `POST /v1/candles` — ingest candle revisions for a logical feed
-  (`source + network + poolAddress + symbol + timeframe`). Append-only,
-  per-slot decision tree (insert / idempotent / revise / reject). Token-guarded
-  by `X-Candles-Ingest-Token` / `CANDLES_INGEST_TOKEN`.
-- `GET /v1/regime/current?symbol=&source=&network=&poolAddress=&timeframe=15m|1h` —
-  market-only regime classification + CLMM suitability. `timeframe=15m`
-  classifies stored 15m candles directly; `timeframe=1h` derives complete 1h
-  candles from stored 15m candles on the fly. Stateless: no `RegimeState`, no
-  portfolio/autopilot inputs, no plan-ledger writes.
-- `POST /v1/insights/sol-usdc` — CLMM insight ingestion (#20)
-- `GET /v1/insights/sol-usdc/current` — current CLMM insight
-- `GET /v1/insights/sol-usdc/history` — CLMM insight history
-- `POST /v2/sr-levels` — v2 S/R thesis ingestion (#21)
-- `GET /v2/sr-levels/current` — current v2 S/R thesis
+```text
+GET  /health
+GET  /version
+GET  /v1/openapi.json
+POST /v1/plan
+POST /v1/execution-result
+POST /v1/clmm-execution-result
+GET  /v1/report/weekly?from=YYYY-MM-DD&to=YYYY-MM-DD
+POST /v1/sr-levels
+GET  /v1/sr-levels/current?symbol=SYMBOL&source=SOURCE
+POST /v1/candles
+GET  /v1/regime/current?symbol=&source=&network=&poolAddress=&timeframe=15m|1h
+POST /v1/insights/sol-usdc
+GET  /v1/insights/sol-usdc/current
+GET  /v1/insights/sol-usdc/history
+POST /v2/sr-levels
+GET  /v2/sr-levels/current
+```
 
-> **#41 / #42 contract:** `POST /v1/candles` accepts `timeframe=15m` only (provider ingestion is canonical at 15m). `GET /v1/regime/current` accepts `timeframe=15m | 1h`. The `1h` regime read is derived on the fly from stored 15m candles (no provider-ingested 1h candles, no derived storage). Response metadata includes `sourceTimeframe`, `sourceCandleCount`, and on derived reads `derivedTimeframe` and `aggregationVersion`.
+### GeckoTerminal collector
 
-## GeckoTerminal candle collector
-
-The GeckoTerminal collector is a separate worker service from the same repo. It
-does not start Fastify and does not write SQLite or Postgres directly. It fetches
-the configured Solana SOL/USDC GeckoTerminal pool and posts normalized `15m`
-candles to `POST /v1/candles` with `X-Candles-Ingest-Token`.
-
-Local commands:
+Run locally:
 
 ```bash
-# Production start (reads .env automatically via --env-file-if-exists)
-pnpm run start:gecko
-
-# Dev mode (tsx watch — does NOT load .env, pass env vars inline)
 REGIME_ENGINE_URL=http://localhost:8787 \
 CANDLES_INGEST_TOKEN=<your-token> \
 GECKO_POOL_ADDRESS=<pool-address> \
 pnpm run dev:gecko
 ```
 
-Worker env vars:
+The collector fetches the configured Solana SOL/USDC GeckoTerminal pool and posts normalized `15m` candles to `POST /v1/candles`. Provider ingestion is canonical at `15m`; `1h` regime reads are derived on demand from stored `15m` candles.
 
-| Variable                     | Default         | Notes                                                                                  |
-| ---------------------------- | --------------- | -------------------------------------------------------------------------------------- |
-| `REGIME_ENGINE_URL`          | -               | Absolute URL for the regime-engine web service.                                        |
-| `CANDLES_INGEST_TOKEN`       | -               | Shared secret sent as `X-Candles-Ingest-Token`; never commit real values.              |
-| `GECKO_SOURCE`               | `geckoterminal` | Must equal `geckoterminal` for MVP.                                                    |
-| `GECKO_NETWORK`              | `solana`        | Must equal `solana` for MVP.                                                           |
-| `GECKO_POOL_ADDRESS`         | -               | Explicit GeckoTerminal SOL/USDC pool address. Confirm before production.               |
-| `GECKO_SYMBOL`               | `SOL/USDC`      | Must equal `SOL/USDC` for MVP.                                                         |
-| `GECKO_TIMEFRAME`            | `15m`           | Must equal `15m`. Provider ingestion is canonical at 15m; 1h regime reads are derived. |
-| `GECKO_LOOKBACK`             | `200`           | Rolling candle window size.                                                            |
-| `GECKO_POLL_INTERVAL_MS`     | `60000`         | Sleep after each completed cycle.                                                      |
-| `GECKO_MAX_CALLS_PER_MINUTE` | `6`             | Provider-scoped GeckoTerminal call cap.                                                |
-| `GECKO_REQUEST_TIMEOUT_MS`   | `10000`         | Per-request timeout for provider and ingest calls.                                     |
+## Integration contracts
 
-Railway services from the same repo (both use the same Dockerfile, selected via `SERVICE_TYPE`):
+### From `clmm-v2` into Regime Engine
 
-| Service                         | `SERVICE_TYPE` | Start                               |
-| ------------------------------- | -------------- | ----------------------------------- |
-| `regime-engine-web`             | _(unset)_      | `bash scripts/start.sh` → web       |
-| `regime-engine-gecko-collector` | `collector`    | `bash scripts/start.sh` → collector |
+`clmm-v2` posts terminal execution events to:
 
-Production setup and pool confirmation live in
-`docs/runbooks/railway-deploy.md`.
+```text
+POST /v1/clmm-execution-result
+Header: X-CLMM-Internal-Token: <CLMM_INTERNAL_TOKEN>
+```
 
-## Commands
-
-- `pnpm run dev`
-- `pnpm run dev:gecko`
-- `pnpm run build`
-- `pnpm run lint`
-- `pnpm run typecheck`
-- `pnpm run test`
-- `pnpm run test:pg`
-- `pnpm run format`
-- `pnpm run harness -- --fixture ./fixtures/demo --from 2026-01-01 --to 2026-01-31`
-- `pnpm run db:migrate`
-- `pnpm run db:generate`
-- `pnpm run db:push`
-
-## 3-minute local demo
-
-1. Start service:
+The matching env values are:
 
 ```bash
+# regime-engine
+CLMM_INTERNAL_TOKEN=<shared-secret>
+
+# clmm-v2
+REGIME_ENGINE_INTERNAL_TOKEN=<same-shared-secret>
+REGIME_ENGINE_BASE_URL=http://localhost:8787
+```
+
+### From Regime Engine into `clmm-v2`
+
+`clmm-v2` reads current context through backend-only adapters:
+
+```text
+GET /v1/regime/current
+GET /v1/sr-levels/current
+GET /v2/sr-levels/current
+GET /v1/insights/sol-usdc/current
+```
+
+These calls are backend-to-backend. They should not be exposed through app public env vars.
+
+### From `sol-usdc-clmm-intelligence` into Regime Engine
+
+The intelligence pipeline can write OpenClaw-generated policy insight blocks to:
+
+```text
+POST /v1/insights/sol-usdc
+Header: X-Insight-Ingest-Token: <INSIGHT_INGEST_TOKEN>
+```
+
+It can also feed S/R material through the S/R ingest endpoints when configured.
+
+## Getting started
+
+Prerequisites:
+
+- Node.js 22.13+
+- pnpm 10.33+
+- SQLite path for the ledger
+- optional Postgres for `regime_engine` schema features
+
+Install and start:
+
+```bash
+pnpm install
+cp .env.example .env
 pnpm run dev
 ```
 
-2. In a second terminal run harness:
+## Common commands
 
 ```bash
+pnpm run dev
+pnpm run dev:gecko
+pnpm run build
+pnpm run lint
+pnpm run typecheck
+pnpm run test
+pnpm run test:pg
+pnpm run boundaries
+pnpm run format
+pnpm run db:migrate
+pnpm run db:generate
+pnpm run db:push
 pnpm run harness -- --fixture ./fixtures/demo --from 2026-01-01 --to 2026-01-31
 ```
 
-3. Inspect artifacts:
+## Storage model
 
-- `tmp/reports/weekly-2026-01-01-2026-01-31.md`
-- `tmp/reports/weekly-2026-01-01-2026-01-31.json`
+Regime Engine uses two stores:
 
-## Deploying to Railway
+- SQLite ledger: append-only plan, execution-result, CLMM event, and weekly-report truth records.
+- Postgres `regime_engine` schema: candle revisions, v2 S/R theses, CLMM policy insights, and other concurrent-read datasets.
 
-1. Push this repo to a Railway project — Railway detects the `railway.toml` config automatically.
+When `DATABASE_URL` is set, the service connects to Postgres with `search_path=regime_engine`. When `DATABASE_URL` is not set, Postgres-backed features are unavailable and report `not_configured` or service-unavailable responses where applicable.
 
-2. Add a **persistent volume** in the Railway service settings (web service only):
-   - Name: `ledger`
-   - Mount path: `/data`
-
-   The `railway.toml` declares `requiredMountPath = "/data"` which will prompt for volume creation on first deploy.
-
-3. Set the `RAILWAY_RUN_UID` environment variable to `0` on the **web service**. The container runs as a non-root user (`app`), but Railway mounts volumes with root ownership. Setting `RAILWAY_RUN_UID=0` ensures the process can write to `/data/ledger.sqlite`.
-
-4. Both services use the same Dockerfile and `railway.toml`. The `scripts/start.sh` entrypoint selects which process to run based on the `SERVICE_TYPE` env var. Similarly, `scripts/predeploy.sh` skips migrations for the collector.
-
-   **Web service env vars:**
-
-   | Variable                | Default             | Description                                                                                                                                                                                                 |
-   | ----------------------- | ------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-   | `SERVICE_TYPE`          | _(unset)_           | Leave unset for web service. `start.sh` defaults to the web server.                                                                                                                                         |
-   | `PORT`                  | —                   | Railway sets this automatically                                                                                                                                                                             |
-   | `HOST`                  | `0.0.0.0`           | Host binding. **Set to `::` on Railway** so Fastify binds dual-stack and is reachable over private networking.                                                                                              |
-   | `LEDGER_DB_PATH`        | `tmp/ledger.sqlite` | **Override to `/data/ledger.sqlite`** to use the persistent volume                                                                                                                                          |
-   | `NODE_ENV`              | `production`        | Node environment                                                                                                                                                                                            |
-   | `COMMIT_SHA`            | —                   | Optional, shown in `/version`                                                                                                                                                                               |
-   | `OPENCLAW_INGEST_TOKEN` | —                   | Required shared secret for `POST /v1/sr-levels`                                                                                                                                                             |
-   | `CLMM_INTERNAL_TOKEN`   | —                   | Required shared secret for `POST /v1/clmm-execution-result`                                                                                                                                                 |
-   | `CANDLES_INGEST_TOKEN`  | —                   | Required for `POST /v1/candles`. Sent via `X-Candles-Ingest-Token`, compared with `timingSafeEqual`. Missing env returns 500 only on the candle ingest route — service boot and read routes are unaffected. |
-   | `DATABASE_URL`          | —                   | Postgres connection string. When set, enables Postgres features with `regime_engine` schema isolation                                                                                                       |
-   | `RAILWAY_RUN_UID`       | `0`                 | **Required on web service** — allows volume writes for non-root container                                                                                                                                   |
-
-   **Collector service env vars:**
-
-   | Variable                     | Value                                                                  |
-   | ---------------------------- | ---------------------------------------------------------------------- |
-   | `SERVICE_TYPE`               | `collector`                                                            |
-   | `REGIME_ENGINE_URL`          | `http://${{web-service.RAILWAY_PRIVATE_DOMAIN}}:${{web-service.PORT}}` |
-   | `CANDLES_INGEST_TOKEN`       | `${{web-service.CANDLES_INGEST_TOKEN}}`                                |
-   | `DATABASE_URL`               | `${{Postgres.DATABASE_URL}}` (for pre-deploy migration no-op)          |
-   | `GECKO_SOURCE`               | `geckoterminal`                                                        |
-   | `GECKO_NETWORK`              | `solana`                                                               |
-   | `GECKO_POOL_ADDRESS`         | confirmed GeckoTerminal SOL/USDC pool address                          |
-   | `GECKO_SYMBOL`               | `SOL/USDC`                                                             |
-   | `GECKO_TIMEFRAME`            | `1h`                                                                   |
-   | `GECKO_LOOKBACK`             | `200`                                                                  |
-   | `GECKO_POLL_INTERVAL_MS`     | `300000`                                                               |
-   | `GECKO_MAX_CALLS_PER_MINUTE` | `6`                                                                    |
-   | `GECKO_REQUEST_TIMEOUT_MS`   | `10000`                                                                |
-
-5. Railway handles HTTPS termination and SIGTERM — the service shuts down gracefully on deploy.
-
-### Verifying the deploy
-
-Once the service is live, run the curl runbook from a machine with the tokens loaded into env:
-
-```bash
-export RE_URL="https://<public>.up.railway.app"
-export OPENCLAW_INGEST_TOKEN="<the token set in Railway>"
-export CLMM_INTERNAL_TOKEN="<the token set in Railway>"
-
-curl -fsS "$RE_URL/health"
-curl -fsS "$RE_URL/version"
-curl -fsS "$RE_URL/v1/openapi.json" | head -c 200
-
-# S/R ingest — fresh insert
-curl -fsS -X POST "$RE_URL/v1/sr-levels" \
-  -H "Content-Type: application/json" \
-  -H "X-Ingest-Token: $OPENCLAW_INGEST_TOKEN" \
-  -d @fixtures/sr-levels-brief.json
-
-# Current read
-curl -fsS "$RE_URL/v1/sr-levels/current?symbol=SOL/USDC&source=mco"
-
-# CLMM event — fresh
-curl -fsS -X POST "$RE_URL/v1/clmm-execution-result" \
-  -H "Content-Type: application/json" \
-  -H "X-CLMM-Internal-Token: $CLMM_INTERNAL_TOKEN" \
-  -d @fixtures/clmm-execution-event.json
-
-# CLMM event — replay; expect { ok: true, correlationId, idempotent: true }
-curl -fsS -X POST "$RE_URL/v1/clmm-execution-result" \
-  -H "Content-Type: application/json" \
-  -H "X-CLMM-Internal-Token: $CLMM_INTERNAL_TOKEN" \
-  -d @fixtures/clmm-execution-event.json
-```
-
-Full runbook (ordered steps, private-networking fallback, failure triage): see [`docs/runbooks/railway-deploy.md`](docs/runbooks/railway-deploy.md).
-
-## Multi-Schema Postgres Architecture
-
-Regime Engine runs alongside clmm-v2 on a shared Railway Postgres instance. Schema isolation keeps data separate:
-
-- `regime_engine` schema — Regime Engine's Postgres tables (candle revisions, v2 S/R theses, CLMM insights)
-- `public` schema — clmm-v2's tables (owned by that service)
-
-SQLite stays for the append-only receipt ledger (plans, execution results, CLMM events). Postgres is used for features that need JSONB, native arrays, indexing, and concurrent reads from the CLMM Autopilot app.
-
-### Connection config
-
-- `DATABASE_URL` — When set, the service connects to Postgres with `search_path=regime_engine` (set via postgres.js `connection.search_path`). When not set, the service runs in SQLite-only mode.
-- Migrations run via `pnpm run db:migrate` (Drizzle Kit), executed as a Railway `preDeployCommand` before the app starts.
-- The service hard-fails at startup if Postgres is unreachable (when `DATABASE_URL` is set). Railway's restart policy handles transient failures.
-
-### Health endpoint
-
-`GET /health` reports both store statuses:
+`GET /health` reports both store states:
 
 ```json
 { "ok": true, "postgres": "ok", "sqlite": "ok" }
 ```
 
-Possible `postgres` values: `"ok"`, `"unavailable"`, `"not_configured"` (when `DATABASE_URL` is not set).
+## Railway deployment
 
-### Running Postgres integration tests locally
+The repo deploys as two Railway services from the same Dockerfile:
 
-```bash
-docker compose -f docker-compose.test.yml up -d
-pnpm run db:push
-pnpm run test:pg
-docker compose -f docker-compose.test.yml down
-```
+| Service | `SERVICE_TYPE` | Purpose |
+| --- | --- | --- |
+| `regime-engine-web` | unset | Fastify HTTP service |
+| `regime-engine-gecko-collector` | `collector` | GeckoTerminal candle collector |
+
+The web service owns migrations. The collector skips migrations and posts through the HTTP ingest route.
+
+Full runbook: `docs/runbooks/railway-deploy.md`.
 
 ## Determinism strategy
 
@@ -255,19 +222,30 @@ docker compose -f docker-compose.test.yml down
 - `planHash = sha256(canonicalPlanJson)`.
 - Snapshot tests for canonical/hash/plan/report outputs.
 - Stable validation error ordering and canonical error codes.
+- Append-only ledgers for auditable result history.
 
 ## Repo map
 
-- `src/contract/v1`: types, validation, canonical JSON, hash
-- `src/engine`: features, regime, churn, allocation, plan builder
-- `src/http`: routes, handlers, OpenAPI, error taxonomy
-- `src/ledger`: sqlite schema, store, writer, candle store
-- `src/ledger/pg`: Postgres db factory, Drizzle schema (regime_engine)
-- `src/ledger/storeContext`: unified StoreContext (SQLite + Postgres)
-- `src/report`: baselines + weekly report generation
-- `src/workers/gecko`: GeckoTerminal collector (config, normalize, ingest client, retry)
-- `src/workers/geckoCollector.ts`: collector entrypoint + polling loop
-- `scripts/start.sh`: Railway entrypoint (selects web or collector via `SERVICE_TYPE`)
-- `scripts/predeploy.sh`: Railway pre-deploy (skips migrations for collector)
-- `scripts/harness.ts`: fixture runner end-to-end
-- `fixtures/demo`: deterministic uptrend/downtrend/chop/whipsaw fixtures
+```text
+src/contract/v1             Types, validation, canonical JSON, hashes, error taxonomy
+src/engine                  Features, regime, churn, allocation, plan building
+src/adapters/http           Fastify routes, handlers, OpenAPI, auth boundaries
+src/ledger                  SQLite ledger schema, stores, writers, candle store
+src/ledger/pg               Postgres db factory and Drizzle schema under regime_engine
+src/composition             Application/store composition roots
+src/report                  Baselines and weekly report generation
+src/workers/gecko           GeckoTerminal collector config, normalization, client, retry
+src/workers/geckoCollector.ts Collector entrypoint and polling loop
+scripts                     Railway start/predeploy, harness, asset copying
+drizzle                     Drizzle migrations
+fixtures                    Demo and regression fixtures
+```
+
+## Guardrails
+
+- Regime Engine does not own wallet connection, app UX, transaction preparation, or user approval.
+- Market regime is context, not execution authority.
+- Candle ingestion is append-only with explicit revision semantics.
+- Provider-ingested candles are `15m`; `1h` is derived on read.
+- Shared secrets protect write endpoints; never commit real token values.
+- Keep CLMM operational state in `clmm-v2`; keep advisory memory in `sol-usdc-clmm-intelligence`; keep deterministic market context and result ledgers here.
