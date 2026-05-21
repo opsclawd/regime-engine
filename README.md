@@ -2,7 +2,7 @@
 
 Regime Engine is the deterministic market-regime, support/resistance, insight-store, and execution-result ledger service for the SOL/USDC CLMM Autopilot system.
 
-It does not own the mobile app, wallet connection, position execution flow, Orca transaction assembly, or user signing surface. Those belong to `clmm-v2`.
+It does not own the mobile app, wallet connection, position flow, Orca transaction assembly, or user signing surface. Those belong to `clmm-v2`.
 
 This repo exists to answer one question reliably: **what is the current market/strategy context for SOL/USDC, and what has the system already observed or recorded?**
 
@@ -30,7 +30,7 @@ Regime Engine emits recommendations and stores evidence. It does not submit tran
                                 |
                                 v
                          regime-engine
-              regime, S/R, S/R theses, policy insights
+              regime, S/R, S/R theses, current insights
                                 ^
                                 | execution result events
                                 |
@@ -48,20 +48,108 @@ Wallet + App  <---- BFF/API + Worker ----> Orca / Jupiter / Solana RPC
 Today:
 
 - `clmm-v2` is the operational product. It watches supported positions, qualifies breach triggers, prepares execution previews, obtains user approval, submits signed payloads, reconciles outcomes, and sends terminal execution events here.
-- `regime-engine` is the deterministic analytics and ledger service. It stores market candles, computes regime state, stores S/R and policy-insight blocks, and records execution-result events.
-- `sol-usdc-clmm-intelligence` is the advisory/evidence pipeline. It pulls CLMM bundles from `clmm-v2`, runs OpenClaw-backed analysis using durable policies and memory, and can publish policy insights into this service.
+- `regime-engine` is the deterministic analytics and ledger service. It stores market candles, computes regime state, stores S/R/current insight blocks, and records execution-result events.
+- `sol-usdc-clmm-intelligence` is the advisory/evidence pipeline. It pulls CLMM bundles from `clmm-v2`, runs OpenClaw-backed analysis using durable policies and memory, and currently may interact with legacy final-insight surfaces.
+
+## Open roadmap and future state
+
+Open issues #57 through #63 define the next Regime Engine architecture: external systems should publish structured research evidence, and Regime Engine should synthesize the final canonical PolicyInsight internally.
+
+### Evidence contract and persistence
+
+Tracked by #58.
+
+Regime Engine should define a strict versioned research-evidence contract containing:
+
+- pair, source, run ID / idempotency key, `asOf`, and `expiresAt`;
+- deterministic feature summaries;
+- support/resistance thesis summary;
+- flow context summary;
+- perp/liquidation context summary;
+- macro/protocol/event-risk summary;
+- LLM research brief;
+- source refs, freshness, confidence, and provenance metadata.
+
+Evidence records should be append-only, hashable, idempotent on exact replay, conflict on same source/run ID with different payload, and stored separately from final PolicyInsights.
+
+### Evidence ingest and query surface
+
+Tracked by #59.
+
+The planned evidence route is separate from final insights:
+
+```text
+POST /v1/evidence/sol-usdc
+GET  /v1/evidence/sol-usdc/current
+GET  /v1/evidence/sol-usdc/history
+```
+
+This replaces the architectural need for external callers to write final policy blocks. The legacy final-policy write route is expected to be retired after internal synthesis exists.
+
+### Evidence selection and scoring
+
+Tracked by #60.
+
+Regime Engine should not blindly use the newest external payload. It needs deterministic selection rules for freshness, confidence, source quality, expiry, and evidence-family coverage. The selection result should record which evidence was used, which evidence was ignored, and why.
+
+Missing or stale research evidence should degrade explicitly. It should not block deterministic market-state reads.
+
+### Internal PolicyInsight synthesis
+
+Tracked by #61.
+
+The final user-facing PolicyInsight should be generated inside Regime Engine from:
+
+- deterministic market regime state;
+- selected structured research evidence;
+- explicit policy rules.
+
+The output should include market regime, fundamental regime, recommended action, confidence, risk level, CLMM policy, levels, reasoning, source refs, and freshness/status metadata.
+
+Hard deterministic guards remain authoritative. Research evidence can affect posture, confidence, and risk, but it should not silently bypass stale-data or safety rules.
+
+### Legacy final-policy write removal
+
+Tracked by #62.
+
+After synthesis is implemented, external final-policy ingest should be removed. The read surface remains:
+
+```text
+GET /v1/insights/sol-usdc/current
+GET /v1/insights/sol-usdc/history
+```
+
+The write path changes from external final insight submission to evidence submission plus internal synthesis.
+
+### Canonical PolicyInsights wire contract
+
+Tracked by #63.
+
+Regime Engine must publish one canonical final PolicyInsights read shape for `clmm-v2`. Known drift to resolve includes:
+
+- `maxCapitalDeploymentPercent` vs `maxCapitalDeploymentPct`;
+- `levels.support/resistance` vs `levels.supports/resistances`;
+- percentage unit ambiguity: `0..100` vs `0..1`.
+
+The mature contract should be strict, documented, fixture-backed, and consumable by `clmm-v2` without adapter-side guessing.
+
+### Candle-store consistency
+
+Tracked by #55.
+
+Weekly reports should read from the same canonical candle store as `/v1/regime/current` and `/v1/plan`. If Postgres is the active candle store, reports should not silently read a stale or empty SQLite path.
 
 ## Mature system vision
 
 The mature system is a closed feedback loop:
 
-1. `regime-engine` maintains canonical market context for SOL/USDC: candles, regime classification, CLMM suitability, support/resistance, and policy insights.
-2. `clmm-v2` uses that context alongside live position state to decide what the user should see: hold, watch, prepare exit, refresh quote, or execute a user-approved exit.
-3. `sol-usdc-clmm-intelligence` periodically adds higher-level research context and policy insight blocks, then posts those blocks into this service.
-4. `clmm-v2` posts execution outcomes back into this service.
-5. Regime Engine becomes the audit-friendly analytical memory for measuring signal quality, stale recommendations, false positives, fee capture, and avoided downside.
+1. `regime-engine` maintains canonical market context for SOL/USDC: candles, regime classification, CLMM suitability, support/resistance, selected evidence, and internally synthesized PolicyInsights.
+2. `sol-usdc-clmm-intelligence` publishes structured research evidence, not final policy conclusions.
+3. `clmm-v2` reads the final canonical PolicyInsight and combines it with live LP state in the product experience.
+4. `clmm-v2` records terminal outcomes back into Regime Engine.
+5. Regime Engine becomes the audit-friendly analytical memory for measuring signal quality, stale evidence, false positives, fee capture, and outcome quality.
 
-A future proof layer may include a minimal Anchor receipt/claim program that records one execution receipt per epoch after a completed user-approved execution. That proof layer is not part of Regime Engine today. Regime Engine remains the off-chain analytics and ledger service.
+A future proof layer may include a minimal Anchor receipt/claim program that records one execution receipt per epoch after a completed user-approved flow. That proof layer is not part of Regime Engine today. Regime Engine remains the off-chain analytics and ledger service.
 
 ## Runtime surfaces
 
@@ -73,7 +161,7 @@ Run locally:
 pnpm run dev
 ```
 
-Important endpoints:
+Important current endpoints:
 
 ```text
 GET  /health
@@ -87,11 +175,19 @@ POST /v1/sr-levels
 GET  /v1/sr-levels/current?symbol=SYMBOL&source=SOURCE
 POST /v1/candles
 GET  /v1/regime/current?symbol=&source=&network=&poolAddress=&timeframe=15m|1h
-POST /v1/insights/sol-usdc
+POST /v1/insights/sol-usdc       # legacy external final-insight write path; roadmap removes it
 GET  /v1/insights/sol-usdc/current
 GET  /v1/insights/sol-usdc/history
 POST /v2/sr-levels
 GET  /v2/sr-levels/current
+```
+
+Planned evidence endpoints:
+
+```text
+POST /v1/evidence/sol-usdc
+GET  /v1/evidence/sol-usdc/current
+GET  /v1/evidence/sol-usdc/history
 ```
 
 ### GeckoTerminal collector
@@ -111,7 +207,7 @@ The collector fetches the configured Solana SOL/USDC GeckoTerminal pool and post
 
 ### From `clmm-v2` into Regime Engine
 
-`clmm-v2` posts terminal execution events to:
+`clmm-v2` currently posts terminal execution events to:
 
 ```text
 POST /v1/clmm-execution-result
@@ -129,6 +225,13 @@ REGIME_ENGINE_INTERNAL_TOKEN=<same-shared-secret>
 REGIME_ENGINE_BASE_URL=http://localhost:8787
 ```
 
+Planned plan/result integration also uses:
+
+```text
+POST /v1/plan
+POST /v1/execution-result
+```
+
 ### From Regime Engine into `clmm-v2`
 
 `clmm-v2` reads current context through backend-only adapters:
@@ -140,18 +243,25 @@ GET /v2/sr-levels/current
 GET /v1/insights/sol-usdc/current
 ```
 
-These calls are backend-to-backend. They should not be exposed through app public env vars.
+The future `GET /v1/insights/sol-usdc/current` response should be the internally synthesized canonical PolicyInsight, not an externally authored block.
 
 ### From `sol-usdc-clmm-intelligence` into Regime Engine
 
-The intelligence pipeline can write OpenClaw-generated policy insight blocks to:
+Current/legacy final-policy ingest:
 
 ```text
 POST /v1/insights/sol-usdc
 Header: X-Insight-Ingest-Token: <INSIGHT_INGEST_TOKEN>
 ```
 
-It can also feed S/R material through the S/R ingest endpoints when configured.
+Roadmap evidence ingest:
+
+```text
+POST /v1/evidence/sol-usdc
+Header: X-Evidence-Ingest-Token: <shared-secret>
+```
+
+New work should target the evidence contract and evidence route. The final-insight write path is transitional.
 
 ## Getting started
 
@@ -244,8 +354,8 @@ fixtures                    Demo and regression fixtures
 ## Guardrails
 
 - Regime Engine does not own wallet connection, app UX, transaction preparation, or user approval.
-- Market regime is context, not execution authority.
+- Market regime is context, not transaction authority.
 - Candle ingestion is append-only with explicit revision semantics.
 - Provider-ingested candles are `15m`; `1h` is derived on read.
 - Shared secrets protect write endpoints; never commit real token values.
-- Keep CLMM operational state in `clmm-v2`; keep advisory memory in `sol-usdc-clmm-intelligence`; keep deterministic market context and result ledgers here.
+- Keep CLMM operational state in `clmm-v2`; keep evidence production in `sol-usdc-clmm-intelligence`; keep deterministic market context, evidence selection, final policy synthesis, and result ledgers here.
