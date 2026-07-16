@@ -1,7 +1,7 @@
 import { rmSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { afterEach, describe, expect, it, beforeEach } from "vitest";
+import { afterEach, describe, expect, it, beforeEach, vi } from "vitest";
 import { sql } from "drizzle-orm/sql";
 import { createLedgerStore } from "../../ledger/store.js";
 import { writePlanLedgerEntry } from "../../ledger/writer.js";
@@ -13,13 +13,18 @@ import type { RuntimeStoreContext } from "../buildStoreContext.js";
 import { buildApplication } from "../buildApplication.js";
 
 const createdDbPaths: string[] = [];
+const cleanupFns: Array<() => Promise<void>> = [];
 
 beforeEach(() => {
   vi.stubEnv("LEDGER_DB_PATH", "");
   vi.stubEnv("DATABASE_URL", process.env.DATABASE_URL ?? "");
 });
 
-afterEach(() => {
+afterEach(async () => {
+  const fns = cleanupFns.splice(0, cleanupFns.length);
+  for (const fn of fns.reverse()) {
+    await fn();
+  }
   for (const path of createdDbPaths.splice(0, createdDbPaths.length)) {
     rmSync(path, { force: true });
   }
@@ -209,7 +214,9 @@ describeIfPg("weekly report candle store (PostgreSQL)", () => {
     createdDbPaths.push(dbPath);
 
     const { db: pg, client: pgClient } = createDb(process.env.DATABASE_URL!);
+    cleanupFns.push(() => pgClient.end());
     const ctx = buildStoreContext(dbPath, pg);
+    cleanupFns.push(() => ctx.close());
 
     const fixture = buildFixture(Date.parse("2026-01-08T00:00:00.000Z"));
     const plan = buildPositionPlan(fixture.input);
@@ -266,24 +273,19 @@ describeIfPg("weekly report candle store (PostgreSQL)", () => {
         volume: 1400
       }
     ]);
+    cleanupFns.push(() => deletePgCandles(pg));
 
-    try {
-      const app = buildApplication(ctx);
-      const report = await app.getWeeklyReport({ from: "2026-01-01", to: "2026-01-31" });
+    const app = buildApplication(ctx);
+    const report = await app.getWeeklyReport({ from: "2026-01-01", to: "2026-01-31" });
 
-      expect(report.summary.baselines.solHodlFinalNavUsd).toBeGreaterThan(0);
-      expect(report.summary.baselines.solDcaFinalNavUsd).toBeGreaterThan(0);
-      expect(report.summary.totals.plans).toBe(1);
+    expect(report.summary.baselines.solHodlFinalNavUsd).toBeGreaterThan(0);
+    expect(report.summary.baselines.solDcaFinalNavUsd).toBeGreaterThan(0);
+    expect(report.summary.totals.plans).toBe(1);
 
-      const initialNav = 10_000;
-      const solUnits = initialNav / 200;
-      const expectedHodlFinalNav = solUnits * 210;
-      expect(report.summary.baselines.solHodlFinalNavUsd).toBeCloseTo(expectedHodlFinalNav, 0);
-    } finally {
-      await deletePgCandles(pg);
-      await ctx.close();
-      await pgClient.end();
-    }
+    const initialNav = 10_000;
+    const solUnits = initialNav / 200;
+    const expectedHodlFinalNav = solUnits * 210;
+    expect(report.summary.baselines.solHodlFinalNavUsd).toBeCloseTo(expectedHodlFinalNav, 0);
   });
 
   it("ignores conflicting SQLite candles when PostgreSQL is the active candle store", async () => {
@@ -294,7 +296,9 @@ describeIfPg("weekly report candle store (PostgreSQL)", () => {
     createdDbPaths.push(dbPath);
 
     const { db: pg, client: pgClient } = createDb(process.env.DATABASE_URL!);
+    cleanupFns.push(() => pgClient.end());
     const ctx = buildStoreContext(dbPath, pg);
+    cleanupFns.push(() => ctx.close());
 
     const fixture = buildFixture(Date.parse("2026-01-08T00:00:00.000Z"));
     const plan = buildPositionPlan(fixture.input);
@@ -380,25 +384,17 @@ describeIfPg("weekly report candle store (PostgreSQL)", () => {
         volume: 1400
       }
     ]);
+    cleanupFns.push(() => deletePgCandles(pg));
 
-    try {
-      const app = buildApplication(ctx);
-      const report = await app.getWeeklyReport({ from: "2026-01-01", to: "2026-01-31" });
+    const app = buildApplication(ctx);
+    const report = await app.getWeeklyReport({ from: "2026-01-01", to: "2026-01-31" });
 
-      const initialNav = 10_000;
-      const solUnits = initialNav / 200;
-      const expectedHodlFinalNav = solUnits * 210;
-      expect(report.summary.baselines.solHodlFinalNavUsd).toBeCloseTo(expectedHodlFinalNav, 0);
+    const initialNav = 10_000;
+    const solUnits = initialNav / 200;
+    const expectedHodlFinalNav = solUnits * 210;
+    expect(report.summary.baselines.solHodlFinalNavUsd).toBeCloseTo(expectedHodlFinalNav, 0);
 
-      expect(report.summary.baselines.solHodlFinalNavUsd).not.toBeCloseTo(
-        (initialNav / 50) * 60,
-        0
-      );
-    } finally {
-      await deletePgCandles(pg);
-      await ctx.close();
-      await pgClient.end();
-    }
+    expect(report.summary.baselines.solHodlFinalNavUsd).not.toBeCloseTo((initialNav / 50) * 60, 0);
   });
 
   it("does not fall back to SQLite when the active PostgreSQL feed is empty", async () => {
@@ -409,7 +405,10 @@ describeIfPg("weekly report candle store (PostgreSQL)", () => {
     createdDbPaths.push(dbPath);
 
     const { db: pg, client: pgClient } = createDb(process.env.DATABASE_URL!);
+    cleanupFns.push(() => pgClient.end());
     const ctx = buildStoreContext(dbPath, pg);
+    cleanupFns.push(() => ctx.close());
+    cleanupFns.push(() => deletePgCandles(pg));
 
     const fixture = buildFixture(Date.parse("2026-01-08T00:00:00.000Z"));
     const plan = buildPositionPlan(fixture.input);
@@ -451,16 +450,10 @@ describeIfPg("weekly report candle store (PostgreSQL)", () => {
         windowFrom + 60 * 60 * 1000
       );
 
-    try {
-      const app = buildApplication(ctx);
-      const report = await app.getWeeklyReport({ from: "2026-01-01", to: "2026-01-31" });
+    const app = buildApplication(ctx);
+    const report = await app.getWeeklyReport({ from: "2026-01-01", to: "2026-01-31" });
 
-      expect(report.summary.baselines.solHodlFinalNavUsd).toEqual(10_000);
-      expect(report.summary.baselines.solDcaFinalNavUsd).toEqual(10_000);
-    } finally {
-      await deletePgCandles(pg);
-      await ctx.close();
-      await pgClient.end();
-    }
+    expect(report.summary.baselines.solHodlFinalNavUsd).toEqual(10_000);
+    expect(report.summary.baselines.solDcaFinalNavUsd).toEqual(10_000);
   });
 });
