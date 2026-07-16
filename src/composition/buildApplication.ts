@@ -70,6 +70,7 @@ export interface ApplicationDependencies {
 export const buildApplication = (ctx: RuntimeStoreContext): ApplicationDependencies => {
   const clock: ClockPort = { nowUnixMs: () => Date.now() };
 
+  // Resolves active candle read port supporting both latest-N and feed-window reads
   const candleReadPort: CandleReadPort = ctx.pg
     ? createPostgresCandleReadAdapter(ctx.pg)
     : createSqliteCandleReadAdapter(ctx.ledger);
