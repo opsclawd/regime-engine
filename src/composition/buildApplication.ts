@@ -5,7 +5,7 @@ import type {
   ClmmExecutionEventLedgerWritePort,
   ExecutionResultLedgerWritePort
 } from "../application/ports/executionLedgerPort.js";
-import type { WeeklyReportReadPort } from "../application/ports/weeklyReportReadPort.js";
+import type { WeeklyReportLedgerReadPort } from "../application/ports/weeklyReportReadPort.js";
 import type { GetCurrentRegimeUseCase } from "../application/use-cases/getCurrentRegimeUseCase.js";
 import type { GeneratePlanUseCase } from "../application/use-cases/generatePlanUseCase.js";
 import type { IngestCandlesUseCase } from "../application/use-cases/ingestCandlesUseCase.js";
@@ -53,7 +53,7 @@ export interface ApplicationDependencies {
   planLedgerWritePort: PlanLedgerWritePort;
   executionResultLedgerWritePort: ExecutionResultLedgerWritePort;
   clmmExecutionEventLedgerWritePort: ClmmExecutionEventLedgerWritePort;
-  weeklyReportReadPort: WeeklyReportReadPort;
+  weeklyReportReadPort: WeeklyReportLedgerReadPort;
   ingestCandles: IngestCandlesUseCase;
   getCurrentRegime: GetCurrentRegimeUseCase;
   generatePlan: GeneratePlanUseCase;
@@ -84,7 +84,7 @@ export const buildApplication = (ctx: RuntimeStoreContext): ApplicationDependenc
   const clmmExecutionEventLedgerWritePort = createSqliteClmmExecutionEventLedgerWriteAdapter(
     ctx.ledger
   );
-  const weeklyReportReadPort = createSqliteWeeklyReportReadAdapter(ctx.ledger);
+  const weeklyReportLedgerReadPort = createSqliteWeeklyReportReadAdapter(ctx.ledger);
 
   const ingestCandles = createIngestCandlesUseCase({ candleWritePort });
   const getCurrentRegime = createGetCurrentRegimeUseCase({
@@ -102,7 +102,10 @@ export const buildApplication = (ctx: RuntimeStoreContext): ApplicationDependenc
   const recordClmmExecutionResult = createRecordClmmExecutionResultUseCase({
     port: clmmExecutionEventLedgerWritePort
   });
-  const getWeeklyReport = createGetWeeklyReportUseCase({ port: weeklyReportReadPort });
+  const getWeeklyReport = createGetWeeklyReportUseCase({
+    weeklyReportLedgerReadPort,
+    candleReadPort
+  });
 
   const versionInfo: VersionInfo = {
     name: "regime-engine",
@@ -117,7 +120,7 @@ export const buildApplication = (ctx: RuntimeStoreContext): ApplicationDependenc
     planLedgerWritePort,
     executionResultLedgerWritePort,
     clmmExecutionEventLedgerWritePort,
-    weeklyReportReadPort,
+    weeklyReportReadPort: weeklyReportLedgerReadPort,
     ingestCandles,
     getCurrentRegime,
     generatePlan,

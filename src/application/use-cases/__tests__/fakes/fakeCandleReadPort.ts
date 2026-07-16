@@ -4,8 +4,9 @@ import type { CandleRow, GetLatestCandlesParams } from "../../../../contract/v1/
 export class FakeCandleReadPort implements CandleReadPort {
   public calls: GetLatestCandlesParams[] = [];
   public windowCalls: GetCandlesForFeedWindowParams[] = [];
-  private readonly rowsByTimeframe: Map<string, CandleRow[]>;
+  public rowsByTimeframe: Map<string, CandleRow[]>;
   private readonly errorHook: ((method: string, params: unknown) => void) | undefined;
+  private windowError: Error | null = null;
 
   public constructor(
     rowsByTimeframe: Record<string, CandleRow[]> = {},
@@ -13,6 +14,10 @@ export class FakeCandleReadPort implements CandleReadPort {
   ) {
     this.rowsByTimeframe = new Map(Object.entries(rowsByTimeframe));
     this.errorHook = errorHook;
+  }
+
+  public setWindowError(error: Error): void {
+    this.windowError = error;
   }
 
   async getLatestCandlesForFeed(params: GetLatestCandlesParams): Promise<CandleRow[]> {
@@ -25,6 +30,9 @@ export class FakeCandleReadPort implements CandleReadPort {
   async getCandlesForFeedWindow(params: GetCandlesForFeedWindowParams): Promise<CandleRow[]> {
     this.windowCalls.push({ ...params });
     this.errorHook?.("getCandlesForFeedWindow", params);
+    if (this.windowError) {
+      throw this.windowError;
+    }
     const rows = this.rowsByTimeframe.get(params.timeframe) ?? [];
     return rows.filter(
       (row) => row.unixMs >= params.fromUnixMs && row.unixMs <= params.closedCandleCutoffUnixMs

@@ -1,4 +1,4 @@
-import type { LedgerStore } from "../ledger/store.js";
+import type { WeeklyReportData } from "../application/ports/weeklyReportReadPort.js";
 import { computeBaselines } from "./baselines.js";
 
 export interface WeeklyReportSummary {
@@ -46,14 +46,9 @@ export interface WeeklyReportOutput {
 
 export class ReportRangeError extends Error {}
 
-const round = (value: number, precision = 6): number => {
-  const factor = 10 ** precision;
-  return Math.round(value * factor) / factor;
-};
+export const DATE_ONLY_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
 
-const DATE_ONLY_PATTERN = /^(\d{4})-(\d{2})-(\d{2})$/;
-
-const parseDate = (value: string, endOfDay: boolean): number => {
+export const parseDate = (value: string, endOfDay: boolean): number => {
   const match = DATE_ONLY_PATTERN.exec(value);
   if (!match) {
     throw new ReportRangeError("Invalid weekly report date range.");
@@ -81,7 +76,7 @@ const parseDate = (value: string, endOfDay: boolean): number => {
   return unixMs;
 };
 
-const parseDateWindow = (from: string, to: string) => {
+export const parseDateWindow = (from: string, to: string) => {
   const fromUnixMs = parseDate(from, false);
   const toUnixMs = parseDate(to, true);
 
@@ -92,89 +87,16 @@ const parseDateWindow = (from: string, to: string) => {
   return { fromUnixMs, toUnixMs };
 };
 
-const asRecord = (json: string): Record<string, unknown> => {
-  return JSON.parse(json) as Record<string, unknown>;
+const round = (value: number, precision = 6): number => {
+  const factor = 10 ** precision;
+  return Math.round(value * factor) / factor;
 };
 
 export const generateWeeklyReport = (input: {
-  store: LedgerStore;
-  from: string;
-  to: string;
+  data: WeeklyReportData;
+  candles: Array<{ unixMs: number; close: number }>;
 }): WeeklyReportOutput => {
-  const window = parseDateWindow(input.from, input.to);
-  const plans = input.store.db
-    .prepare(
-      `
-        SELECT as_of_unix_ms, plan_json
-        FROM plans
-        WHERE as_of_unix_ms BETWEEN ? AND ?
-        ORDER BY as_of_unix_ms ASC, id ASC
-      `
-    )
-    .all(window.fromUnixMs, window.toUnixMs) as Array<{
-    as_of_unix_ms: number;
-    plan_json: string;
-  }>;
-
-  const executionResults = input.store.db
-    .prepare(
-      `
-        SELECT as_of_unix_ms, result_json
-        FROM execution_results
-        WHERE as_of_unix_ms BETWEEN ? AND ?
-        ORDER BY as_of_unix_ms ASC, id ASC
-      `
-    )
-    .all(window.fromUnixMs, window.toUnixMs) as Array<{
-    as_of_unix_ms: number;
-    result_json: string;
-  }>;
-
-  const planRequests = input.store.db
-    .prepare(
-      `
-        SELECT as_of_unix_ms, request_json
-        FROM plan_requests
-        WHERE as_of_unix_ms BETWEEN ? AND ?
-        ORDER BY as_of_unix_ms ASC, id ASC
-      `
-    )
-    .all(window.fromUnixMs, window.toUnixMs) as Array<{
-    as_of_unix_ms: number;
-    request_json: string;
-  }>;
-
-  const baselineFeed = planRequests
-    .map((row) => {
-      const m = (
-        asRecord(row.request_json) as {
-          market?: { source?: string; network?: string; poolAddress?: string };
-        }
-      ).market;
-      if (m?.source && m?.network && m?.poolAddress) {
-        return `${m.source}|${m.network}|${m.poolAddress}`;
-      }
-      return undefined;
-    })
-    .find((key): key is string => key !== undefined);
-
-  const fallbackCandles =
-    baselineFeed !== undefined
-      ? (input.store.db
-          .prepare(
-            `
-            SELECT cr.unix_ms, cr.close
-            FROM candle_revisions cr
-            WHERE cr.unix_ms BETWEEN ? AND ?
-              AND cr.source || '|' || cr.network || '|' || cr.pool_address = ?
-            ORDER BY cr.unix_ms ASC, cr.source_recorded_at_unix_ms ASC, cr.id ASC
-          `
-          )
-          .all(window.fromUnixMs, window.toUnixMs, baselineFeed) as Array<{
-          unix_ms: number;
-          close: number;
-        }>)
-      : [];
+  const { plans, planRequests, executionResults, window } = input.data;
 
   const regimeCounts = {
     UP: 0,
@@ -185,13 +107,12 @@ export const generateWeeklyReport = (input: {
   let standDownPlans = 0;
   let holdPlans = 0;
   for (const row of plans) {
-    const plan = asRecord(row.plan_json);
-    const regime = plan.regime;
+    const regime = row.plan.regime;
     if (regime === "UP" || regime === "DOWN" || regime === "CHOP") {
       regimeCounts[regime] += 1;
     }
 
-    const actions = (plan.actions ?? []) as Array<{ type?: string }>;
+    const actions = row.plan.actions ?? [];
     if (actions.some((action) => action.type === "STAND_DOWN")) {
       standDownPlans += 1;
     }
@@ -208,10 +129,7 @@ export const generateWeeklyReport = (input: {
   let totalSlippageUsd = 0;
 
   for (const row of executionResults) {
-    const result = asRecord(row.result_json);
-    const actionResults = (result.actionResults ?? []) as Array<{
-      status?: string;
-    }>;
+    const actionResults = row.result.actionResults ?? [];
     for (const action of actionResults) {
       if (action.status === "SUCCESS") {
         successActions += 1;
@@ -222,11 +140,7 @@ export const generateWeeklyReport = (input: {
       }
     }
 
-    const costs = (result.costs ?? {}) as {
-      txFeesUsd?: number;
-      priorityFeesUsd?: number;
-      slippageUsd?: number;
-    };
+    const costs = row.result.costs ?? {};
     totalTxFeesUsd += costs.txFeesUsd ?? 0;
     totalPriorityFeesUsd += costs.priorityFeesUsd ?? 0;
     totalSlippageUsd += costs.slippageUsd ?? 0;
@@ -240,31 +154,17 @@ export const generateWeeklyReport = (input: {
       fromUnixMs: window.fromUnixMs,
       toUnixMs: window.toUnixMs
     },
-    planRequests: planRequests.map((row) => ({
-      asOfUnixMs: row.as_of_unix_ms,
-      request: asRecord(row.request_json) as {
-        portfolio: {
-          navUsd: number;
-        };
-        config: {
-          baselines: {
-            dcaIntervalDays: number;
-            dcaAmountUsd: number;
-            usdcCarryApr: number;
-          };
-        };
-      }
+    planRequests: planRequests.map((pr) => ({
+      asOfUnixMs: pr.asOfUnixMs,
+      request: pr.request
     })),
-    candles: fallbackCandles.map((c) => ({
-      unixMs: c.unix_ms,
-      close: c.close
-    }))
+    candles: input.candles
   });
 
   const summary: WeeklyReportSummary = {
     window: {
-      from: input.from,
-      to: input.to,
+      from: window.from,
+      to: window.to,
       fromUnixMs: window.fromUnixMs,
       toUnixMs: window.toUnixMs
     },
@@ -305,7 +205,7 @@ export const generateWeeklyReport = (input: {
   };
 
   const markdown = [
-    `# Weekly Report (${input.from} to ${input.to})`,
+    `# Weekly Report (${window.from} to ${window.to})`,
     "",
     `- Plans: ${summary.totals.plans}`,
     `- Execution Results: ${summary.totals.executionResults}`,
