@@ -1,6 +1,6 @@
 # Regime Engine Microservice
 
-Deterministic policy + analytics service for SOL/USDC. This service does not execute trades. It emits REQUEST\_\* actions, persists truth records, and generates ledger-only weekly reports.
+Deterministic policy + analytics service for SOL/USDC. This service does not execute trades. It emits REQUEST\_\* actions, persists truth records, and generates weekly reports. Report facts come from the append-only ledger; baseline prices (SOL HODL, SOL DCA, USDC carry) come from the active canonical candle store.
 
 ## Scope boundary
 

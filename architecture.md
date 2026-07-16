@@ -30,7 +30,7 @@ This architecture is based on the uploaded blueprint’s core principles: determ
 - Persists:
   - plan requests, plans, execution results
 - Generates:
-  - weekly report (ledger-only)
+  - weekly report (facts from append-only ledger; baseline prices from active canonical candle store)
   - baseline comparisons (SOL HODL, SOL DCA, USDC carry)
 
 ### CLMM Autopilot (other service)
@@ -61,7 +61,7 @@ This architecture is based on the uploaded blueprint’s core principles: determ
   - **SQLite ledger** (single file; Railway mounts `/data`) — append-only receipts, plans, execution results.
   - **Postgres** (shared Railway instance, `regime_engine` schema) — feature tables needing JSONB, arrays, concurrent reads. Migrated via Drizzle Kit (`npm run db:migrate`).
 - `DATABASE_URL` is mandatory in production; startup hard-fails if Postgres is unreachable.
-- Report generation reads ledger only (no network calls).
+- Report generation reads plan/execution facts from the append-only ledger; baseline prices come from the active canonical candle store (SQLite or PostgreSQL).
 - CLMM execution events accumulate in `clmm_execution_events` for post-shelf analytics; the weekly report does NOT consume them in this sprint.
 
 ---
@@ -223,13 +223,15 @@ policy changes are explicit and reviewable.
 
 ### Weekly reporting (`GET /v1/report/weekly`)
 
-1. Query ledger for window.
-2. Compute:
+1. Query ledger for window (plan requests, plans, execution results).
+2. Select canonical candle feed for baseline prices using market selectors (source, network, poolAddress) and timeframe (canonical 15m source, with 1h derived on demand).
+3. Filter candles to closed bars only (enforce closed-candle delay cutoff).
+4. Compute:
    - regime distribution (from plans)
    - churn/stand-down metrics (from plan requests/plans)
    - execution quality + costs (from results)
-   - baselines (from candle closes + baseline config)
-3. Emit deterministic Markdown + JSON summary (byte-stable for same ledger inputs).
+   - baselines (SOL HODL, SOL DCA, USDC carry) from candle closes + baseline config
+5. Emit deterministic Markdown + JSON summary (byte-stable for same ledger + candle inputs).
 
 ---
 

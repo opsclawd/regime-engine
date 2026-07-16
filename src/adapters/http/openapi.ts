@@ -302,7 +302,8 @@ export const buildOpenApiDocument = () => {
       },
       "/v1/report/weekly": {
         get: {
-          summary: "Generate weekly markdown + JSON report from ledger data",
+          summary:
+            "Generate weekly markdown + JSON report. Report facts come from the append-only ledger; baseline prices (SOL HODL, SOL DCA, USDC carry) come from the active canonical candle store.",
           responses: {
             "200": {
               description: "Weekly report payload"
