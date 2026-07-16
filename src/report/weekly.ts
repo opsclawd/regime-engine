@@ -243,12 +243,6 @@ export const generateWeeklyReport = (input: {
     planRequests: planRequests.map((row) => ({
       asOfUnixMs: row.as_of_unix_ms,
       request: asRecord(row.request_json) as {
-        market: {
-          candles?: Array<{
-            unixMs: number;
-            close: number;
-          }>;
-        };
         portfolio: {
           navUsd: number;
         };
@@ -261,7 +255,7 @@ export const generateWeeklyReport = (input: {
         };
       }
     })),
-    fallbackCandles: fallbackCandles.map((c) => ({
+    candles: fallbackCandles.map((c) => ({
       unixMs: c.unix_ms,
       close: c.close
     }))
