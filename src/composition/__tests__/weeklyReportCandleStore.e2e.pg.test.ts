@@ -6,13 +6,11 @@ import { sql } from "drizzle-orm/sql";
 import { createLedgerStore } from "../../ledger/store.js";
 import { writePlanLedgerEntry } from "../../ledger/writer.js";
 import { buildPositionPlan, type PositionPlanInput } from "../../engine/plan/positionPlan.js";
-import { createSqliteWeeklyReportReadAdapter } from "../../adapters/sqlite/sqliteWeeklyReportReadAdapter.js";
-import { createPostgresCandleReadAdapter } from "../../adapters/postgres/postgresCandleReadAdapter.js";
-import { createGetWeeklyReportUseCase } from "../../application/use-cases/getWeeklyReportUseCase.js";
 import { createDb, type Db } from "../../ledger/pg/db.js";
 import { PG_SCHEMA_NAME } from "../../ledger/pg/schema/candleRevisions.js";
 import type { PlanRequest } from "../../contract/v1/types.js";
 import type { RuntimeStoreContext } from "../buildStoreContext.js";
+import { buildApplication } from "../buildApplication.js";
 
 const createdDbPaths: string[] = [];
 
@@ -266,14 +264,8 @@ describeIfPg("weekly report candle store (PostgreSQL)", () => {
     ]);
 
     try {
-      const candleReadPort = createPostgresCandleReadAdapter(pg);
-      const weeklyReportLedgerReadPort = createSqliteWeeklyReportReadAdapter(ctx.ledger);
-      const getWeeklyReport = createGetWeeklyReportUseCase({
-        weeklyReportLedgerReadPort,
-        candleReadPort
-      });
-
-      const report = await getWeeklyReport({ from: "2026-01-01", to: "2026-01-31" });
+      const app = buildApplication(ctx);
+      const report = await app.getWeeklyReport({ from: "2026-01-01", to: "2026-01-31" });
 
       expect(report.summary.baselines.solHodlFinalNavUsd).toBeGreaterThan(0);
       expect(report.summary.baselines.solDcaFinalNavUsd).toBeGreaterThan(0);
@@ -386,14 +378,8 @@ describeIfPg("weekly report candle store (PostgreSQL)", () => {
     ]);
 
     try {
-      const candleReadPort = createPostgresCandleReadAdapter(pg);
-      const weeklyReportLedgerReadPort = createSqliteWeeklyReportReadAdapter(ctx.ledger);
-      const getWeeklyReport = createGetWeeklyReportUseCase({
-        weeklyReportLedgerReadPort,
-        candleReadPort
-      });
-
-      const report = await getWeeklyReport({ from: "2026-01-01", to: "2026-01-31" });
+      const app = buildApplication(ctx);
+      const report = await app.getWeeklyReport({ from: "2026-01-01", to: "2026-01-31" });
 
       const initialNav = 10_000;
       const solUnits = initialNav / 200;
@@ -462,14 +448,8 @@ describeIfPg("weekly report candle store (PostgreSQL)", () => {
       );
 
     try {
-      const candleReadPort = createPostgresCandleReadAdapter(pg);
-      const weeklyReportLedgerReadPort = createSqliteWeeklyReportReadAdapter(ctx.ledger);
-      const getWeeklyReport = createGetWeeklyReportUseCase({
-        weeklyReportLedgerReadPort,
-        candleReadPort
-      });
-
-      const report = await getWeeklyReport({ from: "2026-01-01", to: "2026-01-31" });
+      const app = buildApplication(ctx);
+      const report = await app.getWeeklyReport({ from: "2026-01-01", to: "2026-01-31" });
 
       expect(report.summary.baselines.solHodlFinalNavUsd).toEqual(10_000);
       expect(report.summary.baselines.solDcaFinalNavUsd).toEqual(10_000);
