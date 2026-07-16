@@ -155,12 +155,14 @@ describe("GetWeeklyReportUseCase", () => {
       await useCase({ from: "2026-01-01", to: "2026-01-07" });
 
       expect(candlePort.windowCalls).toHaveLength(1);
-      expect(candlePort.windowCalls[0]).toMatchObject({
+      expect(candlePort.windowCalls[0]).toEqual({
         symbol: "SOL/USDC",
         source: "geckoterminal",
         network: "solana",
         poolAddress: POOL_ADDRESS,
-        timeframe: "15m"
+        timeframe: "15m",
+        fromUnixMs: Date.parse("2026-01-01T00:00:00.000Z"),
+        closedCandleCutoffUnixMs: Date.parse("2026-01-07T23:30:00.000Z")
       });
     });
 

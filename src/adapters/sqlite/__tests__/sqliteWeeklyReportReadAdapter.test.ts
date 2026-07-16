@@ -113,9 +113,21 @@ describe("sqliteWeeklyReportReadAdapter", () => {
         }
       };
 
+      const plan2 = {
+        ...plan1,
+        planId: "plan-2",
+        planHash: "hash-2"
+      };
+
       writePlanLedgerEntry(store, {
         planRequest: request1,
         planResponse: plan1,
+        receivedAtUnixMs: baseTime
+      });
+
+      writePlanLedgerEntry(store, {
+        planRequest: request1,
+        planResponse: plan2,
         receivedAtUnixMs: baseTime
       });
 
@@ -126,7 +138,10 @@ describe("sqliteWeeklyReportReadAdapter", () => {
       });
 
       expect(result).resolves.toMatchObject({
-        plans: [{ asOfUnixMs: baseTime, plan: plan1 }]
+        plans: [
+          { asOfUnixMs: baseTime, plan: plan1 },
+          { asOfUnixMs: baseTime, plan: plan2 }
+        ]
       });
 
       store.close();

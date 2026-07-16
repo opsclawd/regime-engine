@@ -46,7 +46,7 @@ export interface WeeklyReportOutput {
 
 export class ReportRangeError extends Error {}
 
-export const DATE_ONLY_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
+export const DATE_ONLY_PATTERN = /^(\d{4})-(\d{2})-(\d{2})$/;
 
 export const parseDate = (value: string, endOfDay: boolean): number => {
   const match = DATE_ONLY_PATTERN.exec(value);
