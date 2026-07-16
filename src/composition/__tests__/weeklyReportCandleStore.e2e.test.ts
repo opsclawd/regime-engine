@@ -1,26 +1,28 @@
 import { rmSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createLedgerStore } from "../../ledger/store.js";
 import { writePlanLedgerEntry } from "../../ledger/writer.js";
 import { buildPositionPlan, type PositionPlanInput } from "../../engine/plan/positionPlan.js";
-import { createSqliteCandleReadAdapter } from "../../adapters/sqlite/sqliteCandleReadAdapter.js";
-import { createSqliteWeeklyReportReadAdapter } from "../../adapters/sqlite/sqliteWeeklyReportReadAdapter.js";
-import { createGetWeeklyReportUseCase } from "../../application/use-cases/getWeeklyReportUseCase.js";
 import { toCanonicalJson } from "../../contract/v1/canonical.js";
 import { sha256Hex } from "../../contract/v1/hash.js";
 import type { PlanRequest } from "../../contract/v1/types.js";
 import type { RuntimeStoreContext } from "../buildStoreContext.js";
+import { buildApplication } from "../buildApplication.js";
 
 const createdDbPaths: string[] = [];
+
+beforeEach(() => {
+  vi.stubEnv("LEDGER_DB_PATH", "");
+  vi.stubEnv("DATABASE_URL", "");
+});
 
 afterEach(() => {
   for (const path of createdDbPaths.splice(0, createdDbPaths.length)) {
     rmSync(path, { force: true });
   }
-  delete process.env.LEDGER_DB_PATH;
-  delete process.env.DATABASE_URL;
+  vi.unstubAllEnvs();
 });
 
 const POOL_ADDRESS = "PoolWeeklyCandleTest";
@@ -258,14 +260,8 @@ describe("weekly report candle store (SQLite)", () => {
       }
     ]);
 
-    const candleReadPort = createSqliteCandleReadAdapter(ctx.ledger);
-    const weeklyReportLedgerReadPort = createSqliteWeeklyReportReadAdapter(ctx.ledger);
-    const getWeeklyReport = createGetWeeklyReportUseCase({
-      weeklyReportLedgerReadPort,
-      candleReadPort
-    });
-
-    const report = await getWeeklyReport({ from: "2026-01-01", to: "2026-01-31" });
+    const app = buildApplication(ctx);
+    const report = await app.getWeeklyReport({ from: "2026-01-01", to: "2026-01-31" });
 
     expect(report.summary.baselines.solHodlFinalNavUsd).toBeGreaterThan(0);
     expect(report.summary.baselines.solDcaFinalNavUsd).toBeGreaterThan(0);
