@@ -1,7 +1,7 @@
 import { rmSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, beforeEach } from "vitest";
 import { sql } from "drizzle-orm/sql";
 import { createLedgerStore } from "../../ledger/store.js";
 import { writePlanLedgerEntry } from "../../ledger/writer.js";
@@ -14,12 +14,16 @@ import { buildApplication } from "../buildApplication.js";
 
 const createdDbPaths: string[] = [];
 
+beforeEach(() => {
+  vi.stubEnv("LEDGER_DB_PATH", "");
+  vi.stubEnv("DATABASE_URL", process.env.DATABASE_URL ?? "");
+});
+
 afterEach(() => {
   for (const path of createdDbPaths.splice(0, createdDbPaths.length)) {
     rmSync(path, { force: true });
   }
-  delete process.env.LEDGER_DB_PATH;
-  delete process.env.DATABASE_URL;
+  vi.unstubAllEnvs();
 });
 
 const describeIfPg = process.env.DATABASE_URL ? describe : describe.skip;
