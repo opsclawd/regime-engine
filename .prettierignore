@@ -1,0 +1,19 @@
+# AI orchestrator run bookkeeping — generated per-run inside .ai-worktrees/*,
+# not hand-authored project content, never meant to satisfy repo style rules.
+task-context-step-*.md
+quality-review-result*.json
+spec-review-result*.json
+fix-result.json
+plan-fix-result.json
+implement-step-history-*.json
+implementation-log.md
+validate/
+
+# Orchestrator run/scratch directories at the repo root (logs, prompts,
+# per-issue worktrees). Each worktree carries its own copy of this file, so
+# its own real source is still checked when validation runs with that
+# worktree as cwd; this only keeps the top-level checkout's format check
+# from tripping over the orchestrator's own bookkeeping.
+.ai-runs/
+.ai-tmp/
+.ai-worktrees/
