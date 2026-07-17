@@ -1,12 +1,34 @@
 # AI orchestrator run bookkeeping — generated per-run inside .ai-worktrees/*,
 # not hand-authored project content, never meant to satisfy repo style rules.
+# Sourced from the orchestrator's own artifact filenames (opsclawd/automation),
+# not just what's failed so far — avoids finding the rest one CI run at a time.
 task-context-step-*.md
 quality-review-result*.json
 spec-review-result*.json
+plan-review-arbiter-result.json
+arbiter-result.json
 fix-result.json
 plan-fix-result.json
+result.json
+result-iter-*.json
+review-fix-plan.json
+review-loop-history.json
+review-task-manifest.json
+review-triage.md
+reviews.json
+review.md
+code-review.md
+compound.md
+compound-draft.md
+comments.json
+issue.md
+issue-comments.md
+pr-summary.md
+verify-prompt.md
+task-manifest.json
 implement-step-history-*.json
 implementation-log.md
+validation-result.json
 validate/
 
 # Orchestrator run/scratch directories at the repo root (logs, prompts,
