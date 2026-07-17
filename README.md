@@ -317,10 +317,10 @@ When `DATABASE_URL` is set, the service connects to Postgres with `search_path=r
 
 The repo deploys as two Railway services from the same Dockerfile:
 
-| Service | `SERVICE_TYPE` | Purpose |
-| --- | --- | --- |
-| `regime-engine-web` | unset | Fastify HTTP service |
-| `regime-engine-gecko-collector` | `collector` | GeckoTerminal candle collector |
+| Service                         | `SERVICE_TYPE` | Purpose                        |
+| ------------------------------- | -------------- | ------------------------------ |
+| `regime-engine-web`             | unset          | Fastify HTTP service           |
+| `regime-engine-gecko-collector` | `collector`    | GeckoTerminal candle collector |
 
 The web service owns migrations. The collector skips migrations and posts through the HTTP ingest route.
 
