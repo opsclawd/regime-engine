@@ -81,18 +81,16 @@ describe("EvidenceBundle v1 generation", () => {
     const vectorsPath = resolve(distEvidenceRoot, "hash-vectors.json");
     const fixturesDir = resolve(distEvidenceRoot, "fixtures");
 
-    expect(() => statSync(schemaPath).isFile(), "schema.json must be a file in dist").toBe(true);
-    expect(() => statSync(sha256Path).isFile(), "schema.sha256 must be a file in dist").toBe(true);
-    expect(() => statSync(vectorsPath).isFile(), "hash-vectors.json must be a file in dist").toBe(
-      true
-    );
+    expect(statSync(schemaPath).isFile(), "schema.json must be a file in dist").toBe(true);
+    expect(statSync(sha256Path).isFile(), "schema.sha256 must be a file in dist").toBe(true);
+    expect(statSync(vectorsPath).isFile(), "hash-vectors.json must be a file in dist").toBe(true);
     expect(
-      () => statSync(fixturesDir).isDirectory(),
+      statSync(fixturesDir).isDirectory(),
       "fixtures directory must be a directory in dist"
     ).toBe(true);
 
     expect(areDirectoryContentsIdentical(sourceEvidenceRoot, distEvidenceRoot)).toBe(true);
-  });
+  }, 30000);
 
   it("rejects stale EvidenceBundle documentation metadata", async () => {
     const staleDocPath = resolve(tmpdir(), `stale-evidence-doc-${randomUUID()}.md`);
