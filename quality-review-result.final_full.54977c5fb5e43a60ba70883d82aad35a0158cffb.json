@@ -1,0 +1,17 @@
+{
+  "result": "fail",
+  "findings": [
+    {
+      "severity": "P2",
+      "summary": "The `deterministicFeatureInvalid` schema definition omits `observedAt` and `freshUntil` from its `required` array, making them optional instead of required-and-nullable like in `deterministicFeatureUnavailable`.",
+      "file": "contracts/evidence-bundle/v1/evidence-bundle.schema.json",
+      "suggested_fix": "Add \"observedAt\" and \"freshUntil\" to the `required` array for `deterministicFeatureInvalid` so all schema variants strictly enforce the presence of these fields."
+    },
+    {
+      "severity": "P3",
+      "summary": "The schema uses `oneOf` for discriminated unions (e.g., `deterministicFeature`, `scope`) instead of the explicitly requested `if`/`then` branches.",
+      "file": "contracts/evidence-bundle/v1/evidence-bundle.schema.json",
+      "suggested_fix": "Refactor the schema to use `if/then` branches as directed by the task prompt, though note that `json-schema-to-typescript` often generates better types with `oneOf`."
+    }
+  ]
+}

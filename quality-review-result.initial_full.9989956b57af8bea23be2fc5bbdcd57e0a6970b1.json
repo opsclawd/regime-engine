@@ -1,0 +1,23 @@
+{
+  "result": "fail",
+  "findings": [
+    {
+      "severity": "P1",
+      "summary": "The scopeKey generated for 'position' scopes can exceed 150 characters, which will cause a Postgres insertion error because the scopeKey column in the evidence_bundles schema is limited to varchar(64).",
+      "file": "src/application/ports/evidenceBundleRepositoryPort.ts",
+      "suggested_fix": "Increase the scopeKey column length in the evidence_bundles schema (e.g., to varchar(256)) or change how position scope keys are encoded."
+    },
+    {
+      "severity": "P1",
+      "summary": "The postgresEvidenceBundleRepository implementation lacks any unit or integration tests, missing coverage for append, replay, and conflict behaviors.",
+      "file": "src/adapters/postgres/postgresEvidenceBundleRepository.ts",
+      "suggested_fix": "Create a test file (e.g., postgresEvidenceBundleRepository.test.ts) to verify the repository port implementation against a test database."
+    },
+    {
+      "severity": "P3",
+      "summary": "The onConflictDoNothing() call does not specify a target constraint, meaning it will silently catch and ignore any future unique constraint violations on the table rather than just the intended source/run ID uniqueness.",
+      "file": "src/adapters/postgres/postgresEvidenceBundleRepository.ts",
+      "suggested_fix": "Add an explicit target to the conflict clause: .onConflictDoNothing({ target: [evidenceBundles.schemaVersion, evidenceBundles.sourcePublisher, evidenceBundles.sourceId, evidenceBundles.runId] })."
+    }
+  ]
+}

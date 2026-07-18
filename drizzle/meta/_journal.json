@@ -29,6 +29,13 @@
       "when": 1777605152384,
       "tag": "0003_create_sr_theses_v2",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1784358256453,
+      "tag": "0004_create_evidence_bundles",
+      "breakpoints": true
     }
   ]
 }

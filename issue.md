@@ -1,76 +1,154 @@
-# fix: route weekly report candle reads through canonical candle store
+# feat: define EvidenceBundle v1 contract and persistence model
 
 ## Summary
 
-Route `/v1/report/weekly` baseline candle reads through the same canonical candle read path used by candle ingestion, `/v1/regime/current`, and position-scoped `/v1/plan`.
+Define the strict, versioned external `EvidenceBundle v1` contract that the intelligence engine publishes and Regime Engine owns durably.
 
-A PR review on #54 identified a split-brain candle-store issue: when `DATABASE_URL` is configured, candle ingestion and market/regime reads use the active Postgres-backed candle store, but the weekly report baseline path still reads from the legacy SQLite `candle_revisions` adapter. That can make SOL HODL/DCA baselines collapse to initial NAV or otherwise use stale/empty data even though valid market candles exist in Postgres.
+The contract must support the initial deterministic vertical slice without requiring contextual collector packs or an LLM research brief.
 
-## Problem
-
-Current deployed topology can diverge:
+## Correct boundary
 
 ```text
-POST /v1/candles
-  -> active candle store, Postgres when DATABASE_URL is configured
-
-GET /v1/regime/current
-  -> active candle read path / candle store
-
-POST /v1/plan
-  -> active candle read path / candle store
-
-GET /v1/report/weekly
-  -> legacy SQLite weekly adapter / candle_revisions
+intelligence engine -> authors structured evidence bundles
+Regime Engine       -> validates, stores, selects, and synthesizes policy
+clmm-v2             -> consumes final PolicyInsight and retains execution authority
 ```
 
-This means reports may be computed against a different market-data source than regime and plan recommendations.
+Evidence is not final policy. The ingest contract must keep deterministic features, contextual evidence, and optional LLM summaries visibly distinct.
 
-That is wrong. Anything that depends on candle history should read from one canonical candle store.
+## Required contract identity
 
-## Desired state
+The contract must define at least:
 
-Use one canonical candle read path for:
+- `schemaVersion` with exact value `evidence-bundle.v1` or the repository's equivalent canonical version identifier;
+- pair identity;
+- source identity;
+- run/correlation identity and idempotency key semantics;
+- creation, `asOf`, and expiry timestamps;
+- optional position context sufficient to distinguish pair-level from wallet/position/Whirlpool-scoped evidence;
+- deterministic feature summaries;
+- contextual evidence sections;
+- optional research brief;
+- source references;
+- freshness, confidence, coverage, quality, warnings, and provenance metadata;
+- canonical payload hash semantics.
 
-- `/v1/regime/current`
-- `/v1/plan`
-- `/v1/report/weekly`
+All numeric units, timestamp formats, enum values, nullability, and array semantics must be explicit.
 
-Weekly reports should not read directly from SQLite `candle_revisions` when the active candle store is Postgres-backed. They should use a shared `CandleReadPort`/store abstraction or equivalent canonical read interface.
+## Deterministic-only MVP semantics — hard requirement
+
+A valid `EvidenceBundle v1` must be able to contain:
+
+- deterministic feature summaries;
+- empty contextual evidence collections or the canonical explicit unavailable representation;
+- `researchBrief: null` or the canonical explicit unavailable representation;
+- quality/coverage warnings that clearly state contextual and LLM evidence are absent.
+
+The following must **not** be required for a bundle to validate, persist, or later publish:
+
+- support/resistance evidence;
+- flow evidence;
+- perp/funding/liquidation evidence;
+- macro/protocol/event-risk evidence;
+- ecosystem news/regulatory evidence;
+- an LLM research brief.
+
+Absence is not fabrication: missing families must remain explicit in coverage/quality metadata.
+
+## Evidence-family separation
+
+The schema must distinguish:
+
+### Deterministic features
+
+Code-derived numerical or categorical evidence with explicit feature kind, status, value/unit, freshness, confidence, calculator version, and input lineage.
+
+### Contextual evidence
+
+Source-linked, lower-confidence research claims such as support/resistance, scheduled events, incidents, flows, perps, or news. These collections may be empty.
+
+### Research brief
+
+An optional schema-constrained summary over bounded evidence. It may be `null` and can never define deterministic metrics or author the final policy decision.
+
+## Required persistence concepts
+
+- append-only evidence records separated from final `PolicyInsight` records;
+- complete accepted canonical payload retention;
+- canonical serialization and hashing;
+- idempotent replay for same source/run identity and identical payload;
+- deterministic conflict for same source/run identity and different payload;
+- current-evidence query semantics;
+- bounded history query semantics;
+- expiry/stale state;
+- pair-level and position-scoped query support where applicable;
+- lineage that remains distinct from synthesized final insight lineage.
+
+Do not mutate an accepted historical bundle into a newer schema or content version.
+
+## Machine-readable artifacts
+
+This issue must publish all artifacts required for independent downstream development:
+
+- canonical strict JSON Schema;
+- generated or hand-maintained TypeScript types tied to that schema;
+- one valid deterministic-only fixture with empty contextual evidence and a null brief;
+- one valid fuller contextual fixture if useful;
+- invalid fixtures covering schema version, units, timestamps, hashes, impossible status/value combinations, and malformed evidence families;
+- canonical serialization/hash test vectors;
+- documented artifact paths and schema SHA-256.
+
+These artifacts are consumed by:
+
+- `opsclawd/sol-usdc-clmm-intelligence#26`;
+- `opsclawd/sol-usdc-clmm-intelligence#13`;
+- Regime Engine #59.
 
 ## Scope
 
-Fix weekly report baseline candle reads so they use the active candle store selected by application wiring.
+In scope:
 
-Expected behavior:
+- contract types and validation;
+- EvidenceBundle persistence schema/migrations and repository boundaries;
+- canonical JSON serialization/hash/idempotency semantics;
+- current/history persistence query semantics;
+- machine-readable schemas, fixtures, hash vectors, docs, and tests.
 
-```text
-If DATABASE_URL is configured:
-  /v1/report/weekly reads baseline candles from Postgres-backed candle store.
+Out of scope:
 
-If DATABASE_URL is not configured:
-  /v1/report/weekly reads from the standalone/local candle store consistently with the rest of the app.
-```
+- HTTP ingest handlers (#59);
+- evidence selection/scoring (#60);
+- final PolicyInsight synthesis (#61);
+- intelligence publisher implementation;
+- clmm-v2 changes.
 
-Do not add another fallback that silently chooses between SQLite and Postgres. The report should use the same canonical candle source as the rest of regime-engine.
+## Guardrails
+
+- Do not make contextual evidence or an LLM brief mandatory.
+- Do not collapse deterministic and contextual evidence into one untyped list.
+- Do not accept unknown fields silently unless the versioning policy explicitly permits them.
+- Do not author final recommendation fields in the evidence contract.
+- Missing evidence families must lower/qualify coverage explicitly rather than appearing as successful zero values.
 
 ## Acceptance criteria
 
-- [ ] Identify the current weekly report candle read path and remove direct dependency on legacy SQLite `candle_revisions` where it conflicts with active candle-store wiring.
-- [ ] Route weekly report baseline calculations through the same candle read port/store used by `/v1/regime/current` and `/v1/plan`.
-- [ ] Ensure reports use closed candles only, with the same market key semantics where applicable: `source`, `network`, `poolAddress`, `timeframe`.
-- [ ] Add tests for Postgres-backed/store-context mode proving weekly report baselines use candles available in the active candle store.
-- [ ] Add tests preventing empty/stale SQLite fallback when active candles exist in the configured store.
-- [ ] Preserve local/test behavior when `DATABASE_URL` is absent.
-- [ ] Update any docs or architecture notes that still imply reports read from a separate legacy candle source.
+- [ ] `EvidenceBundle v1` is strict, versioned, and machine-readable.
+- [ ] A deterministic-only bundle with empty contextual evidence and `researchBrief: null` validates successfully.
+- [ ] Deterministic, contextual, and LLM evidence are structurally distinct.
+- [ ] Pair-level and position-scoped evidence identity is unambiguous.
+- [ ] Every unit, timestamp, nullability rule, enum, and status/value relationship is documented and tested.
+- [ ] Evidence records persist separately from final PolicyInsights.
+- [ ] Identical source/run replays are idempotent and conflicting replays fail deterministically.
+- [ ] Canonical hash test vectors can be reproduced by the intelligence repository.
+- [ ] JSON Schema, valid deterministic-only fixture, fuller fixture if used, invalid fixtures, generated types, artifact paths, and schema hash are published.
+- [ ] Docs state exactly which fields are supplied by intelligence and which metadata is owned/calculated by Regime Engine.
 
-## Out of scope
+## Parent
 
-- Changing the weekly report public response shape unless required to expose correct metadata.
-- Changing `/v1/plan` position-scoped behavior.
-- Changing candle ingestion semantics.
-- Adding new market-data fallback sources.
+Part of #57.
 
-## Context
+## Blocks
 
-This issue came from PR #54 review feedback. The position-scoped `/v1/plan` work removed inline candles from plan requests and made stored candles the canonical market-data source for planning. Weekly reports should be brought into the same model so regime, planning, and reporting do not disagree because they read from different stores.
+- #59
+- `opsclawd/sol-usdc-clmm-intelligence#26`
+- `opsclawd/sol-usdc-clmm-intelligence#13`

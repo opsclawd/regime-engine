@@ -1,0 +1,90 @@
+{
+  "schemaVersion": "evidence-bundle.v1",
+  "pair": "SOL/USDC",
+  "scope": {
+    "kind": "pair"
+  },
+  "source": {
+    "publisher": "sol-usdc-clmm-intelligence",
+    "sourceId": "src-001",
+    "sourceVersion": "1.0.0"
+  },
+  "runId": "run-001",
+  "correlationId": "corr-001",
+  "createdAt": "2024-01-15T11:00:00.000Z",
+  "asOf": "2024-01-15T10:00:00.000Z",
+  "freshUntil": "2024-01-15T12:00:00.000Z",
+  "expiresAt": "2024-01-15T09:00:00.000Z",
+  "deterministicFeatures": [
+    {
+      "featureId": "feat-price-001",
+      "family": "market_state",
+      "featureKind": "number",
+      "status": "available",
+      "value": 150.25,
+      "unit": "usd",
+      "observedAt": "2024-01-15T10:00:00.000Z",
+      "freshUntil": "2024-01-15T09:00:00.000Z",
+      "confidenceBps": 9500,
+      "calculator": {
+        "name": "price-aggregator",
+        "version": "1.0.0"
+      },
+      "inputLineage": ["raw-price-source"],
+      "warnings": []
+    }
+  ],
+  "contextualEvidence": {
+    "supportResistance": [],
+    "flows": [],
+    "derivatives": [],
+    "events": [],
+    "newsRegulatory": []
+  },
+  "researchBrief": null,
+  "sourceReferences": [
+    {
+      "referenceId": "ref-price-source",
+      "sourceType": "api",
+      "locator": "https://api.example.com/price",
+      "observedAt": "2024-01-15T09:59:00.000Z"
+    }
+  ],
+  "assessment": {
+    "overallConfidenceBps": 9500,
+    "quality": "degraded",
+    "coverage": {
+      "deterministic": "available",
+      "supportResistance": "unavailable",
+      "flows": "unavailable",
+      "derivatives": "unavailable",
+      "events": "unavailable",
+      "newsRegulatory": "unavailable",
+      "researchBrief": "unavailable"
+    },
+    "warnings": [
+      {
+        "code": "CONTEXTUAL_EVIDENCE_UNAVAILABLE",
+        "message": "All contextual evidence families are unavailable",
+        "affectedFamilies": [
+          "supportResistance",
+          "flows",
+          "derivatives",
+          "events",
+          "newsRegulatory"
+        ]
+      },
+      {
+        "code": "RESEARCH_BRIEF_UNAVAILABLE",
+        "message": "Research brief is null",
+        "affectedFamilies": ["researchBrief"]
+      }
+    ]
+  },
+  "provenance": {
+    "pipelineVersion": "1.0.0",
+    "gitCommit": "abcd1234abcd1234abcd1234abcd1234abcd1234abcd1234abcd1234abcd1234",
+    "environment": "test",
+    "upstreamRunIds": []
+  }
+}

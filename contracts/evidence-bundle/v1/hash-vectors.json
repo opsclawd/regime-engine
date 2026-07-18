@@ -1,0 +1,839 @@
+{
+  "schemaSha256": "0146b073cc607b47e52c615f6299294b1fd8f133d8a4b128bd2a95dc20f77b17",
+  "vectors": [
+    {
+      "name": "valid/deterministic-only",
+      "payload": {
+        "schemaVersion": "evidence-bundle.v1",
+        "pair": "SOL/USDC",
+        "scope": {
+          "kind": "pair"
+        },
+        "source": {
+          "publisher": "sol-usdc-clmm-intelligence",
+          "sourceId": "src-deterministic-only-001",
+          "sourceVersion": "1.0.0"
+        },
+        "runId": "run-deterministic-only-001",
+        "correlationId": "corr-deterministic-only-001",
+        "createdAt": "2024-01-15T10:00:00.000Z",
+        "asOf": "2024-01-15T10:00:00.000Z",
+        "freshUntil": "2024-01-15T11:00:00.000Z",
+        "expiresAt": "2024-01-15T12:00:00.000Z",
+        "deterministicFeatures": [
+          {
+            "featureId": "feat-price-001",
+            "family": "market_state",
+            "featureKind": "number",
+            "status": "available",
+            "value": 150.25,
+            "unit": "usd",
+            "observedAt": "2024-01-15T10:00:00.000Z",
+            "freshUntil": "2024-01-15T11:00:00.000Z",
+            "confidenceBps": 9500,
+            "calculator": {
+              "name": "price-aggregator",
+              "version": "1.0.0"
+            },
+            "inputLineage": ["ref-price-source"],
+            "warnings": []
+          }
+        ],
+        "contextualEvidence": {
+          "supportResistance": [],
+          "flows": [],
+          "derivatives": [],
+          "events": [],
+          "newsRegulatory": []
+        },
+        "researchBrief": null,
+        "sourceReferences": [
+          {
+            "referenceId": "ref-price-source",
+            "sourceType": "api",
+            "locator": "https://api.example.com/price",
+            "observedAt": "2024-01-15T09:59:00.000Z"
+          }
+        ],
+        "assessment": {
+          "overallConfidenceBps": 9500,
+          "quality": "degraded",
+          "coverage": {
+            "deterministic": "available",
+            "supportResistance": "unavailable",
+            "flows": "unavailable",
+            "derivatives": "unavailable",
+            "events": "unavailable",
+            "newsRegulatory": "unavailable",
+            "researchBrief": "unavailable"
+          },
+          "warnings": [
+            {
+              "code": "CONTEXTUAL_EVIDENCE_UNAVAILABLE",
+              "message": "All contextual evidence families are unavailable",
+              "affectedFamilies": [
+                "supportResistance",
+                "flows",
+                "derivatives",
+                "events",
+                "newsRegulatory"
+              ]
+            },
+            {
+              "code": "RESEARCH_BRIEF_UNAVAILABLE",
+              "message": "Research brief is null",
+              "affectedFamilies": ["researchBrief"]
+            }
+          ]
+        },
+        "provenance": {
+          "pipelineVersion": "1.0.0",
+          "gitCommit": "abcd1234abcd1234abcd1234abcd1234abcd1234abcd1234abcd1234abcd1234",
+          "environment": "test",
+          "upstreamRunIds": []
+        }
+      },
+      "canonical": "{\"asOf\":\"2024-01-15T10:00:00.000Z\",\"assessment\":{\"coverage\":{\"derivatives\":\"unavailable\",\"deterministic\":\"available\",\"events\":\"unavailable\",\"flows\":\"unavailable\",\"newsRegulatory\":\"unavailable\",\"researchBrief\":\"unavailable\",\"supportResistance\":\"unavailable\"},\"overallConfidenceBps\":9500,\"quality\":\"degraded\",\"warnings\":[{\"affectedFamilies\":[\"supportResistance\",\"flows\",\"derivatives\",\"events\",\"newsRegulatory\"],\"code\":\"CONTEXTUAL_EVIDENCE_UNAVAILABLE\",\"message\":\"All contextual evidence families are unavailable\"},{\"affectedFamilies\":[\"researchBrief\"],\"code\":\"RESEARCH_BRIEF_UNAVAILABLE\",\"message\":\"Research brief is null\"}]},\"contextualEvidence\":{\"derivatives\":[],\"events\":[],\"flows\":[],\"newsRegulatory\":[],\"supportResistance\":[]},\"correlationId\":\"corr-deterministic-only-001\",\"createdAt\":\"2024-01-15T10:00:00.000Z\",\"deterministicFeatures\":[{\"calculator\":{\"name\":\"price-aggregator\",\"version\":\"1.0.0\"},\"confidenceBps\":9500,\"family\":\"market_state\",\"featureId\":\"feat-price-001\",\"featureKind\":\"number\",\"freshUntil\":\"2024-01-15T11:00:00.000Z\",\"inputLineage\":[\"ref-price-source\"],\"observedAt\":\"2024-01-15T10:00:00.000Z\",\"status\":\"available\",\"unit\":\"usd\",\"value\":150.25,\"warnings\":[]}],\"expiresAt\":\"2024-01-15T12:00:00.000Z\",\"freshUntil\":\"2024-01-15T11:00:00.000Z\",\"pair\":\"SOL/USDC\",\"provenance\":{\"environment\":\"test\",\"gitCommit\":\"abcd1234abcd1234abcd1234abcd1234abcd1234abcd1234abcd1234abcd1234\",\"pipelineVersion\":\"1.0.0\",\"upstreamRunIds\":[]},\"researchBrief\":null,\"runId\":\"run-deterministic-only-001\",\"schemaVersion\":\"evidence-bundle.v1\",\"scope\":{\"kind\":\"pair\"},\"source\":{\"publisher\":\"sol-usdc-clmm-intelligence\",\"sourceId\":\"src-deterministic-only-001\",\"sourceVersion\":\"1.0.0\"},\"sourceReferences\":[{\"locator\":\"https://api.example.com/price\",\"observedAt\":\"2024-01-15T09:59:00.000Z\",\"referenceId\":\"ref-price-source\",\"sourceType\":\"api\"}]}",
+      "utf8ByteLength": 1828,
+      "sha256": "b3e7a0c7286b3db5efc028bd041c24abd8ea730e8a5fb7c70e1314370d325dbb",
+      "schemaSha256": "0146b073cc607b47e52c615f6299294b1fd8f133d8a4b128bd2a95dc20f77b17"
+    },
+    {
+      "name": "valid/contextual",
+      "payload": {
+        "schemaVersion": "evidence-bundle.v1",
+        "pair": "SOL/USDC",
+        "scope": {
+          "kind": "position",
+          "network": "solana-mainnet",
+          "walletAddress": "wallet123",
+          "whirlpoolAddress": "whirlpool456",
+          "positionId": "position789"
+        },
+        "source": {
+          "publisher": "sol-usdc-clmm-intelligence",
+          "sourceId": "src-contextual-001",
+          "sourceVersion": "1.0.0"
+        },
+        "runId": "run-contextual-001",
+        "correlationId": "corr-contextual-001",
+        "createdAt": "2024-01-15T10:00:00.000Z",
+        "asOf": "2024-01-15T10:00:00.000Z",
+        "freshUntil": "2024-01-15T11:00:00.000Z",
+        "expiresAt": "2024-01-15T12:00:00.000Z",
+        "deterministicFeatures": [
+          {
+            "featureId": "feat-price-001",
+            "family": "market_state",
+            "featureKind": "number",
+            "status": "available",
+            "value": 150.25,
+            "unit": "usd",
+            "observedAt": "2024-01-15T10:00:00.000Z",
+            "freshUntil": "2024-01-15T11:00:00.000Z",
+            "confidenceBps": 9500,
+            "calculator": {
+              "name": "price-aggregator",
+              "version": "1.0.0"
+            },
+            "inputLineage": ["raw-price-source"],
+            "warnings": []
+          },
+          {
+            "featureId": "feat-vol-001",
+            "family": "liquidity",
+            "featureKind": "number",
+            "status": "available",
+            "value": 1000000,
+            "unit": "usd",
+            "observedAt": "2024-01-15T10:00:00.000Z",
+            "freshUntil": "2024-01-15T11:00:00.000Z",
+            "confidenceBps": 8500,
+            "calculator": {
+              "name": "liquidity-calculator",
+              "version": "1.0.0"
+            },
+            "inputLineage": ["raw-price-source"],
+            "warnings": []
+          }
+        ],
+        "contextualEvidence": {
+          "supportResistance": [
+            {
+              "evidenceId": "ctx-sr-001",
+              "kind": "support_zone",
+              "claim": "Strong support at 148.50",
+              "direction": "bullish",
+              "confidenceBps": 7500,
+              "observedAt": "2024-01-15T09:30:00.000Z",
+              "expiresAt": "2024-01-15T12:00:00.000Z",
+              "sourceReferenceIds": ["ref-ohlcv-001"],
+              "provenanceMethod": "derived"
+            }
+          ],
+          "flows": [
+            {
+              "evidenceId": "ctx-flow-001",
+              "kind": "spot_flow",
+              "claim": "Net buying pressure detected",
+              "direction": "bullish",
+              "confidenceBps": 6800,
+              "observedAt": "2024-01-15T09:45:00.000Z",
+              "expiresAt": "2024-01-15T12:00:00.000Z",
+              "sourceReferenceIds": ["ref-tx-001"],
+              "provenanceMethod": "collected"
+            }
+          ],
+          "derivatives": [
+            {
+              "evidenceId": "ctx-deriv-001",
+              "kind": "funding",
+              "claim": "Funding rate slightly positive",
+              "direction": "bullish",
+              "confidenceBps": 6200,
+              "observedAt": "2024-01-15T09:50:00.000Z",
+              "expiresAt": "2024-01-15T12:00:00.000Z",
+              "sourceReferenceIds": ["ref-funding-001"],
+              "provenanceMethod": "collected"
+            }
+          ],
+          "events": [
+            {
+              "evidenceId": "ctx-event-001",
+              "kind": "scheduled_event",
+              "claim": "Protocol upgrade scheduled",
+              "direction": "neutral",
+              "confidenceBps": 9000,
+              "observedAt": "2024-01-15T08:00:00.000Z",
+              "expiresAt": null,
+              "sourceReferenceIds": ["ref-doc-001"],
+              "provenanceMethod": "human_authored"
+            }
+          ],
+          "newsRegulatory": [
+            {
+              "evidenceId": "ctx-news-001",
+              "kind": "ecosystem_news",
+              "claim": "New DeFi protocol launched",
+              "direction": "neutral",
+              "confidenceBps": 5000,
+              "observedAt": "2024-01-15T07:30:00.000Z",
+              "expiresAt": null,
+              "sourceReferenceIds": ["ref-news-001"],
+              "provenanceMethod": "collected"
+            }
+          ]
+        },
+        "researchBrief": {
+          "briefId": "brief-001",
+          "generatedAt": "2024-01-15T10:00:00.000Z",
+          "summary": "Analysis suggests bullish sentiment with strong support levels",
+          "keyFindings": [
+            "Support zone at 148.50 holding",
+            "Net buying pressure detected",
+            "Funding rate remains positive"
+          ],
+          "uncertainties": ["Potential resistance at 155.00", "Macroeconomic factors unclear"],
+          "model": {
+            "provider": "openai",
+            "modelId": "gpt-4",
+            "modelVersion": "1.0.0"
+          },
+          "promptVersion": "prompt-v1",
+          "sourceEvidenceIds": [
+            "feat-price-001",
+            "ctx-sr-001",
+            "ctx-flow-001",
+            "ctx-deriv-001",
+            "ctx-event-001",
+            "ctx-news-001"
+          ]
+        },
+        "sourceReferences": [
+          {
+            "referenceId": "ref-ohlcv-001",
+            "sourceType": "api",
+            "locator": "https://api.example.com/ohlcv",
+            "observedAt": "2024-01-15T09:30:00.000Z"
+          },
+          {
+            "referenceId": "ref-tx-001",
+            "sourceType": "chain",
+            "locator": "https://api.example.com/txs",
+            "observedAt": "2024-01-15T09:45:00.000Z"
+          },
+          {
+            "referenceId": "ref-funding-001",
+            "sourceType": "api",
+            "locator": "https://api.example.com/funding",
+            "observedAt": "2024-01-15T09:50:00.000Z"
+          },
+          {
+            "referenceId": "ref-doc-001",
+            "sourceType": "document",
+            "locator": "https://docs.example.com/upgrade",
+            "observedAt": "2024-01-15T08:00:00.000Z"
+          },
+          {
+            "referenceId": "ref-news-001",
+            "sourceType": "api",
+            "locator": "https://news.example.com/123",
+            "observedAt": "2024-01-15T07:30:00.000Z"
+          },
+          {
+            "referenceId": "raw-price-source",
+            "sourceType": "api",
+            "locator": "https://api.example.com/price",
+            "observedAt": "2024-01-15T09:59:00.000Z"
+          }
+        ],
+        "assessment": {
+          "overallConfidenceBps": 7500,
+          "quality": "complete",
+          "coverage": {
+            "deterministic": "available",
+            "supportResistance": "available",
+            "flows": "available",
+            "derivatives": "available",
+            "events": "available",
+            "newsRegulatory": "available",
+            "researchBrief": "available"
+          },
+          "warnings": []
+        },
+        "provenance": {
+          "pipelineVersion": "1.0.0",
+          "gitCommit": "abcd1234abcd1234abcd1234abcd1234abcd1234abcd1234abcd1234abcd1234",
+          "environment": "test",
+          "upstreamRunIds": ["upstream-run-001"]
+        }
+      },
+      "canonical": "{\"asOf\":\"2024-01-15T10:00:00.000Z\",\"assessment\":{\"coverage\":{\"derivatives\":\"available\",\"deterministic\":\"available\",\"events\":\"available\",\"flows\":\"available\",\"newsRegulatory\":\"available\",\"researchBrief\":\"available\",\"supportResistance\":\"available\"},\"overallConfidenceBps\":7500,\"quality\":\"complete\",\"warnings\":[]},\"contextualEvidence\":{\"derivatives\":[{\"claim\":\"Funding rate slightly positive\",\"confidenceBps\":6200,\"direction\":\"bullish\",\"evidenceId\":\"ctx-deriv-001\",\"expiresAt\":\"2024-01-15T12:00:00.000Z\",\"kind\":\"funding\",\"observedAt\":\"2024-01-15T09:50:00.000Z\",\"provenanceMethod\":\"collected\",\"sourceReferenceIds\":[\"ref-funding-001\"]}],\"events\":[{\"claim\":\"Protocol upgrade scheduled\",\"confidenceBps\":9000,\"direction\":\"neutral\",\"evidenceId\":\"ctx-event-001\",\"expiresAt\":null,\"kind\":\"scheduled_event\",\"observedAt\":\"2024-01-15T08:00:00.000Z\",\"provenanceMethod\":\"human_authored\",\"sourceReferenceIds\":[\"ref-doc-001\"]}],\"flows\":[{\"claim\":\"Net buying pressure detected\",\"confidenceBps\":6800,\"direction\":\"bullish\",\"evidenceId\":\"ctx-flow-001\",\"expiresAt\":\"2024-01-15T12:00:00.000Z\",\"kind\":\"spot_flow\",\"observedAt\":\"2024-01-15T09:45:00.000Z\",\"provenanceMethod\":\"collected\",\"sourceReferenceIds\":[\"ref-tx-001\"]}],\"newsRegulatory\":[{\"claim\":\"New DeFi protocol launched\",\"confidenceBps\":5000,\"direction\":\"neutral\",\"evidenceId\":\"ctx-news-001\",\"expiresAt\":null,\"kind\":\"ecosystem_news\",\"observedAt\":\"2024-01-15T07:30:00.000Z\",\"provenanceMethod\":\"collected\",\"sourceReferenceIds\":[\"ref-news-001\"]}],\"supportResistance\":[{\"claim\":\"Strong support at 148.50\",\"confidenceBps\":7500,\"direction\":\"bullish\",\"evidenceId\":\"ctx-sr-001\",\"expiresAt\":\"2024-01-15T12:00:00.000Z\",\"kind\":\"support_zone\",\"observedAt\":\"2024-01-15T09:30:00.000Z\",\"provenanceMethod\":\"derived\",\"sourceReferenceIds\":[\"ref-ohlcv-001\"]}]},\"correlationId\":\"corr-contextual-001\",\"createdAt\":\"2024-01-15T10:00:00.000Z\",\"deterministicFeatures\":[{\"calculator\":{\"name\":\"price-aggregator\",\"version\":\"1.0.0\"},\"confidenceBps\":9500,\"family\":\"market_state\",\"featureId\":\"feat-price-001\",\"featureKind\":\"number\",\"freshUntil\":\"2024-01-15T11:00:00.000Z\",\"inputLineage\":[\"raw-price-source\"],\"observedAt\":\"2024-01-15T10:00:00.000Z\",\"status\":\"available\",\"unit\":\"usd\",\"value\":150.25,\"warnings\":[]},{\"calculator\":{\"name\":\"liquidity-calculator\",\"version\":\"1.0.0\"},\"confidenceBps\":8500,\"family\":\"liquidity\",\"featureId\":\"feat-vol-001\",\"featureKind\":\"number\",\"freshUntil\":\"2024-01-15T11:00:00.000Z\",\"inputLineage\":[\"raw-price-source\"],\"observedAt\":\"2024-01-15T10:00:00.000Z\",\"status\":\"available\",\"unit\":\"usd\",\"value\":1000000,\"warnings\":[]}],\"expiresAt\":\"2024-01-15T12:00:00.000Z\",\"freshUntil\":\"2024-01-15T11:00:00.000Z\",\"pair\":\"SOL/USDC\",\"provenance\":{\"environment\":\"test\",\"gitCommit\":\"abcd1234abcd1234abcd1234abcd1234abcd1234abcd1234abcd1234abcd1234\",\"pipelineVersion\":\"1.0.0\",\"upstreamRunIds\":[\"upstream-run-001\"]},\"researchBrief\":{\"briefId\":\"brief-001\",\"generatedAt\":\"2024-01-15T10:00:00.000Z\",\"keyFindings\":[\"Support zone at 148.50 holding\",\"Net buying pressure detected\",\"Funding rate remains positive\"],\"model\":{\"modelId\":\"gpt-4\",\"modelVersion\":\"1.0.0\",\"provider\":\"openai\"},\"promptVersion\":\"prompt-v1\",\"sourceEvidenceIds\":[\"feat-price-001\",\"ctx-sr-001\",\"ctx-flow-001\",\"ctx-deriv-001\",\"ctx-event-001\",\"ctx-news-001\"],\"summary\":\"Analysis suggests bullish sentiment with strong support levels\",\"uncertainties\":[\"Potential resistance at 155.00\",\"Macroeconomic factors unclear\"]},\"runId\":\"run-contextual-001\",\"schemaVersion\":\"evidence-bundle.v1\",\"scope\":{\"kind\":\"position\",\"network\":\"solana-mainnet\",\"positionId\":\"position789\",\"walletAddress\":\"wallet123\",\"whirlpoolAddress\":\"whirlpool456\"},\"source\":{\"publisher\":\"sol-usdc-clmm-intelligence\",\"sourceId\":\"src-contextual-001\",\"sourceVersion\":\"1.0.0\"},\"sourceReferences\":[{\"locator\":\"https://api.example.com/ohlcv\",\"observedAt\":\"2024-01-15T09:30:00.000Z\",\"referenceId\":\"ref-ohlcv-001\",\"sourceType\":\"api\"},{\"locator\":\"https://api.example.com/txs\",\"observedAt\":\"2024-01-15T09:45:00.000Z\",\"referenceId\":\"ref-tx-001\",\"sourceType\":\"chain\"},{\"locator\":\"https://api.example.com/funding\",\"observedAt\":\"2024-01-15T09:50:00.000Z\",\"referenceId\":\"ref-funding-001\",\"sourceType\":\"api\"},{\"locator\":\"https://docs.example.com/upgrade\",\"observedAt\":\"2024-01-15T08:00:00.000Z\",\"referenceId\":\"ref-doc-001\",\"sourceType\":\"document\"},{\"locator\":\"https://news.example.com/123\",\"observedAt\":\"2024-01-15T07:30:00.000Z\",\"referenceId\":\"ref-news-001\",\"sourceType\":\"api\"},{\"locator\":\"https://api.example.com/price\",\"observedAt\":\"2024-01-15T09:59:00.000Z\",\"referenceId\":\"raw-price-source\",\"sourceType\":\"api\"}]}",
+      "utf8ByteLength": 4534,
+      "sha256": "83666fc4bbdcd435af3d85f177cf13aa2509eea124094fb5717868dbc14d575e",
+      "schemaSha256": "0146b073cc607b47e52c615f6299294b1fd8f133d8a4b128bd2a95dc20f77b17"
+    },
+    {
+      "name": "empty-context",
+      "payload": {
+        "schemaVersion": "evidence-bundle.v1",
+        "pair": "SOL/USDC",
+        "scope": {
+          "kind": "position",
+          "network": "solana-mainnet",
+          "walletAddress": "wallet123",
+          "whirlpoolAddress": "whirlpool456",
+          "positionId": "position789"
+        },
+        "source": {
+          "publisher": "sol-usdc-clmm-intelligence",
+          "sourceId": "src-contextual-001",
+          "sourceVersion": "1.0.0"
+        },
+        "runId": "run-contextual-001",
+        "correlationId": "corr-contextual-001",
+        "createdAt": "2024-01-15T10:00:00.000Z",
+        "asOf": "2024-01-15T10:00:00.000Z",
+        "freshUntil": "2024-01-15T11:00:00.000Z",
+        "expiresAt": "2024-01-15T12:00:00.000Z",
+        "deterministicFeatures": [
+          {
+            "featureId": "feat-price-001",
+            "family": "market_state",
+            "featureKind": "number",
+            "status": "available",
+            "value": 150.25,
+            "unit": "usd",
+            "observedAt": "2024-01-15T10:00:00.000Z",
+            "freshUntil": "2024-01-15T11:00:00.000Z",
+            "confidenceBps": 9500,
+            "calculator": {
+              "name": "price-aggregator",
+              "version": "1.0.0"
+            },
+            "inputLineage": ["raw-price-source"],
+            "warnings": []
+          },
+          {
+            "featureId": "feat-vol-001",
+            "family": "liquidity",
+            "featureKind": "number",
+            "status": "available",
+            "value": 1000000,
+            "unit": "usd",
+            "observedAt": "2024-01-15T10:00:00.000Z",
+            "freshUntil": "2024-01-15T11:00:00.000Z",
+            "confidenceBps": 8500,
+            "calculator": {
+              "name": "liquidity-calculator",
+              "version": "1.0.0"
+            },
+            "inputLineage": ["raw-price-source"],
+            "warnings": []
+          }
+        ],
+        "contextualEvidence": {
+          "supportResistance": [],
+          "flows": [],
+          "derivatives": [],
+          "events": [],
+          "newsRegulatory": []
+        },
+        "researchBrief": {
+          "briefId": "brief-001",
+          "generatedAt": "2024-01-15T10:00:00.000Z",
+          "summary": "Analysis suggests bullish sentiment with strong support levels",
+          "keyFindings": [
+            "Support zone at 148.50 holding",
+            "Net buying pressure detected",
+            "Funding rate remains positive"
+          ],
+          "uncertainties": ["Potential resistance at 155.00", "Macroeconomic factors unclear"],
+          "model": {
+            "provider": "openai",
+            "modelId": "gpt-4",
+            "modelVersion": "1.0.0"
+          },
+          "promptVersion": "prompt-v1",
+          "sourceEvidenceIds": ["feat-price-001", "feat-vol-001"]
+        },
+        "sourceReferences": [
+          {
+            "referenceId": "ref-ohlcv-001",
+            "sourceType": "api",
+            "locator": "https://api.example.com/ohlcv",
+            "observedAt": "2024-01-15T09:30:00.000Z"
+          },
+          {
+            "referenceId": "ref-tx-001",
+            "sourceType": "chain",
+            "locator": "https://api.example.com/txs",
+            "observedAt": "2024-01-15T09:45:00.000Z"
+          },
+          {
+            "referenceId": "ref-funding-001",
+            "sourceType": "api",
+            "locator": "https://api.example.com/funding",
+            "observedAt": "2024-01-15T09:50:00.000Z"
+          },
+          {
+            "referenceId": "ref-doc-001",
+            "sourceType": "document",
+            "locator": "https://docs.example.com/upgrade",
+            "observedAt": "2024-01-15T08:00:00.000Z"
+          },
+          {
+            "referenceId": "ref-news-001",
+            "sourceType": "api",
+            "locator": "https://news.example.com/123",
+            "observedAt": "2024-01-15T07:30:00.000Z"
+          },
+          {
+            "referenceId": "raw-price-source",
+            "sourceType": "api",
+            "locator": "https://api.example.com/price",
+            "observedAt": "2024-01-15T09:59:00.000Z"
+          }
+        ],
+        "assessment": {
+          "overallConfidenceBps": 7500,
+          "quality": "degraded",
+          "coverage": {
+            "deterministic": "available",
+            "supportResistance": "unavailable",
+            "flows": "unavailable",
+            "derivatives": "unavailable",
+            "events": "unavailable",
+            "newsRegulatory": "unavailable",
+            "researchBrief": "available"
+          },
+          "warnings": [
+            {
+              "code": "CONTEXTUAL_EVIDENCE_UNAVAILABLE",
+              "message": "All contextual evidence families are unavailable",
+              "affectedFamilies": [
+                "supportResistance",
+                "flows",
+                "derivatives",
+                "events",
+                "newsRegulatory"
+              ]
+            }
+          ]
+        },
+        "provenance": {
+          "pipelineVersion": "1.0.0",
+          "gitCommit": "abcd1234abcd1234abcd1234abcd1234abcd1234abcd1234abcd1234abcd1234",
+          "environment": "test",
+          "upstreamRunIds": ["upstream-run-001"]
+        }
+      },
+      "canonical": "{\"asOf\":\"2024-01-15T10:00:00.000Z\",\"assessment\":{\"coverage\":{\"derivatives\":\"unavailable\",\"deterministic\":\"available\",\"events\":\"unavailable\",\"flows\":\"unavailable\",\"newsRegulatory\":\"unavailable\",\"researchBrief\":\"available\",\"supportResistance\":\"unavailable\"},\"overallConfidenceBps\":7500,\"quality\":\"degraded\",\"warnings\":[{\"affectedFamilies\":[\"supportResistance\",\"flows\",\"derivatives\",\"events\",\"newsRegulatory\"],\"code\":\"CONTEXTUAL_EVIDENCE_UNAVAILABLE\",\"message\":\"All contextual evidence families are unavailable\"}]},\"contextualEvidence\":{\"derivatives\":[],\"events\":[],\"flows\":[],\"newsRegulatory\":[],\"supportResistance\":[]},\"correlationId\":\"corr-contextual-001\",\"createdAt\":\"2024-01-15T10:00:00.000Z\",\"deterministicFeatures\":[{\"calculator\":{\"name\":\"price-aggregator\",\"version\":\"1.0.0\"},\"confidenceBps\":9500,\"family\":\"market_state\",\"featureId\":\"feat-price-001\",\"featureKind\":\"number\",\"freshUntil\":\"2024-01-15T11:00:00.000Z\",\"inputLineage\":[\"raw-price-source\"],\"observedAt\":\"2024-01-15T10:00:00.000Z\",\"status\":\"available\",\"unit\":\"usd\",\"value\":150.25,\"warnings\":[]},{\"calculator\":{\"name\":\"liquidity-calculator\",\"version\":\"1.0.0\"},\"confidenceBps\":8500,\"family\":\"liquidity\",\"featureId\":\"feat-vol-001\",\"featureKind\":\"number\",\"freshUntil\":\"2024-01-15T11:00:00.000Z\",\"inputLineage\":[\"raw-price-source\"],\"observedAt\":\"2024-01-15T10:00:00.000Z\",\"status\":\"available\",\"unit\":\"usd\",\"value\":1000000,\"warnings\":[]}],\"expiresAt\":\"2024-01-15T12:00:00.000Z\",\"freshUntil\":\"2024-01-15T11:00:00.000Z\",\"pair\":\"SOL/USDC\",\"provenance\":{\"environment\":\"test\",\"gitCommit\":\"abcd1234abcd1234abcd1234abcd1234abcd1234abcd1234abcd1234abcd1234\",\"pipelineVersion\":\"1.0.0\",\"upstreamRunIds\":[\"upstream-run-001\"]},\"researchBrief\":{\"briefId\":\"brief-001\",\"generatedAt\":\"2024-01-15T10:00:00.000Z\",\"keyFindings\":[\"Support zone at 148.50 holding\",\"Net buying pressure detected\",\"Funding rate remains positive\"],\"model\":{\"modelId\":\"gpt-4\",\"modelVersion\":\"1.0.0\",\"provider\":\"openai\"},\"promptVersion\":\"prompt-v1\",\"sourceEvidenceIds\":[\"feat-price-001\",\"feat-vol-001\"],\"summary\":\"Analysis suggests bullish sentiment with strong support levels\",\"uncertainties\":[\"Potential resistance at 155.00\",\"Macroeconomic factors unclear\"]},\"runId\":\"run-contextual-001\",\"schemaVersion\":\"evidence-bundle.v1\",\"scope\":{\"kind\":\"position\",\"network\":\"solana-mainnet\",\"positionId\":\"position789\",\"walletAddress\":\"wallet123\",\"whirlpoolAddress\":\"whirlpool456\"},\"source\":{\"publisher\":\"sol-usdc-clmm-intelligence\",\"sourceId\":\"src-contextual-001\",\"sourceVersion\":\"1.0.0\"},\"sourceReferences\":[{\"locator\":\"https://api.example.com/ohlcv\",\"observedAt\":\"2024-01-15T09:30:00.000Z\",\"referenceId\":\"ref-ohlcv-001\",\"sourceType\":\"api\"},{\"locator\":\"https://api.example.com/txs\",\"observedAt\":\"2024-01-15T09:45:00.000Z\",\"referenceId\":\"ref-tx-001\",\"sourceType\":\"chain\"},{\"locator\":\"https://api.example.com/funding\",\"observedAt\":\"2024-01-15T09:50:00.000Z\",\"referenceId\":\"ref-funding-001\",\"sourceType\":\"api\"},{\"locator\":\"https://docs.example.com/upgrade\",\"observedAt\":\"2024-01-15T08:00:00.000Z\",\"referenceId\":\"ref-doc-001\",\"sourceType\":\"document\"},{\"locator\":\"https://news.example.com/123\",\"observedAt\":\"2024-01-15T07:30:00.000Z\",\"referenceId\":\"ref-news-001\",\"sourceType\":\"api\"},{\"locator\":\"https://api.example.com/price\",\"observedAt\":\"2024-01-15T09:59:00.000Z\",\"referenceId\":\"raw-price-source\",\"sourceType\":\"api\"}]}",
+      "utf8ByteLength": 3320,
+      "sha256": "69192d7c9b21e6951bb328298cf7fbf59657629baef28d2df15229d8b94aa095",
+      "schemaSha256": "0146b073cc607b47e52c615f6299294b1fd8f133d8a4b128bd2a95dc20f77b17"
+    },
+    {
+      "name": "null-brief",
+      "payload": {
+        "schemaVersion": "evidence-bundle.v1",
+        "pair": "SOL/USDC",
+        "scope": {
+          "kind": "pair"
+        },
+        "source": {
+          "publisher": "sol-usdc-clmm-intelligence",
+          "sourceId": "src-deterministic-only-001",
+          "sourceVersion": "1.0.0"
+        },
+        "runId": "run-deterministic-only-001",
+        "correlationId": "corr-deterministic-only-001",
+        "createdAt": "2024-01-15T10:00:00.000Z",
+        "asOf": "2024-01-15T10:00:00.000Z",
+        "freshUntil": "2024-01-15T11:00:00.000Z",
+        "expiresAt": "2024-01-15T12:00:00.000Z",
+        "deterministicFeatures": [
+          {
+            "featureId": "feat-price-001",
+            "family": "market_state",
+            "featureKind": "number",
+            "status": "available",
+            "value": 150.25,
+            "unit": "usd",
+            "observedAt": "2024-01-15T10:00:00.000Z",
+            "freshUntil": "2024-01-15T11:00:00.000Z",
+            "confidenceBps": 9500,
+            "calculator": {
+              "name": "price-aggregator",
+              "version": "1.0.0"
+            },
+            "inputLineage": ["ref-price-source"],
+            "warnings": []
+          }
+        ],
+        "contextualEvidence": {
+          "supportResistance": [],
+          "flows": [],
+          "derivatives": [],
+          "events": [],
+          "newsRegulatory": []
+        },
+        "researchBrief": null,
+        "sourceReferences": [
+          {
+            "referenceId": "ref-price-source",
+            "sourceType": "api",
+            "locator": "https://api.example.com/price",
+            "observedAt": "2024-01-15T09:59:00.000Z"
+          }
+        ],
+        "assessment": {
+          "overallConfidenceBps": 9500,
+          "quality": "degraded",
+          "coverage": {
+            "deterministic": "available",
+            "supportResistance": "unavailable",
+            "flows": "unavailable",
+            "derivatives": "unavailable",
+            "events": "unavailable",
+            "newsRegulatory": "unavailable",
+            "researchBrief": "unavailable"
+          },
+          "warnings": [
+            {
+              "code": "CONTEXTUAL_EVIDENCE_UNAVAILABLE",
+              "message": "All contextual evidence families are unavailable",
+              "affectedFamilies": [
+                "supportResistance",
+                "flows",
+                "derivatives",
+                "events",
+                "newsRegulatory"
+              ]
+            },
+            {
+              "code": "RESEARCH_BRIEF_UNAVAILABLE",
+              "message": "Research brief is null",
+              "affectedFamilies": ["researchBrief"]
+            }
+          ]
+        },
+        "provenance": {
+          "pipelineVersion": "1.0.0",
+          "gitCommit": "abcd1234abcd1234abcd1234abcd1234abcd1234abcd1234abcd1234abcd1234",
+          "environment": "test",
+          "upstreamRunIds": []
+        }
+      },
+      "canonical": "{\"asOf\":\"2024-01-15T10:00:00.000Z\",\"assessment\":{\"coverage\":{\"derivatives\":\"unavailable\",\"deterministic\":\"available\",\"events\":\"unavailable\",\"flows\":\"unavailable\",\"newsRegulatory\":\"unavailable\",\"researchBrief\":\"unavailable\",\"supportResistance\":\"unavailable\"},\"overallConfidenceBps\":9500,\"quality\":\"degraded\",\"warnings\":[{\"affectedFamilies\":[\"supportResistance\",\"flows\",\"derivatives\",\"events\",\"newsRegulatory\"],\"code\":\"CONTEXTUAL_EVIDENCE_UNAVAILABLE\",\"message\":\"All contextual evidence families are unavailable\"},{\"affectedFamilies\":[\"researchBrief\"],\"code\":\"RESEARCH_BRIEF_UNAVAILABLE\",\"message\":\"Research brief is null\"}]},\"contextualEvidence\":{\"derivatives\":[],\"events\":[],\"flows\":[],\"newsRegulatory\":[],\"supportResistance\":[]},\"correlationId\":\"corr-deterministic-only-001\",\"createdAt\":\"2024-01-15T10:00:00.000Z\",\"deterministicFeatures\":[{\"calculator\":{\"name\":\"price-aggregator\",\"version\":\"1.0.0\"},\"confidenceBps\":9500,\"family\":\"market_state\",\"featureId\":\"feat-price-001\",\"featureKind\":\"number\",\"freshUntil\":\"2024-01-15T11:00:00.000Z\",\"inputLineage\":[\"ref-price-source\"],\"observedAt\":\"2024-01-15T10:00:00.000Z\",\"status\":\"available\",\"unit\":\"usd\",\"value\":150.25,\"warnings\":[]}],\"expiresAt\":\"2024-01-15T12:00:00.000Z\",\"freshUntil\":\"2024-01-15T11:00:00.000Z\",\"pair\":\"SOL/USDC\",\"provenance\":{\"environment\":\"test\",\"gitCommit\":\"abcd1234abcd1234abcd1234abcd1234abcd1234abcd1234abcd1234abcd1234\",\"pipelineVersion\":\"1.0.0\",\"upstreamRunIds\":[]},\"researchBrief\":null,\"runId\":\"run-deterministic-only-001\",\"schemaVersion\":\"evidence-bundle.v1\",\"scope\":{\"kind\":\"pair\"},\"source\":{\"publisher\":\"sol-usdc-clmm-intelligence\",\"sourceId\":\"src-deterministic-only-001\",\"sourceVersion\":\"1.0.0\"},\"sourceReferences\":[{\"locator\":\"https://api.example.com/price\",\"observedAt\":\"2024-01-15T09:59:00.000Z\",\"referenceId\":\"ref-price-source\",\"sourceType\":\"api\"}]}",
+      "utf8ByteLength": 1828,
+      "sha256": "b3e7a0c7286b3db5efc028bd041c24abd8ea730e8a5fb7c70e1314370d325dbb",
+      "schemaSha256": "0146b073cc607b47e52c615f6299294b1fd8f133d8a4b128bd2a95dc20f77b17"
+    },
+    {
+      "name": "object-key-order-independence",
+      "payload": {
+        "a": 1,
+        "b": 2,
+        "c": 3
+      },
+      "canonical": "{\"a\":1,\"b\":2,\"c\":3}",
+      "utf8ByteLength": 19,
+      "sha256": "e6a3385fb77c287a712e7f406a451727f0625041823ecf23bea7ef39b2e39805",
+      "schemaSha256": "0146b073cc607b47e52c615f6299294b1fd8f133d8a4b128bd2a95dc20f77b17"
+    },
+    {
+      "name": "array-order-matters",
+      "payload": [1, 2, 3],
+      "canonical": "[1,2,3]",
+      "utf8ByteLength": 7,
+      "sha256": "a615eeaee21de5179de080de8c3052c8da901138406ba71c38c032845f7d54f4",
+      "schemaSha256": "0146b073cc607b47e52c615f6299294b1fd8f133d8a4b128bd2a95dc20f77b17"
+    },
+    {
+      "name": "negative-zero-normalization",
+      "payload": {
+        "value": 0
+      },
+      "canonical": "{\"value\":0}",
+      "utf8ByteLength": 11,
+      "sha256": "23d7b286bd429460b92a2a1c21b6afc34110446c5034c17363fda363aa0a7c5d",
+      "schemaSha256": "0146b073cc607b47e52c615f6299294b1fd8f133d8a4b128bd2a95dc20f77b17"
+    },
+    {
+      "name": "exponent-formatting",
+      "payload": {
+        "value": 12300
+      },
+      "canonical": "{\"value\":12300}",
+      "utf8ByteLength": 15,
+      "sha256": "d6322fcc9e3e830e00254269805adb62154d56244074072384ad0b76e756946c",
+      "schemaSha256": "0146b073cc607b47e52c615f6299294b1fd8f133d8a4b128bd2a95dc20f77b17"
+    },
+    {
+      "name": "large-integer",
+      "payload": {
+        "value": 1234567890123456
+      },
+      "canonical": "{\"value\":1234567890123456}",
+      "utf8ByteLength": 26,
+      "sha256": "1e0309cb53706376e821d7e2b61ea030a4cb1ab12c5fde13e1dbb3a3323120a2",
+      "schemaSha256": "0146b073cc607b47e52c615f6299294b1fd8f133d8a4b128bd2a95dc20f77b17"
+    },
+    {
+      "name": "non-ASCII-string",
+      "payload": {
+        "text": "こんにちは世界"
+      },
+      "canonical": "{\"text\":\"こんにちは世界\"}",
+      "utf8ByteLength": 32,
+      "sha256": "650e82559dc2d62015c7e33366f07820dc4580e2da1041baa508877a8a62ea1c",
+      "schemaSha256": "0146b073cc607b47e52c615f6299294b1fd8f133d8a4b128bd2a95dc20f77b17"
+    },
+    {
+      "name": "emoji-in-string",
+      "payload": {
+        "text": "Hello 👋 World 🌍"
+      },
+      "canonical": "{\"text\":\"Hello 👋 World 🌍\"}",
+      "utf8ByteLength": 32,
+      "sha256": "51b0f14ecb592933598f51a1222e0d08d4ba11a3652c72023cca104c21077308",
+      "schemaSha256": "0146b073cc607b47e52c615f6299294b1fd8f133d8a4b128bd2a95dc20f77b17"
+    },
+    {
+      "name": "mixed-unicode",
+      "payload": {
+        "text": "café_résumé_₿"
+      },
+      "canonical": "{\"text\":\"café_résumé_₿\"}",
+      "utf8ByteLength": 29,
+      "sha256": "f49c27f8dae4191f76bf3820469f9d9b6996ad6d2856dbb125cbc8b0212f9ac7",
+      "schemaSha256": "0146b073cc607b47e52c615f6299294b1fd8f133d8a4b128bd2a95dc20f77b17"
+    },
+    {
+      "name": "empty-object",
+      "payload": {},
+      "canonical": "{}",
+      "utf8ByteLength": 2,
+      "sha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+      "schemaSha256": "0146b073cc607b47e52c615f6299294b1fd8f133d8a4b128bd2a95dc20f77b17"
+    },
+    {
+      "name": "empty-array",
+      "payload": [],
+      "canonical": "[]",
+      "utf8ByteLength": 2,
+      "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "schemaSha256": "0146b073cc607b47e52c615f6299294b1fd8f133d8a4b128bd2a95dc20f77b17"
+    },
+    {
+      "name": "nested-empty-structures",
+      "payload": {
+        "a": {},
+        "b": [],
+        "c": {
+          "d": {}
+        }
+      },
+      "canonical": "{\"a\":{},\"b\":[],\"c\":{\"d\":{}}}",
+      "utf8ByteLength": 28,
+      "sha256": "da64347d4155a986970560925a1653318f7b8f60eeb320b7d1ee50f059e99118",
+      "schemaSha256": "0146b073cc607b47e52c615f6299294b1fd8f133d8a4b128bd2a95dc20f77b17"
+    },
+    {
+      "name": "boolean-true",
+      "payload": true,
+      "canonical": "true",
+      "utf8ByteLength": 4,
+      "sha256": "b5bea41b6c623f7c09f1bf24dcae58ebab3c0cdd90ad966bc43a45b44867e12b",
+      "schemaSha256": "0146b073cc607b47e52c615f6299294b1fd8f133d8a4b128bd2a95dc20f77b17"
+    },
+    {
+      "name": "boolean-false",
+      "payload": false,
+      "canonical": "false",
+      "utf8ByteLength": 5,
+      "sha256": "fcbcf165908dd18a9e49f7ff27810176db8e9f63b4352213741664245224f8aa",
+      "schemaSha256": "0146b073cc607b47e52c615f6299294b1fd8f133d8a4b128bd2a95dc20f77b17"
+    },
+    {
+      "name": "null-value",
+      "payload": null,
+      "canonical": "null",
+      "utf8ByteLength": 4,
+      "sha256": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+      "schemaSha256": "0146b073cc607b47e52c615f6299294b1fd8f133d8a4b128bd2a95dc20f77b17"
+    },
+    {
+      "name": "zero",
+      "payload": 0,
+      "canonical": "0",
+      "utf8ByteLength": 1,
+      "sha256": "5feceb66ffc86f38d952786c6d696c79c2dbc239dd4e91b46729d73a27fb57e9",
+      "schemaSha256": "0146b073cc607b47e52c615f6299294b1fd8f133d8a4b128bd2a95dc20f77b17"
+    },
+    {
+      "name": "positive-integer",
+      "payload": 42,
+      "canonical": "42",
+      "utf8ByteLength": 2,
+      "sha256": "73475cb40a568e8da8a045ced110137e159f890ac4da883b6b17dc651b3a8049",
+      "schemaSha256": "0146b073cc607b47e52c615f6299294b1fd8f133d8a4b128bd2a95dc20f77b17"
+    },
+    {
+      "name": "negative-integer",
+      "payload": -42,
+      "canonical": "-42",
+      "utf8ByteLength": 3,
+      "sha256": "fec80006df0542549b4cbaafb8987eee00bb49bca396eefe9ac8be5b5928e8f6",
+      "schemaSha256": "0146b073cc607b47e52c615f6299294b1fd8f133d8a4b128bd2a95dc20f77b17"
+    },
+    {
+      "name": "positive-float",
+      "payload": 3.14159,
+      "canonical": "3.14159",
+      "utf8ByteLength": 7,
+      "sha256": "c0740dd25c9de39b9c8d5ab452e8b69bcc0bf86f2a60ed7e527e79d0a3035852",
+      "schemaSha256": "0146b073cc607b47e52c615f6299294b1fd8f133d8a4b128bd2a95dc20f77b17"
+    },
+    {
+      "name": "negative-float",
+      "payload": -3.14159,
+      "canonical": "-3.14159",
+      "utf8ByteLength": 8,
+      "sha256": "c87a5ac80c6d51f86734407ee7735a0284d4811dce1f1078900de39ff9ce8fb7",
+      "schemaSha256": "0146b073cc607b47e52c615f6299294b1fd8f133d8a4b128bd2a95dc20f77b17"
+    },
+    {
+      "name": "string-with-newline",
+      "payload": {
+        "text": "line1\nline2"
+      },
+      "canonical": "{\"text\":\"line1\\nline2\"}",
+      "utf8ByteLength": 23,
+      "sha256": "c485220c7f2b51d3960a5e118cf7181debd086140691e1c96db8ec13e1cd84cf",
+      "schemaSha256": "0146b073cc607b47e52c615f6299294b1fd8f133d8a4b128bd2a95dc20f77b17"
+    },
+    {
+      "name": "string-with-tab",
+      "payload": {
+        "text": "col1\tcol2"
+      },
+      "canonical": "{\"text\":\"col1\\tcol2\"}",
+      "utf8ByteLength": 21,
+      "sha256": "b71aef3042ce388f045614b5157dcc38c82bb891aa8f8cccf57a9440d6c11a54",
+      "schemaSha256": "0146b073cc607b47e52c615f6299294b1fd8f133d8a4b128bd2a95dc20f77b17"
+    },
+    {
+      "name": "string-with-backslash",
+      "payload": {
+        "text": "path\\to\\file"
+      },
+      "canonical": "{\"text\":\"path\\\\to\\\\file\"}",
+      "utf8ByteLength": 25,
+      "sha256": "6edbfff9f4d7558d72bf68ad87c1d96c0813fce9565e0044c411d2e46b029715",
+      "schemaSha256": "0146b073cc607b47e52c615f6299294b1fd8f133d8a4b128bd2a95dc20f77b17"
+    },
+    {
+      "name": "string-with-quote",
+      "payload": {
+        "text": "say \"hello\""
+      },
+      "canonical": "{\"text\":\"say \\\"hello\\\"\"}",
+      "utf8ByteLength": 24,
+      "sha256": "03b9dfc258299c01fdc64f67f33ee23ff894f718a45e33e062b73c88df7fa818",
+      "schemaSha256": "0146b073cc607b47e52c615f6299294b1fd8f133d8a4b128bd2a95dc20f77b17"
+    },
+    {
+      "name": "array-with-mixed-types",
+      "payload": [
+        1,
+        "two",
+        true,
+        null,
+        {
+          "key": "value"
+        }
+      ],
+      "canonical": "[1,\"two\",true,null,{\"key\":\"value\"}]",
+      "utf8ByteLength": 35,
+      "sha256": "e022f7e098da45d74e2aaa21435116e8ae831f7ff98ccc2850830dcdf782f0b1",
+      "schemaSha256": "0146b073cc607b47e52c615f6299294b1fd8f133d8a4b128bd2a95dc20f77b17"
+    },
+    {
+      "name": "deeply-nested-object",
+      "payload": {
+        "a": {
+          "b": {
+            "c": {
+              "d": {
+                "e": 1
+              }
+            }
+          }
+        }
+      },
+      "canonical": "{\"a\":{\"b\":{\"c\":{\"d\":{\"e\":1}}}}}",
+      "utf8ByteLength": 31,
+      "sha256": "2908f1617b1a6274cf5e566f145c6fa02f5fd013de5669839e980c5cef0c6aa5",
+      "schemaSha256": "0146b073cc607b47e52c615f6299294b1fd8f133d8a4b128bd2a95dc20f77b17"
+    },
+    {
+      "name": "wide-object",
+      "payload": {
+        "a": 1,
+        "b": 2,
+        "c": 3,
+        "d": 4,
+        "e": 5,
+        "f": 6,
+        "g": 7,
+        "h": 8
+      },
+      "canonical": "{\"a\":1,\"b\":2,\"c\":3,\"d\":4,\"e\":5,\"f\":6,\"g\":7,\"h\":8}",
+      "utf8ByteLength": 49,
+      "sha256": "3ea5fee102139131264a0a1b6832f588fe22ed73bac7761671df1b779fff384d",
+      "schemaSha256": "0146b073cc607b47e52c615f6299294b1fd8f133d8a4b128bd2a95dc20f77b17"
+    }
+  ]
+}

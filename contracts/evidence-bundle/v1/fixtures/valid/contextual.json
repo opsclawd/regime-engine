@@ -1,0 +1,208 @@
+{
+  "schemaVersion": "evidence-bundle.v1",
+  "pair": "SOL/USDC",
+  "scope": {
+    "kind": "position",
+    "network": "solana-mainnet",
+    "walletAddress": "wallet123",
+    "whirlpoolAddress": "whirlpool456",
+    "positionId": "position789"
+  },
+  "source": {
+    "publisher": "sol-usdc-clmm-intelligence",
+    "sourceId": "src-contextual-001",
+    "sourceVersion": "1.0.0"
+  },
+  "runId": "run-contextual-001",
+  "correlationId": "corr-contextual-001",
+  "createdAt": "2024-01-15T10:00:00.000Z",
+  "asOf": "2024-01-15T10:00:00.000Z",
+  "freshUntil": "2024-01-15T11:00:00.000Z",
+  "expiresAt": "2024-01-15T12:00:00.000Z",
+  "deterministicFeatures": [
+    {
+      "featureId": "feat-price-001",
+      "family": "market_state",
+      "featureKind": "number",
+      "status": "available",
+      "value": 150.25,
+      "unit": "usd",
+      "observedAt": "2024-01-15T10:00:00.000Z",
+      "freshUntil": "2024-01-15T11:00:00.000Z",
+      "confidenceBps": 9500,
+      "calculator": {
+        "name": "price-aggregator",
+        "version": "1.0.0"
+      },
+      "inputLineage": ["raw-price-source"],
+      "warnings": []
+    },
+    {
+      "featureId": "feat-vol-001",
+      "family": "liquidity",
+      "featureKind": "number",
+      "status": "available",
+      "value": 1000000,
+      "unit": "usd",
+      "observedAt": "2024-01-15T10:00:00.000Z",
+      "freshUntil": "2024-01-15T11:00:00.000Z",
+      "confidenceBps": 8500,
+      "calculator": {
+        "name": "liquidity-calculator",
+        "version": "1.0.0"
+      },
+      "inputLineage": ["raw-price-source"],
+      "warnings": []
+    }
+  ],
+  "contextualEvidence": {
+    "supportResistance": [
+      {
+        "evidenceId": "ctx-sr-001",
+        "kind": "support_zone",
+        "claim": "Strong support at 148.50",
+        "direction": "bullish",
+        "confidenceBps": 7500,
+        "observedAt": "2024-01-15T09:30:00.000Z",
+        "expiresAt": "2024-01-15T12:00:00.000Z",
+        "sourceReferenceIds": ["ref-ohlcv-001"],
+        "provenanceMethod": "derived"
+      }
+    ],
+    "flows": [
+      {
+        "evidenceId": "ctx-flow-001",
+        "kind": "spot_flow",
+        "claim": "Net buying pressure detected",
+        "direction": "bullish",
+        "confidenceBps": 6800,
+        "observedAt": "2024-01-15T09:45:00.000Z",
+        "expiresAt": "2024-01-15T12:00:00.000Z",
+        "sourceReferenceIds": ["ref-tx-001"],
+        "provenanceMethod": "collected"
+      }
+    ],
+    "derivatives": [
+      {
+        "evidenceId": "ctx-deriv-001",
+        "kind": "funding",
+        "claim": "Funding rate slightly positive",
+        "direction": "bullish",
+        "confidenceBps": 6200,
+        "observedAt": "2024-01-15T09:50:00.000Z",
+        "expiresAt": "2024-01-15T12:00:00.000Z",
+        "sourceReferenceIds": ["ref-funding-001"],
+        "provenanceMethod": "collected"
+      }
+    ],
+    "events": [
+      {
+        "evidenceId": "ctx-event-001",
+        "kind": "scheduled_event",
+        "claim": "Protocol upgrade scheduled",
+        "direction": "neutral",
+        "confidenceBps": 9000,
+        "observedAt": "2024-01-15T08:00:00.000Z",
+        "expiresAt": null,
+        "sourceReferenceIds": ["ref-doc-001"],
+        "provenanceMethod": "human_authored"
+      }
+    ],
+    "newsRegulatory": [
+      {
+        "evidenceId": "ctx-news-001",
+        "kind": "ecosystem_news",
+        "claim": "New DeFi protocol launched",
+        "direction": "neutral",
+        "confidenceBps": 5000,
+        "observedAt": "2024-01-15T07:30:00.000Z",
+        "expiresAt": null,
+        "sourceReferenceIds": ["ref-news-001"],
+        "provenanceMethod": "collected"
+      }
+    ]
+  },
+  "researchBrief": {
+    "briefId": "brief-001",
+    "generatedAt": "2024-01-15T10:00:00.000Z",
+    "summary": "Analysis suggests bullish sentiment with strong support levels",
+    "keyFindings": [
+      "Support zone at 148.50 holding",
+      "Net buying pressure detected",
+      "Funding rate remains positive"
+    ],
+    "uncertainties": ["Potential resistance at 155.00", "Macroeconomic factors unclear"],
+    "model": {
+      "provider": "openai",
+      "modelId": "gpt-4",
+      "modelVersion": "1.0.0"
+    },
+    "promptVersion": "prompt-v1",
+    "sourceEvidenceIds": [
+      "feat-price-001",
+      "ctx-sr-001",
+      "ctx-flow-001",
+      "ctx-deriv-001",
+      "ctx-event-001",
+      "ctx-news-001"
+    ]
+  },
+  "sourceReferences": [
+    {
+      "referenceId": "ref-ohlcv-001",
+      "sourceType": "api",
+      "locator": "https://api.example.com/ohlcv",
+      "observedAt": "2024-01-15T09:30:00.000Z"
+    },
+    {
+      "referenceId": "ref-tx-001",
+      "sourceType": "chain",
+      "locator": "https://api.example.com/txs",
+      "observedAt": "2024-01-15T09:45:00.000Z"
+    },
+    {
+      "referenceId": "ref-funding-001",
+      "sourceType": "api",
+      "locator": "https://api.example.com/funding",
+      "observedAt": "2024-01-15T09:50:00.000Z"
+    },
+    {
+      "referenceId": "ref-doc-001",
+      "sourceType": "document",
+      "locator": "https://docs.example.com/upgrade",
+      "observedAt": "2024-01-15T08:00:00.000Z"
+    },
+    {
+      "referenceId": "ref-news-001",
+      "sourceType": "api",
+      "locator": "https://news.example.com/123",
+      "observedAt": "2024-01-15T07:30:00.000Z"
+    },
+    {
+      "referenceId": "raw-price-source",
+      "sourceType": "api",
+      "locator": "https://api.example.com/price",
+      "observedAt": "2024-01-15T09:59:00.000Z"
+    }
+  ],
+  "assessment": {
+    "overallConfidenceBps": 7500,
+    "quality": "complete",
+    "coverage": {
+      "deterministic": "available",
+      "supportResistance": "available",
+      "flows": "available",
+      "derivatives": "available",
+      "events": "available",
+      "newsRegulatory": "available",
+      "researchBrief": "available"
+    },
+    "warnings": []
+  },
+  "provenance": {
+    "pipelineVersion": "1.0.0",
+    "gitCommit": "abcd1234abcd1234abcd1234abcd1234abcd1234abcd1234abcd1234abcd1234",
+    "environment": "test",
+    "upstreamRunIds": ["upstream-run-001"]
+  }
+}

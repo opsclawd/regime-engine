@@ -1,6 +1,6 @@
 # Task Context: Task 4
 
-Title: Wire and prove active-store selection without fallback
+Title: Add the append-only evidence table and migration
 ## Workspace & Scope Constraints
 
 ## WORKSPACE CONSTRAINTS
@@ -9,79 +9,101 @@ Your working directory is a dedicated git worktree with the repository's complet
 
 .ai-orchestrator.local.json, if one exists, lives only in the main checkout and is intentionally not copied into your worktree — it is operator-machine-specific and not part of your task. Do not search for it or read it outside this directory. Reason about configuration using only .ai-orchestrator.json in your own working directory; treat it as the effective config for your task.
 
-Working Directory: /home/gary/.openclaw/workspace/regime-engine/.ai-worktrees/issue-55
+Working Directory: /home/gary/.openclaw/workspace/regime-engine/.ai-worktrees/issue-58
 Repository: opsclawd/regime-engine
-Branch: ai/issue-55
-Start Commit: bbd4e0d6cb492a7e4ed4cbcc6a2f59e1161aaeea
+Branch: ai/issue-58
+Start Commit: 7bd5b19db3afbf66e95e06ac273453030f5381fe
 
 ## Task Requirements
 
 **Files:**
 
-- Create: `src/composition/__tests__/weeklyReportCandleStore.e2e.test.ts`
-- Create: `src/composition/__tests__/weeklyReportCandleStore.e2e.pg.test.ts`
-- Modify: `package.json`
+- Create: `src/ledger/pg/schema/evidenceBundles.ts`
+- Modify: `src/ledger/pg/schema/index.ts`
+- Create: `src/ledger/pg/schema/__tests__/evidenceBundles.shape.test.ts`
+- Create: `drizzle/0004_create_evidence_bundles.sql`
+- Create: `drizzle/meta/0004_snapshot.json`
+- Modify: `drizzle/meta/_journal.json`
+- Create: `src/ledger/pg/__tests__/evidenceBundlesMigration.test.ts`
 
-**Exported API change:** (none — composition root wiring was updated in Task 3)
+- [ ] **Step 1: Write failing schema and migration tests**
 
-**Invariants to test first:**
+The shape test must assert the exact 18 columns, unique idempotency tuple, current/history/correlation indexes, and the absence of update/delete helpers. The PG-gated migration cases are named `keeps evidence bundles separate from final insight rows` and `rejects invalid evidence scalar invariants at the database boundary`; they assert `regime_engine.evidence_bundles` and `regime_engine.clmm_insights` are distinct tables, existing insight rows remain untouched, and invalid timestamp ordering/hash/schema/pair rows fail database checks.
 
-- `uses SQLite canonical candles when DATABASE_URL is absent`
-- `uses PostgreSQL canonical candles when DATABASE_URL is configured`
-- `ignores conflicting SQLite candles when PostgreSQL is the active candle store`
-- `does not fall back to SQLite when the active PostgreSQL feed is empty`
+Run: `pnpm vitest run src/ledger/pg/schema/__tests__/evidenceBundles.shape.test.ts src/ledger/pg/__tests__/evidenceBundlesMigration.test.ts`
 
-- [ ] **Step 1: Write the SQLite composition regression.** Create an isolated SQLite ledger, write a plan request/plan plus canonical revisions through the SQLite candle writer, build `RuntimeStoreContext` with `pg: null`, and call the composed weekly use case. Assert non-flat HODL/DCA values derived from those revisions and unchanged report envelope fields.
+Expected: FAIL because the table is not defined or migrated.
 
-- [ ] **Step 2: Write the conditional PostgreSQL composition regressions.** Use `describe.skipIf(!process.env.DATABASE_URL)`, a unique feed key, SQLite plan facts, and PostgreSQL candle revisions. Seed conflicting SQLite closes that would yield visibly different baselines; assert only PostgreSQL prices win. In a separate test leave the PostgreSQL feed empty while SQLite has rows and assert flat SOL baselines, proving no fallback. Clean up only the unique PostgreSQL rows and close both stores in `finally`/hooks.
+- [ ] **Step 2: Define the Drizzle table and exports**
 
-- [ ] **Step 3: Run the focused tests against the composed application.** The composition root was updated in Task 3, so these tests validate the new wiring:
+Create `evidenceBundles` with `bigserial`/`serial` ID consistent with repository support, varchar identity columns, bigint `{ mode: "number" }` timestamps, `jsonb` full payload, canonical text, and 64-character hash. Export `EvidenceBundleRow` and `EvidenceBundleInsert`. Add:
 
-  ```bash
-  pnpm exec vitest run src/composition/__tests__/weeklyReportCandleStore.e2e.test.ts
-  DATABASE_URL=postgres://test:test@localhost:5432/regime_engine_test PG_SSL=false pnpm exec vitest run src/composition/__tests__/weeklyReportCandleStore.e2e.pg.test.ts
-  ```
+```ts
+uniqueIndex("uniq_evidence_bundles_source_run").on(
+  t.schemaVersion,
+  t.sourcePublisher,
+  t.sourceId,
+  t.runId
+);
+index("idx_evidence_bundles_current").on(
+  t.pair,
+  t.scopeKey,
+  t.sourcePublisher,
+  t.sourceId,
+  t.asOfUnixMs,
+  t.id
+);
+index("idx_evidence_bundles_history").on(t.pair, t.scopeKey, t.receivedAtUnixMs, t.id);
+index("idx_evidence_bundles_correlation").on(t.correlationId, t.id);
+```
 
-  Expected before implementation: dependency-shape/type failures or PostgreSQL authority assertions fail.
+Add check constraints for `evidence-bundle.v1`, `SOL/USDC`, `as_of <= created_at < fresh_until <= expires_at`, and lowercase `[0-9a-f]{64}` hash. Re-export table and row/insert types from `schema/index.ts`.
 
-- [ ] **Step 4: Add the PostgreSQL composition suite to `test:pg` and run scoped acceptance checks.**
+- [ ] **Step 3: Generate and inspect migration 0004**
 
-  ```bash
-  pnpm exec vitest run src/composition/__tests__/weeklyReportCandleStore.e2e.test.ts
-  DATABASE_URL=postgres://test:test@localhost:5432/regime_engine_test PG_SSL=false pnpm exec vitest run src/composition/__tests__/weeklyReportCandleStore.e2e.pg.test.ts
-  pnpm exec eslint src/composition/__tests__/weeklyReportCandleStore.e2e.test.ts src/composition/__tests__/weeklyReportCandleStore.e2e.pg.test.ts
-  ```
+Run: `pnpm exec drizzle-kit generate --name create_evidence_bundles`
 
-  Expected: SQLite-only, PostgreSQL authority, conflicting-SQLite, and empty-active-store cases pass.
+Expected: writes `drizzle/0004_create_evidence_bundles.sql`, `drizzle/meta/0004_snapshot.json`, and journal index 4. Confirm the generated SQL creates only the additive evidence table, constraints, and four indexes; it must not alter `clmm_insights`.
 
-- [ ] **Step 5: Commit the composition proof.**
+- [ ] **Step 4: Run focused schema verification**
 
-  ```bash
-  git add src/composition/__tests__/weeklyReportCandleStore.e2e.test.ts src/composition/__tests__/weeklyReportCandleStore.e2e.pg.test.ts package.json
-  git commit -m "m55: wire weekly reports to the active candle store"
-  ```
+Run: `pnpm vitest run src/ledger/pg/schema/__tests__/evidenceBundles.shape.test.ts src/ledger/pg/__tests__/evidenceBundlesMigration.test.ts`
+
+Expected: shape test PASS; PG test PASS when `DATABASE_URL` is configured and SKIP otherwise.
+
+Run: `pnpm exec prettier --check src/ledger/pg/schema/evidenceBundles.ts src/ledger/pg/schema/index.ts src/ledger/pg/schema/__tests__/evidenceBundles.shape.test.ts src/ledger/pg/__tests__/evidenceBundlesMigration.test.ts drizzle/meta/_journal.json drizzle/meta/0004_snapshot.json`
+
+Expected: PASS.
+
+- [ ] **Step 5: Commit schema and migration together**
+
+```bash
+git add src/ledger/pg/schema/evidenceBundles.ts src/ledger/pg/schema/index.ts src/ledger/pg/schema/__tests__/evidenceBundles.shape.test.ts src/ledger/pg/__tests__/evidenceBundlesMigration.test.ts drizzle/0004_create_evidence_bundles.sql drizzle/meta/0004_snapshot.json drizzle/meta/_journal.json
+git commit -m "m58: add evidence bundle persistence schema"
+```
 
 ## Repository Targets
 
 ### Expected Files
-- src/composition/__tests__/weeklyReportCandleStore.e2e.test.ts
-- src/composition/__tests__/weeklyReportCandleStore.e2e.pg.test.ts
-- package.json
+- src/ledger/pg/schema/evidenceBundles.ts
+- src/ledger/pg/schema/index.ts
+- src/ledger/pg/schema/__tests__/evidenceBundles.shape.test.ts
+- drizzle/0004_create_evidence_bundles.sql
+- drizzle/meta/0004_snapshot.json
+- drizzle/meta/_journal.json
+- src/ledger/pg/__tests__/evidenceBundlesMigration.test.ts
 
 ## Validation Commands
 
 ```bash
-pnpm exec vitest run src/composition/__tests__/weeklyReportCandleStore.e2e.test.ts
-DATABASE_URL=postgres://test:test@localhost:5432/regime_engine_test PG_SSL=false pnpm exec vitest run src/composition/__tests__/weeklyReportCandleStore.e2e.pg.test.ts
-pnpm exec eslint src/composition/buildApplication.ts src/composition/__tests__/weeklyReportCandleStore.e2e.test.ts src/composition/__tests__/weeklyReportCandleStore.e2e.pg.test.ts
+pnpm vitest run src/ledger/pg/schema/__tests__/evidenceBundles.shape.test.ts src/ledger/pg/__tests__/evidenceBundlesMigration.test.ts
+pnpm exec prettier --check src/ledger/pg/schema/evidenceBundles.ts src/ledger/pg/schema/index.ts src/ledger/pg/schema/__tests__/evidenceBundles.shape.test.ts src/ledger/pg/__tests__/evidenceBundlesMigration.test.ts drizzle/meta/_journal.json drizzle/meta/0004_snapshot.json
 ```
 
 ## Behavioral Invariants
 
 You MUST implement the following behavioral invariants as named tests first (TDD):
 
-- **SQLite local authority**: Without DATABASE_URL, the composed report reads baseline candles from the same SQLite candle adapter used by regime and plan paths. (Test: `uses SQLite canonical candles when DATABASE_URL is absent`)
-- **PostgreSQL deployed authority**: With DATABASE_URL configured, the composed report derives baselines from PostgreSQL candle rows while report facts remain in SQLite. (Test: `uses PostgreSQL canonical candles when DATABASE_URL is configured`)
-- **conflicting SQLite data ignored**: When PostgreSQL is active, conflicting SQLite candle prices cannot change report baselines. (Test: `ignores conflicting SQLite candles when PostgreSQL is the active candle store`)
-- **no empty-source fallback**: When the active PostgreSQL feed returns no rows, SQLite candle rows are not consulted and SOL baselines remain at initial NAV. (Test: `does not fall back to SQLite when the active PostgreSQL feed is empty`)
+- **evidence and policy storage are separate**: The additive evidence_bundles migration does not mutate clmm_insights or create a foreign-key ownership coupling. (Test: `keeps evidence bundles separate from final insight rows`)
+- **database defense-in-depth checks**: The table rejects unknown v1 schema/pair values, reversed lifecycle timestamps, and malformed lowercase hashes. (Test: `rejects invalid evidence scalar invariants at the database boundary`)
 

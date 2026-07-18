@@ -1,0 +1,28 @@
+{
+  "result": "fail",
+  "findings": [
+    {
+      "severity": "P1",
+      "summary": "Ajv2020 is instantiated with strict: false instead of strict: true as required by the specification.",
+      "file": "src/contract/evidence/v1/validate.ts",
+      "suggested_fix": "Change strict: false to strict: true in the Ajv2020 constructor options."
+    },
+    {
+      "severity": "P1",
+      "summary": "The coverage agreement check incorrectly uses a global hasContextualEvidence boolean instead of validating each contextual family individually against its corresponding coverage field.",
+      "file": "src/contract/evidence/v1/validate.ts",
+      "suggested_fix": "Check each contextual family's length independently against its corresponding coverage field (e.g., if ctx.supportResistance.length === 0 && coverage.supportResistance !== \"unavailable\", and vice-versa for when length > 0)."
+    },
+    {
+      "severity": "P2",
+      "summary": "The programmatic edge case tests for NaN, Infinity, and -0 incorrectly assign string values (e.g., \"NaN\") to the createdAt string field instead of actual JavaScript numbers to a numeric field.",
+      "file": "src/contract/evidence/v1/__tests__/validation.test.ts",
+      "suggested_fix": "Assign actual numeric values like NaN or Infinity to a numeric field such as confidenceBps or a numeric feature value."
+    },
+    {
+      "severity": "P2",
+      "summary": "Missing required tests from step 1, including table-driven cases for every invalid fixture, canonical timestamp equality boundaries, invalid calendar dates despite regex match, confidence min/max, all unit enums, and unknown fields at nested levels.",
+      "file": "src/contract/evidence/v1/__tests__/validation.test.ts"
+    }
+  ]
+}

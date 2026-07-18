@@ -1,0 +1,17 @@
+{
+  "result": "fail",
+  "findings": [
+    {
+      "severity": "P1",
+      "summary": "The evidenceBundlesMigration.test.ts insert queries are missing the required `ingested_at_unix_ms` and `processed_at_unix_ms` columns, causing them to fail due to a NOT NULL constraint violation rather than the intended invariant check constraints.",
+      "file": "src/ledger/pg/__tests__/evidenceBundlesMigration.test.ts",
+      "suggested_fix": "Add `ingested_at_unix_ms` and `processed_at_unix_ms` columns (and corresponding valid values) to the INSERT statements in the test to ensure the check constraints are actually being tested."
+    },
+    {
+      "severity": "P1",
+      "summary": "The evidenceBundles.shape.test.ts only asserts the 18 columns but fails to assert the unique idempotency tuple, current/history/correlation indexes, and the absence of update/delete helpers.",
+      "file": "src/ledger/pg/schema/__tests__/evidenceBundles.shape.test.ts",
+      "suggested_fix": "Add assertions in the shape test for the unique constraint, the three indexes, and ensure no update/delete helpers are present."
+    }
+  ]
+}

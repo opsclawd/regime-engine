@@ -1,0 +1,11 @@
+{
+  "result": "fail",
+  "findings": [
+    {
+      "severity": "P0",
+      "summary": "checkTimestampOrdering still incorrectly enforces `createdAt <= asOf` instead of `asOf <= createdAt` because the condition remains `createdAt > asOf`.",
+      "file": "src/contract/evidence/v1/validate.ts",
+      "suggested_fix": "Change the condition to `if (createdAt && asOf && asOf > createdAt)` and update the error message to reflect that createdAt must not be before asOf."
+    }
+  ]
+}

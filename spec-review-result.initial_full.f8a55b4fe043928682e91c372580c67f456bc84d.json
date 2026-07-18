@@ -1,0 +1,17 @@
+{
+  "result": "fail",
+  "findings": [
+    {
+      "severity": "P1",
+      "summary": "src/ledger/pg/schema/evidenceBundles.ts is missing Drizzle check constraints for schema_version, pair, timestamp ordering, and evidence_hash format.",
+      "file": "src/ledger/pg/schema/evidenceBundles.ts",
+      "suggested_fix": "Add check() constraints to the third argument array of regimeEngine.table() for chk_evidence_bundle_v1, chk_sol_usdc_pair, chk_timestamp_ordering, and chk_evidence_hash_format to match the SQL migration."
+    },
+    {
+      "severity": "P2",
+      "summary": "src/ledger/pg/schema/__tests__/evidenceBundles.shape.test.ts does not assert the presence of the unique idempotency tuple and the current/history/correlation indexes.",
+      "file": "src/ledger/pg/schema/__tests__/evidenceBundles.shape.test.ts",
+      "suggested_fix": "Add assertions to check that evidenceBundles table configuration exports the uniqueIndex('uniq_evidence_bundles_source_run') and the three regular indexes as required by the plan."
+    }
+  ]
+}
