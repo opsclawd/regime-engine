@@ -212,8 +212,8 @@ export const createPostgresEvidenceBundleRepository = (db: Db): EvidenceBundleRe
           const bundle = parseEvidenceBundleV1(raw.evidence_json) as EvidenceBundleV1;
           const lifecycle = deriveLifecycle(
             nowUnixMs,
-            raw.fresh_until_unix_ms,
-            raw.expires_at_unix_ms
+            Number(raw.fresh_until_unix_ms),
+            Number(raw.expires_at_unix_ms)
           );
 
           return [
@@ -221,7 +221,7 @@ export const createPostgresEvidenceBundleRepository = (db: Db): EvidenceBundleRe
               id: raw.id,
               bundle,
               evidenceHash: raw.evidence_hash,
-              receivedAtUnixMs: raw.received_at_unix_ms,
+              receivedAtUnixMs: Number(raw.received_at_unix_ms),
               lifecycle
             }
           ];
@@ -278,15 +278,15 @@ export const createPostgresEvidenceBundleRepository = (db: Db): EvidenceBundleRe
           const bundle = parseEvidenceBundleV1(raw.evidence_json) as EvidenceBundleV1;
           const lifecycle = deriveLifecycle(
             nowUnixMs,
-            raw.fresh_until_unix_ms,
-            raw.expires_at_unix_ms
+            Number(raw.fresh_until_unix_ms),
+            Number(raw.expires_at_unix_ms)
           );
 
           records.push({
             id: raw.id,
             bundle,
             evidenceHash: raw.evidence_hash,
-            receivedAtUnixMs: raw.received_at_unix_ms,
+            receivedAtUnixMs: Number(raw.received_at_unix_ms),
             lifecycle
           });
         }
@@ -370,15 +370,15 @@ export const createPostgresEvidenceBundleRepository = (db: Db): EvidenceBundleRe
           const bundle = parseEvidenceBundleV1(raw.evidence_json) as EvidenceBundleV1;
           const lifecycle = deriveLifecycle(
             nowUnixMs,
-            raw.fresh_until_unix_ms,
-            raw.expires_at_unix_ms
+            Number(raw.fresh_until_unix_ms),
+            Number(raw.expires_at_unix_ms)
           );
 
           records.push({
             id: raw.id,
             bundle,
             evidenceHash: raw.evidence_hash,
-            receivedAtUnixMs: raw.received_at_unix_ms,
+            receivedAtUnixMs: Number(raw.received_at_unix_ms),
             lifecycle
           });
         }

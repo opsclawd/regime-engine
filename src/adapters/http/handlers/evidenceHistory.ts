@@ -8,6 +8,7 @@ import {
   evidenceErrorResponse
 } from "../evidenceHttp.js";
 import type { GetEvidenceHistoryUseCase } from "../../../application/use-cases/getEvidenceHistoryUseCase.js";
+import { EvidenceStoreUnavailableError } from "../../../application/errors/evidenceErrors.js";
 
 export const ERROR_CODES = {
   EVIDENCE_STORE_UNAVAILABLE: "EVIDENCE_STORE_UNAVAILABLE",
@@ -51,6 +52,17 @@ export const createEvidenceHistoryHandler = (useCase: GetEvidenceHistoryUseCase 
     } catch (error) {
       if (error instanceof EvidenceHttpValidationError) {
         return reply.code(400).send(evidenceErrorResponse(error));
+      }
+
+      if (error instanceof EvidenceStoreUnavailableError) {
+        return reply.code(503).send({
+          schemaVersion: EVIDENCE_SCHEMA_VERSION,
+          error: {
+            code: ERROR_CODES.EVIDENCE_STORE_UNAVAILABLE,
+            message: "Evidence store is temporarily unavailable",
+            details: []
+          }
+        });
       }
 
       request.log.error(error, "Unhandled error in GET /v1/evidence/sol-usdc/history");

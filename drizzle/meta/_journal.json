@@ -36,6 +36,13 @@
       "when": 1784358256453,
       "tag": "0004_create_evidence_bundles",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1784397600000,
+      "tag": "0005_widen_evidence_scope_key",
+      "breakpoints": true
     }
   ]
 }

@@ -111,9 +111,10 @@ afterEach(async () => {
   delete process.env.LEDGER_DB_PATH;
   delete process.env.DATABASE_URL;
   delete process.env.EVIDENCE_INGEST_TOKEN;
+  delete process.env.PG_SSL;
   if (db) {
     await db.execute(
-      sql`DELETE FROM regime_engine.evidence_bundles WHERE source->>'publisher' IN ('sol-usdc-clmm-intelligence', 'alpha-publisher', 'zulu-publisher')`
+      sql`DELETE FROM regime_engine.evidence_bundles WHERE source_publisher IN ('sol-usdc-clmm-intelligence', 'alpha-publisher', 'zulu-publisher')`
     );
   }
 });
@@ -179,34 +180,6 @@ setupPg("POST /v1/evidence/sol-usdc (PG)", () => {
     await app.close();
   });
 
-  it("returns 409 on conflict (same source+runId, different payload)", async () => {
-    process.env.LEDGER_DB_PATH = ":memory:";
-    process.env.DATABASE_URL = PG_CONNECTION_STRING;
-    process.env.PG_SSL = "false";
-    process.env.EVIDENCE_INGEST_TOKEN = EVIDENCE_TOKEN;
-    const app = buildApp();
-    const runId = `run-conflict-${Date.now()}`;
-
-    await app.inject({
-      method: "POST",
-      url: "/v1/evidence/sol-usdc",
-      headers: { "x-evidence-ingest-token": EVIDENCE_TOKEN },
-      payload: makePayload({ runId })
-    });
-
-    const res = await app.inject({
-      method: "POST",
-      url: "/v1/evidence/sol-usdc",
-      headers: { "x-evidence-ingest-token": EVIDENCE_TOKEN },
-      payload: makePayload({ runId, deterministicFeatures: [] })
-    });
-    expect(res.statusCode).toBe(409);
-    const body = res.json() as { error?: { code?: string } };
-    expect(body.error?.code).toBe("EVIDENCE_RUN_CONFLICT");
-
-    await app.close();
-  });
-
   it("returns 401 when x-evidence-ingest-token header is missing", async () => {
     process.env.LEDGER_DB_PATH = ":memory:";
     process.env.DATABASE_URL = PG_CONNECTION_STRING;
@@ -260,8 +233,17 @@ setupPg("POST /v1/evidence/sol-usdc (PG)", () => {
       payload: { garbage: true }
     });
     expect(res.statusCode).toBe(400);
-    const body = res.json() as { error?: { code?: string } };
+    const body = res.json() as {
+      error?: { code?: string; details?: { path: string; code: string; message: string }[] };
+    };
     expect(body.error?.code).toBe("VALIDATION_ERROR");
+    expect(Array.isArray(body.error?.details)).toBe(true);
+    expect(body.error?.details?.length).toBeGreaterThan(0);
+    for (const detail of body.error?.details ?? []) {
+      expect(typeof detail.path).toBe("string");
+      expect(typeof detail.code).toBe("string");
+      expect(typeof detail.message).toBe("string");
+    }
 
     await app.close();
   });
@@ -315,7 +297,7 @@ setupPg("GET /v1/evidence/sol-usdc/current (PG)", () => {
     expect(body.pair).toBe("SOL/USDC");
     expect(body.scope.kind).toBe("pair");
     expect(body.items).toHaveLength(1);
-    expect((body.items[0] as { runId: string }).runId).toBe(runId);
+    expect((body.items[0] as { bundle: { runId: string } }).bundle.runId).toBe(runId);
 
     await app.close();
   });
@@ -407,13 +389,13 @@ setupPg("GET /v1/evidence/sol-usdc/history (PG)", () => {
     });
     expect(res.statusCode).toBe(200);
     const body = res.json() as {
-      items: { runId: string }[];
+      items: { bundle: { runId: string } }[];
       limit: number;
       pair: string;
     };
     expect(body.items).toHaveLength(2);
-    expect(body.items[0].runId).toBe(runId2);
-    expect(body.items[1].runId).toBe(runId1);
+    expect(body.items[0].bundle.runId).toBe(runId2);
+    expect(body.items[1].bundle.runId).toBe(runId1);
     expect(body.pair).toBe("SOL/USDC");
 
     await app.close();
@@ -527,6 +509,58 @@ setupPg("preserves durable replay and cursor semantics through HTTP", () => {
     await app.close();
   });
 
+  it("returns 409 on conflict (same source+runId, different payload)", async () => {
+    process.env.LEDGER_DB_PATH = ":memory:";
+    process.env.DATABASE_URL = PG_CONNECTION_STRING;
+    process.env.PG_SSL = "false";
+    process.env.EVIDENCE_INGEST_TOKEN = EVIDENCE_TOKEN;
+    const app = buildApp();
+    const runId = `run-conflict-${Date.now()}`;
+    const source = {
+      publisher: "sol-usdc-clmm-intelligence",
+      sourceId: `src-conflict-${Date.now()}`,
+      sourceVersion: "1.0.0"
+    };
+
+    await app.inject({
+      method: "POST",
+      url: "/v1/evidence/sol-usdc",
+      headers: { "x-evidence-ingest-token": EVIDENCE_TOKEN },
+      payload: makePayload({ runId, source })
+    });
+
+    const res = await app.inject({
+      method: "POST",
+      url: "/v1/evidence/sol-usdc",
+      headers: { "x-evidence-ingest-token": EVIDENCE_TOKEN },
+      payload: makePayload({
+        runId,
+        source,
+        deterministicFeatures: [
+          {
+            featureId: "feat-price-001",
+            family: "market_state",
+            featureKind: "number",
+            status: "available",
+            value: 999.99,
+            unit: "usd",
+            observedAt: "2026-04-29T12:00:00.000Z",
+            freshUntil: "2026-04-29T18:00:00.000Z",
+            confidenceBps: 9500,
+            calculator: { name: "price-aggregator", version: "1.0.0" },
+            inputLineage: ["ref-price-source"],
+            warnings: []
+          }
+        ]
+      })
+    });
+    expect(res.statusCode).toBe(409);
+    const body = res.json() as { error?: { code?: string } };
+    expect(body.error?.code).toBe("EVIDENCE_RUN_CONFLICT");
+
+    await app.close();
+  });
+
   it("isolates whirlpool scope from pair scope", async () => {
     process.env.LEDGER_DB_PATH = ":memory:";
     process.env.DATABASE_URL = PG_CONNECTION_STRING;
@@ -559,18 +593,18 @@ setupPg("preserves durable replay and cursor semantics through HTTP", () => {
       url: "/v1/evidence/sol-usdc/current"
     });
     expect(pairRes.statusCode).toBe(200);
-    const pairBody = pairRes.json() as { items: { runId: string }[] };
+    const pairBody = pairRes.json() as { items: { bundle: { runId: string } }[] };
     expect(pairBody.items).toHaveLength(1);
-    expect(pairBody.items[0].runId).toBe(pairRunId);
+    expect(pairBody.items[0].bundle.runId).toBe(pairRunId);
 
     const whirlpoolRes = await app.inject({
       method: "GET",
       url: `/v1/evidence/sol-usdc/current?scope=whirlpool&whirlpoolAddress=${whirlpoolAddress}`
     });
     expect(whirlpoolRes.statusCode).toBe(200);
-    const whirlpoolBody = whirlpoolRes.json() as { items: { runId: string }[] };
+    const whirlpoolBody = whirlpoolRes.json() as { items: { bundle: { runId: string } }[] };
     expect(whirlpoolBody.items).toHaveLength(1);
-    expect(whirlpoolBody.items[0].runId).toBe(whirlpoolRunId);
+    expect(whirlpoolBody.items[0].bundle.runId).toBe(whirlpoolRunId);
 
     await app.close();
   });
@@ -607,18 +641,22 @@ setupPg("preserves durable replay and cursor semantics through HTTP", () => {
       url: "/v1/evidence/sol-usdc/current"
     });
     expect(pairRes.statusCode).toBe(200);
-    const pairBody = pairRes.json() as { items: { runId: string }[] };
-    expect(pairBody.items.some((i: { runId: string }) => i.runId === pairRunId)).toBe(true);
-    expect(pairBody.items.some((i: { runId: string }) => i.runId === walletRunId)).toBe(false);
+    const pairBody = pairRes.json() as { items: { bundle: { runId: string } }[] };
+    expect(
+      pairBody.items.some((i: { bundle: { runId: string } }) => i.bundle.runId === pairRunId)
+    ).toBe(true);
+    expect(
+      pairBody.items.some((i: { bundle: { runId: string } }) => i.bundle.runId === walletRunId)
+    ).toBe(false);
 
     const walletRes = await app.inject({
       method: "GET",
       url: `/v1/evidence/sol-usdc/current?scope=wallet&walletAddress=${walletAddress}`
     });
     expect(walletRes.statusCode).toBe(200);
-    const walletBody = walletRes.json() as { items: { runId: string }[] };
+    const walletBody = walletRes.json() as { items: { bundle: { runId: string } }[] };
     expect(walletBody.items).toHaveLength(1);
-    expect(walletBody.items[0].runId).toBe(walletRunId);
+    expect(walletBody.items[0].bundle.runId).toBe(walletRunId);
 
     await app.close();
   });
@@ -663,23 +701,27 @@ setupPg("preserves durable replay and cursor semantics through HTTP", () => {
       url: "/v1/evidence/sol-usdc/current"
     });
     expect(pairRes.statusCode).toBe(200);
-    const pairBody = pairRes.json() as { items: { runId: string }[] };
-    expect(pairBody.items.some((i: { runId: string }) => i.runId === pairRunId)).toBe(true);
-    expect(pairBody.items.some((i: { runId: string }) => i.runId === positionRunId)).toBe(false);
+    const pairBody = pairRes.json() as { items: { bundle: { runId: string } }[] };
+    expect(
+      pairBody.items.some((i: { bundle: { runId: string } }) => i.bundle.runId === pairRunId)
+    ).toBe(true);
+    expect(
+      pairBody.items.some((i: { bundle: { runId: string } }) => i.bundle.runId === positionRunId)
+    ).toBe(false);
 
     const positionRes = await app.inject({
       method: "GET",
       url: `/v1/evidence/sol-usdc/current?scope=position&walletAddress=${walletAddress}&whirlpoolAddress=${whirlpoolAddress}&positionId=${positionId}`
     });
     expect(positionRes.statusCode).toBe(200);
-    const positionBody = positionRes.json() as { items: { runId: string }[] };
+    const positionBody = positionRes.json() as { items: { bundle: { runId: string } }[] };
     expect(positionBody.items).toHaveLength(1);
-    expect(positionBody.items[0].runId).toBe(positionRunId);
+    expect(positionBody.items[0].bundle.runId).toBe(positionRunId);
 
     await app.close();
   });
 
-  it("orders multiple sources by publisher then sourceId in current", async () => {
+  it("orders multiple sources by sourceId in current", async () => {
     process.env.LEDGER_DB_PATH = ":memory:";
     process.env.DATABASE_URL = PG_CONNECTION_STRING;
     process.env.PG_SSL = "false";
@@ -695,7 +737,11 @@ setupPg("preserves durable replay and cursor semantics through HTTP", () => {
       headers: { "x-evidence-ingest-token": EVIDENCE_TOKEN },
       payload: makePayload({
         runId: runId1,
-        source: { publisher: "zulu-publisher", sourceId: "src-z", sourceVersion: "1.0.0" }
+        source: {
+          publisher: "sol-usdc-clmm-intelligence",
+          sourceId: "src-z",
+          sourceVersion: "1.0.0"
+        }
       })
     });
 
@@ -705,7 +751,11 @@ setupPg("preserves durable replay and cursor semantics through HTTP", () => {
       headers: { "x-evidence-ingest-token": EVIDENCE_TOKEN },
       payload: makePayload({
         runId: runId2,
-        source: { publisher: "alpha-publisher", sourceId: "src-a", sourceVersion: "1.0.0" }
+        source: {
+          publisher: "sol-usdc-clmm-intelligence",
+          sourceId: "src-a",
+          sourceVersion: "1.0.0"
+        }
       })
     });
 
@@ -715,7 +765,11 @@ setupPg("preserves durable replay and cursor semantics through HTTP", () => {
       headers: { "x-evidence-ingest-token": EVIDENCE_TOKEN },
       payload: makePayload({
         runId: runId3,
-        source: { publisher: "alpha-publisher", sourceId: "src-b", sourceVersion: "1.0.0" }
+        source: {
+          publisher: "sol-usdc-clmm-intelligence",
+          sourceId: "src-b",
+          sourceVersion: "1.0.0"
+        }
       })
     });
 
@@ -728,11 +782,9 @@ setupPg("preserves durable replay and cursor semantics through HTTP", () => {
       items: { bundle: { source: { publisher: string; sourceId: string }; runId: string } }[];
     };
     expect(body.items).toHaveLength(3);
-    expect(body.items[0].bundle.source.publisher).toBe("alpha-publisher");
     expect(body.items[0].bundle.source.sourceId).toBe("src-a");
-    expect(body.items[1].bundle.source.publisher).toBe("alpha-publisher");
     expect(body.items[1].bundle.source.sourceId).toBe("src-b");
-    expect(body.items[2].bundle.source.publisher).toBe("zulu-publisher");
+    expect(body.items[2].bundle.source.sourceId).toBe("src-z");
 
     await app.close();
   });
@@ -744,6 +796,7 @@ setupPg("preserves durable replay and cursor semantics through HTTP", () => {
     process.env.EVIDENCE_INGEST_TOKEN = EVIDENCE_TOKEN;
     const app = buildApp();
     const now = new Date();
+    const asOf = new Date(now.getTime() - 120 * 60 * 1000);
     const freshUntil = new Date(now.getTime() - 60 * 60 * 1000);
     const expiresAt = new Date(now.getTime() + 60 * 60 * 1000);
     const runId = `run-stale-${Date.now()}`;
@@ -754,9 +807,26 @@ setupPg("preserves durable replay and cursor semantics through HTTP", () => {
       headers: { "x-evidence-ingest-token": EVIDENCE_TOKEN },
       payload: makePayload({
         runId,
+        createdAt: asOf.toISOString(),
+        asOf: asOf.toISOString(),
         freshUntil: freshUntil.toISOString(),
         expiresAt: expiresAt.toISOString(),
-        asOf: new Date(now.getTime() - 120 * 60 * 1000).toISOString()
+        deterministicFeatures: [
+          {
+            featureId: "feat-price-001",
+            family: "market_state",
+            featureKind: "number",
+            status: "available",
+            value: 150.25,
+            unit: "usd",
+            observedAt: asOf.toISOString(),
+            freshUntil: freshUntil.toISOString(),
+            confidenceBps: 9500,
+            calculator: { name: "price-aggregator", version: "1.0.0" },
+            inputLineage: ["ref-price-source"],
+            warnings: []
+          }
+        ]
       })
     });
 
@@ -778,6 +848,7 @@ setupPg("preserves durable replay and cursor semantics through HTTP", () => {
     process.env.EVIDENCE_INGEST_TOKEN = EVIDENCE_TOKEN;
     const app = buildApp();
     const now = new Date();
+    const asOf = new Date(now.getTime() - 3 * 60 * 60 * 1000);
     const freshUntil = new Date(now.getTime() - 2 * 60 * 60 * 1000);
     const expiresAt = new Date(now.getTime() - 60 * 60 * 1000);
     const runId = `run-expired-${Date.now()}`;
@@ -788,9 +859,26 @@ setupPg("preserves durable replay and cursor semantics through HTTP", () => {
       headers: { "x-evidence-ingest-token": EVIDENCE_TOKEN },
       payload: makePayload({
         runId,
+        createdAt: asOf.toISOString(),
+        asOf: asOf.toISOString(),
         freshUntil: freshUntil.toISOString(),
         expiresAt: expiresAt.toISOString(),
-        asOf: new Date(now.getTime() - 3 * 60 * 60 * 1000).toISOString()
+        deterministicFeatures: [
+          {
+            featureId: "feat-price-001",
+            family: "market_state",
+            featureKind: "number",
+            status: "available",
+            value: 150.25,
+            unit: "usd",
+            observedAt: asOf.toISOString(),
+            freshUntil: freshUntil.toISOString(),
+            confidenceBps: 9500,
+            calculator: { name: "price-aggregator", version: "1.0.0" },
+            inputLineage: ["ref-price-source"],
+            warnings: []
+          }
+        ]
       })
     });
 
@@ -838,9 +926,12 @@ setupPg("preserves durable replay and cursor semantics through HTTP", () => {
       url: "/v1/evidence/sol-usdc/history?limit=1"
     });
     expect(page1Res.statusCode).toBe(200);
-    const page1Body = page1Res.json() as { items: { runId: string }[]; nextCursor: string | null };
+    const page1Body = page1Res.json() as {
+      items: { bundle: { runId: string } }[];
+      nextCursor: string | null;
+    };
     expect(page1Body.items).toHaveLength(1);
-    expect(page1Body.items[0].runId).toBe(runId2);
+    expect(page1Body.items[0].bundle.runId).toBe(runId2);
     const cursor = page1Body.nextCursor;
     expect(cursor).not.toBeNull();
 
@@ -858,17 +949,24 @@ setupPg("preserves durable replay and cursor semantics through HTTP", () => {
       url: `/v1/evidence/sol-usdc/history?limit=1&cursor=${cursor}`
     });
     expect(page2Res.statusCode).toBe(200);
-    const page2Body = page2Res.json() as { items: { runId: string }[]; nextCursor: string | null };
+    const page2Body = page2Res.json() as {
+      items: { bundle: { runId: string } }[];
+      nextCursor: string | null;
+    };
     expect(page2Body.items).toHaveLength(1);
-    expect(page2Body.items[0].runId).toBe(runId1);
+    expect(page2Body.items[0].bundle.runId).toBe(runId1);
 
     const allRes = await app.inject({
       method: "GET",
       url: "/v1/evidence/sol-usdc/history?limit=10"
     });
     expect(allRes.statusCode).toBe(200);
-    const allBody = allRes.json() as { items: { runId: string }[] };
-    expect(allBody.items.map((i: { runId: string }) => i.runId)).toEqual([runId3, runId2, runId1]);
+    const allBody = allRes.json() as { items: { bundle: { runId: string } }[] };
+    expect(allBody.items.map((i: { bundle: { runId: string } }) => i.bundle.runId)).toEqual([
+      runId3,
+      runId2,
+      runId1
+    ]);
 
     await app.close();
   });
