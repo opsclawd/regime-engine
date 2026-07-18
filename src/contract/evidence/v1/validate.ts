@@ -289,11 +289,11 @@ function checkTimestampOrdering(bundle: EvidenceBundleV1, issues: EvidenceValida
   const freshUntil = parseCanonicalTimestamp(bundle.freshUntil);
   const expiresAt = parseCanonicalTimestamp(bundle.expiresAt);
 
-  if (createdAt && asOf && createdAt > asOf) {
+  if (createdAt && asOf && asOf > createdAt) {
     issues.push({
       path: "/createdAt",
       code: "SEMANTIC",
-      message: `createdAt (${bundle.createdAt}) must not be after asOf (${bundle.asOf})`
+      message: `createdAt (${bundle.createdAt}) must not be before asOf (${bundle.asOf})`
     });
   }
 
