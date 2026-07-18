@@ -72,4 +72,15 @@ export const verifySrThesesV2Table = async (db: Db): Promise<void> => {
   }
 };
 
+export const verifyEvidenceBundlesTable = async (db: Db): Promise<void> => {
+  const result = await db.execute(
+    sql`SELECT tablename FROM pg_tables WHERE schemaname = 'regime_engine' AND tablename = 'evidence_bundles'`
+  );
+  if (result.length === 0) {
+    throw new Error(
+      "FATAL: evidence_bundles table not found in regime_engine schema — run migrations first"
+    );
+  }
+};
+
 export type Db = ReturnType<typeof createDb>["db"];
