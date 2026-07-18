@@ -1,0 +1,55 @@
+{
+  "schemaVersion": "evidence-bundle.v1",
+  "pair": "SOL/USDC",
+  "scope": {
+    "kind": "pair"
+  },
+  "source": {
+    "publisher": "sol-usdc-clmm-intelligence",
+    "sourceId": "src-001",
+    "sourceVersion": "1.0.0"
+  },
+  "runId": "run-001",
+  "correlationId": "corr-001",
+  "createdAt": "2024-02-30T10:00:00.000Z",
+  "asOf": "2024-01-15T10:00:00.000Z",
+  "freshUntil": "2024-01-15T11:00:00.000Z",
+  "expiresAt": "2024-01-15T12:00:00.000Z",
+  "deterministicFeatures": [],
+  "contextualEvidence": {
+    "supportResistance": [],
+    "flows": [],
+    "derivatives": [],
+    "events": [],
+    "newsRegulatory": []
+  },
+  "researchBrief": null,
+  "sourceReferences": [
+    {
+      "referenceId": "ref-001",
+      "sourceType": "api",
+      "locator": "https://api.example.com",
+      "observedAt": "2024-01-15T09:59:00.000Z"
+    }
+  ],
+  "assessment": {
+    "overallConfidenceBps": 0,
+    "quality": "degraded",
+    "coverage": {
+      "deterministic": "unavailable",
+      "supportResistance": "unavailable",
+      "flows": "unavailable",
+      "derivatives": "unavailable",
+      "events": "unavailable",
+      "newsRegulatory": "unavailable",
+      "researchBrief": "unavailable"
+    },
+    "warnings": []
+  },
+  "provenance": {
+    "pipelineVersion": "1.0.0",
+    "gitCommit": "abcd1234abcd1234abcd1234abcd1234abcd1234abcd1234abcd1234abcd1234",
+    "environment": "test",
+    "upstreamRunIds": []
+  }
+}
