@@ -11,6 +11,7 @@ RUN pnpm install --frozen-lockfile
 
 COPY tsconfig.json tsconfig.build.json ./
 COPY src/ src/
+COPY contracts/ contracts/
 COPY scripts/ scripts/
 COPY drizzle/ drizzle/
 COPY drizzle.config.ts drizzle.config.ts
