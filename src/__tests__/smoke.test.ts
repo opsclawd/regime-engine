@@ -92,9 +92,9 @@ describe("GET /v1/openapi.json", () => {
         "/v1/insights/sol-usdc/history",
         "/v2/sr-levels",
         "/v2/sr-levels/current",
-        "/v1/evidence",
-        "/v1/evidence/current",
-        "/v1/evidence/history"
+        "/v1/evidence/sol-usdc",
+        "/v1/evidence/sol-usdc/current",
+        "/v1/evidence/sol-usdc/history"
       ])
     );
   });

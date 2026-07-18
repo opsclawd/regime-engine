@@ -763,7 +763,7 @@ export const buildOpenApiDocument = () => {
           }
         }
       },
-      "/v1/evidence": {
+      "/v1/evidence/sol-usdc": {
         post: {
           summary: "Ingest an evidence bundle",
           description:
@@ -836,7 +836,7 @@ export const buildOpenApiDocument = () => {
           }
         }
       },
-      "/v1/evidence/current": {
+      "/v1/evidence/sol-usdc/current": {
         get: {
           summary: "Get most recent evidence bundle with no selection",
           description:
@@ -929,7 +929,7 @@ export const buildOpenApiDocument = () => {
           }
         }
       },
-      "/v1/evidence/history": {
+      "/v1/evidence/sol-usdc/history": {
         get: {
           summary: "Get historical evidence bundles",
           description:
