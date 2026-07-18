@@ -13,6 +13,8 @@ const SHA256_PATH = resolve(__repoRoot, "contracts/evidence-bundle/v1/schema.sha
 const VECTORS_PATH = resolve(__repoRoot, "contracts/evidence-bundle/v1/hash-vectors.json");
 const SCHEMA_RELATIVE = "contracts/evidence-bundle/v1/evidence-bundle.schema.json";
 const FIXTURES_DIR = resolve(__repoRoot, "contracts/evidence-bundle/v1/fixtures");
+const DOCS_PATH = resolve(__repoRoot, "docs/contracts/evidence-bundle.v1.md");
+const DOCS_SCHEMA_MARKER = /<!-- schema-sha256:([a-f0-9]{64}) -->/;
 
 interface CliArgs {
   mode: "--write" | "--check";
@@ -311,6 +313,32 @@ async function main() {
       hasStale = true;
     }
 
+    try {
+      const existingDocsContent = readFileSync(DOCS_PATH, "utf-8");
+      const match = existingDocsContent.match(DOCS_SCHEMA_MARKER);
+      if (!match) {
+        console.error(`MISSING: ${DOCS_PATH} schema-sha256 marker`);
+        hasStale = true;
+      } else if (match[1] !== digest) {
+        console.error(`STALE: ${DOCS_PATH} schema marker ${match[1]} does not match ${digest}`);
+        hasStale = true;
+      }
+      const requiredArtifacts = [
+        "evidence-bundle.schema.json",
+        "schema.sha256",
+        "hash-vectors.json"
+      ];
+      for (const artifact of requiredArtifacts) {
+        if (!existingDocsContent.includes(artifact)) {
+          console.error(`MISSING: ${DOCS_PATH} does not mention artifact ${artifact}`);
+          hasStale = true;
+        }
+      }
+    } catch {
+      console.error(`MISSING: ${DOCS_PATH}`);
+      hasStale = true;
+    }
+
     if (hasStale) {
       process.exit(1);
     }
@@ -349,6 +377,22 @@ async function main() {
     } catch {
       writeFileSync(VECTORS_PATH, expectedVectorsContent);
       console.log(`WROTE: ${VECTORS_PATH}`);
+    }
+
+    const markerReplacement = `<!-- schema-sha256:${digest} -->`;
+    try {
+      const existingDocsContent = readFileSync(DOCS_PATH, "utf-8");
+      const newDocsContent = existingDocsContent.replace(DOCS_SCHEMA_MARKER, markerReplacement);
+      if (newDocsContent !== existingDocsContent) {
+        writeFileSync(DOCS_PATH, newDocsContent);
+        console.log(`WROTE: ${DOCS_PATH}`);
+      }
+    } catch {
+      writeFileSync(
+        DOCS_PATH,
+        `# EvidenceBundle v1 Contract Specification\n\n${markerReplacement}\n`
+      );
+      console.log(`WROTE: ${DOCS_PATH}`);
     }
 
     return;
