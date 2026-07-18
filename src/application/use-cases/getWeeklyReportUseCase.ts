@@ -17,7 +17,7 @@ export interface GetWeeklyReportUseCaseDeps {
 }
 
 const isValidMarketIdentity = (request: {
-  market: {
+  market?: {
     symbol?: string;
     source?: string;
     network?: string;
@@ -25,16 +25,21 @@ const isValidMarketIdentity = (request: {
     timeframe?: string;
   };
 }): boolean => {
+  // `request` is JSON.parse'd from persisted request_json and only
+  // type-asserted, not runtime-validated — a legacy/corrupt row can be
+  // missing `market` entirely, so it must not be dereferenced unchecked.
+  if (request.market === null || typeof request.market !== "object") return false;
+  const market = request.market;
   return (
-    typeof request.market.symbol === "string" &&
-    request.market.symbol.length > 0 &&
-    typeof request.market.source === "string" &&
-    request.market.source.length > 0 &&
-    typeof request.market.network === "string" &&
-    request.market.network.length > 0 &&
-    typeof request.market.poolAddress === "string" &&
-    request.market.poolAddress.length > 0 &&
-    (request.market.timeframe === "15m" || request.market.timeframe === "1h")
+    typeof market.symbol === "string" &&
+    market.symbol.length > 0 &&
+    typeof market.source === "string" &&
+    market.source.length > 0 &&
+    typeof market.network === "string" &&
+    market.network.length > 0 &&
+    typeof market.poolAddress === "string" &&
+    market.poolAddress.length > 0 &&
+    (market.timeframe === "15m" || market.timeframe === "1h")
   );
 };
 

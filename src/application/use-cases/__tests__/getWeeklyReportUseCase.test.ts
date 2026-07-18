@@ -355,6 +355,39 @@ describe("GetWeeklyReportUseCase", () => {
       expect(result.summary.baselines.solHodlFinalNavUsd).toBe(10000);
     });
 
+    it("does not throw when a persisted request is missing market entirely (legacy/corrupt row)", async () => {
+      const ledgerPort = new FakeWeeklyReportLedgerReadPort();
+      const candlePort = new FakeCandleReadPort({ "15m": [] });
+      const fromUnixMs = Date.parse("2026-01-01T00:00:00.000Z");
+      const toUnixMs = Date.parse("2026-01-07T23:59:59.999Z");
+
+      // Simulates a row whose persisted request_json predates or otherwise
+      // lacks `market`; the SQLite adapter's JSON.parse + type-cast provides
+      // no runtime guarantee that `market` actually exists.
+      const fullRequest = createPlanRequest(
+        Date.parse("2026-01-05T00:00:00.000Z")
+      ) as unknown as Record<string, unknown>;
+      delete fullRequest.market;
+      const corruptRequest = fullRequest as unknown as PlanRequest;
+
+      ledgerPort.setNextResult({
+        window: { from: "2026-01-01", to: "2026-01-07", fromUnixMs, toUnixMs },
+        plans: [],
+        planRequests: [{ asOfUnixMs: corruptRequest.asOfUnixMs, request: corruptRequest }],
+        executionResults: []
+      });
+
+      const useCase = createGetWeeklyReportUseCase({
+        weeklyReportLedgerReadPort: ledgerPort,
+        candleReadPort: candlePort
+      });
+
+      const result = await useCase({ from: "2026-01-01", to: "2026-01-07" });
+
+      expect(candlePort.windowCalls).toHaveLength(0);
+      expect(result.summary.baselines.solHodlFinalNavUsd).toBe(10000);
+    });
+
     it("does not call candle port when planRequests is empty", async () => {
       const ledgerPort = new FakeWeeklyReportLedgerReadPort();
       const candlePort = new FakeCandleReadPort({ "15m": [] });
