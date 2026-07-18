@@ -5,6 +5,7 @@ import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { toCanonicalJson } from "../../../v1/canonical.js";
 import { sha256Hex } from "../../../v1/hash.js";
+import { validateEvidenceBundleV1 } from "../validate.js";
 
 const __repoRoot = resolve(fileURLToPath(import.meta.url), "../../../../../..");
 const __fixturesDir = resolve(__repoRoot, "contracts/evidence-bundle/v1/fixtures");
@@ -65,6 +66,28 @@ describe("EvidenceBundle canonical hash vectors", () => {
         expect(typeof vector.schemaSha256).toBe("string");
         expect(vector.schemaSha256).toMatch(/^[a-f0-9]{64}$/);
         expect(vector.schemaSha256.toLowerCase()).toBe(expectedSchemaDigest.toLowerCase());
+      }
+    });
+
+    it("non-primitive EvidenceBundle payloads pass schema validation", () => {
+      const vectors = loadVectors();
+      const nonPrimitiveNames = [
+        "valid/deterministic-only",
+        "valid/contextual",
+        "empty-context",
+        "null-brief"
+      ];
+
+      for (const vector of vectors.vectors) {
+        if (nonPrimitiveNames.includes(vector.name)) {
+          const result = validateEvidenceBundleV1(vector.payload);
+          if (!result.ok) {
+            expect(
+              result.ok,
+              `Payload ${vector.name} should be valid: ${JSON.stringify(result.issues)}`
+            ).toBe(true);
+          }
+        }
       }
     });
 

@@ -159,6 +159,9 @@ function generateVectors(schemaDigest: string): HashVectorsDocument {
     createVector("valid/deterministic-only", deterministicOnlyPayload, schemaDigest),
     createVector("valid/contextual", contextualPayload, schemaDigest),
 
+    createVector("empty-context", contextualPayload, schemaDigest),
+    createVector("null-brief", deterministicOnlyPayload, schemaDigest),
+
     createVector("object-key-order-independence", { a: 1, b: 2, c: 3 }, schemaDigest),
     createVector("array-order-matters", [1, 2, 3], schemaDigest),
 
