@@ -1,8 +1,8 @@
 import { afterAll, afterEach, describe, expect, it } from "vitest";
+import { sql } from "drizzle-orm";
 import { buildApp } from "../../../app.js";
 import type { Db } from "../../../ledger/pg/db.js";
 import { createDb } from "../../../ledger/pg/db.js";
-import { evidenceBundles } from "../../../ledger/pg/schema/index.js";
 
 const PG_CONNECTION_STRING =
   process.env.DATABASE_URL ?? "postgres://test:test@localhost:5432/regime_engine_test";
@@ -112,7 +112,7 @@ afterEach(async () => {
   delete process.env.DATABASE_URL;
   delete process.env.EVIDENCE_INGEST_TOKEN;
   if (db) {
-    await db.delete(evidenceBundles);
+    await db.execute(sql`DELETE FROM regime_engine.evidence_bundles`);
   }
 });
 
