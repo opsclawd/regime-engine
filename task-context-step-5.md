@@ -1,6 +1,6 @@
 # Task Context: Task 5
 
-Title: Correct current architecture and API documentation
+Title: Implement append, replay, and conflict through the repository port
 ## Workspace & Scope Constraints
 
 ## WORKSPACE CONSTRAINTS
@@ -9,111 +9,88 @@ Your working directory is a dedicated git worktree with the repository's complet
 
 .ai-orchestrator.local.json, if one exists, lives only in the main checkout and is intentionally not copied into your worktree — it is operator-machine-specific and not part of your task. Do not search for it or read it outside this directory. Reason about configuration using only .ai-orchestrator.json in your own working directory; treat it as the effective config for your task.
 
-Working Directory: /home/gary/.openclaw/workspace/regime-engine/.ai-worktrees/issue-55
+Working Directory: /home/gary/.openclaw/workspace/regime-engine/.ai-worktrees/issue-58
 Repository: opsclawd/regime-engine
-Branch: ai/issue-55
-Start Commit: bbd4e0d6cb492a7e4ed4cbcc6a2f59e1161aaeea
+Branch: ai/issue-58
+Start Commit: 7bd5b19db3afbf66e95e06ac273453030f5381fe
 
 ## Task Requirements
 
 **Files:**
 
-- Modify: `README.md`
-- Modify: `architecture.md`
-- Modify: `documentation.md`
-- Modify: `src/adapters/http/openapi.ts`
-- Modify: `src/composition/__tests__/buildApp.e2e.test.ts`
-- Modify: `docs/solutions/best-practices/composition-root-pattern-2026-05-08.md`
+- Create: `src/application/ports/evidenceBundleRepositoryPort.ts`
+- Create: `src/adapters/postgres/postgresEvidenceBundleRepository.ts`
+- Create: `src/adapters/postgres/__tests__/postgresEvidenceBundleRepository.append.test.ts`
 
-- [ ] **Step 1: Add an OpenAPI regression assertion.** Extend only the existing `serves /v1/openapi.json` case to assert the weekly endpoint summary states that report facts come from the ledger and baseline prices come from the active canonical candle store.
+- [ ] **Step 1: Write the append state-machine tests first**
 
-- [ ] **Step 2: Run the focused OpenAPI test and confirm the old “ledger data” summary fails the new assertion.**
+Write exact named cases `creates one immutable row for a new source run`, `returns already_ingested for an identical source run replay`, `throws EVIDENCE_RUN_CONFLICT for a changed source run replay`, and `fails when a losing append cannot load the winning row`. Add sequential and concurrent identical/different replay cases, different run/source acceptance, full JSON/canonical/scalar persistence, and original `receivedAt` retention.
 
-  ```bash
-  pnpm exec vitest run src/composition/__tests__/buildApp.e2e.test.ts -t "serves /v1/openapi.json"
-  ```
+Run: `pnpm vitest run src/adapters/postgres/__tests__/postgresEvidenceBundleRepository.append.test.ts`
 
-- [ ] **Step 3: Update current documentation.** In README and architecture descriptions, replace “ledger-only” with the precise split: append-only SQLite provides plan/execution facts; the active SQLite/PostgreSQL `CandleReadPort` provides SOL baseline closes. Update the weekly-report flow to include complete feed selection, canonical 15-minute source timeframe, and closed cutoff. In `documentation.md`, correct current endpoint/module descriptions while leaving dated Milestone 15 claims explicitly framed as historical implementation history.
+Expected: FAIL because the port and adapter do not exist.
 
-- [ ] **Step 4: Update the durable composition-root solution.** Show `WeeklyReportLedgerReadPort` plus the selected `CandleReadPort` entering `createGetWeeklyReportUseCase`; remove the obsolete high-level SQLite weekly adapter example. Do not rewrite unrelated historical guidance.
+- [ ] **Step 2: Define the append contract and exact scope-key derivation**
 
-- [ ] **Step 5: Update the OpenAPI summary and run scoped acceptance checks.**
+In the application port, export `EvidenceScopeQuery`, `EvidenceSourceFilter`, receipt/result types, `EvidenceRunConflictError` with `errorCode = "EVIDENCE_RUN_CONFLICT"`, and:
 
-  ```bash
-  pnpm exec vitest run src/composition/__tests__/buildApp.e2e.test.ts -t "serves /v1/openapi.json"
-  pnpm exec prettier --check README.md architecture.md documentation.md src/adapters/http/openapi.ts src/composition/__tests__/buildApp.e2e.test.ts docs/solutions/best-practices/composition-root-pattern-2026-05-08.md
-  pnpm exec eslint src/adapters/http/openapi.ts src/composition/__tests__/buildApp.e2e.test.ts
-  ```
-
-  Expected: the focused contract assertion passes and all changed documentation/code is formatted.
-
-- [ ] **Step 6: Commit the documentation correction.**
-
-  ```bash
-  git add README.md architecture.md documentation.md src/adapters/http/openapi.ts src/composition/__tests__/buildApp.e2e.test.ts docs/solutions/best-practices/composition-root-pattern-2026-05-08.md
-  git commit -m "m55: document canonical report candle authority"
-  ```
-
-**Tests to add or update**
-
-- Add mirrored SQLite/PostgreSQL candle-window adapter contracts for complete feed isolation, inclusive bounds, revision tie-breaking, deterministic order, and empty results.
-- Expand baseline tests to prove canonical-only authority, defensive window filtering, deterministic sorting, empty candles, and no requests.
-- Add SQLite weekly-ledger adapter tests for parsed windows, stable row ordering, malformed persisted JSON, and range-error translation.
-- Replace pass-through weekly use-case tests with feed-selection, `15m`/`1h`, cutoff, missing-feed, empty-store, and error-propagation cases.
-- Update deterministic weekly report snapshots to use explicit report facts and candles.
-- Add SQLite-only and PostgreSQL-backed composition tests, including conflicting SQLite data and empty-active-store no-fallback cases.
-- Extend the existing OpenAPI composition test only within its weekly endpoint assertion.
-
-**Validation commands**
-
-Run after all implementation tasks complete; this is the validate phase, not a standalone implementation task:
-
-```bash
-pnpm -r typecheck
-pnpm run test
-pnpm run lint
-pnpm run build
-pnpm run boundaries
-pnpm run format
-DATABASE_URL=postgres://test:test@localhost:5432/regime_engine_test PG_SSL=false pnpm run test:pg
+```ts
+export interface EvidenceBundleRepositoryPort {
+  append(input: {
+    bundle: EvidenceBundleV1;
+    payloadCanonical: string;
+    payloadHash: string;
+    receivedAtUnixMs: number;
+  }): Promise<
+    | { status: "created"; receipt: EvidenceBundleReceipt }
+    | { status: "already_ingested"; receipt: EvidenceBundleReceipt }
+  >;
+}
 ```
 
-Expected: every command exits zero. The PostgreSQL command requires the repository's test database; inability to connect is an environment blocker, not permission to mark PostgreSQL coverage complete.
+Export a pure `evidenceScopeKey(scope)` helper using unambiguous tagged length-prefixed components, for example `pair`, `whirlpool:<address>`, `wallet:<address>`, and `position:<wallet-length>:<wallet><pool-length>:<pool><position-length>:<position>`. Scope values remain case-sensitive and are never inferred from features.
 
-**Risk areas**
+- [ ] **Step 3: Implement append in the Postgres adapter in the same task**
 
-- The shared closed-candle delay can intentionally exclude the last nominal bar; boundary fixtures must calculate expectations through `buildRegimeCandleReadPlan`, not hard-code a looser report cutoff.
-- PostgreSQL numeric values may arrive as strings; the existing null guard and `Number(...)` conversion must remain common to both read methods.
-- Reports spanning several market feeds still select one baseline feed. Preserving the first complete chronological request avoids an unrequested multi-feed redesign.
-- Existing snapshots may change because old SQLite/inline prices were wrong. Accept only differences explained by the new explicit canonical fixtures; public fields and Markdown structure must not drift.
-- Malformed legacy requests may lack the modern market shape. They remain in totals/config ordering but cannot select a feed unless all required fields and a supported timeframe are present.
-- Large report ranges can return many candles. The bounded indexed query is intentional; adding a guessed limit would silently truncate results.
-- PostgreSQL tests share a database. Unique feed keys and scoped cleanup are required to avoid deleting another suite's rows.
+Create `createPostgresEvidenceBundleRepository(db): EvidenceBundleRepositoryPort`. Derive every scalar column from the already-validated bundle. Insert with conflict-do-nothing on `(schemaVersion, source.publisher, source.sourceId, runId)`, returning the row. When no row is returned, read the winning identity: equal hash (and defensively equal canonical text) returns `already_ingested`; different bytes throw `EvidenceRunConflictError`; missing winner throws the append-only invariant error. Return row ID, stored hash, and stored original receipt time. Expose no update or delete operation.
 
-**Stop conditions**
+- [ ] **Step 4: Run focused append verification**
 
-- Stop if repository types show that plan requests cannot provide `symbol`, `source`, `network`, `poolAddress`, and supported `timeframe` without changing the public request contract; revise the design rather than inventing feed defaults.
-- Stop if implementing the window read requires a schema migration or index change not described by the design; document the query-plan evidence and obtain scope approval.
-- Stop if any existing `CandleReadPort` implementation or fake is discovered beyond the SQLite adapter, PostgreSQL adapter, and application fake; add it to Task 1 before changing the interface.
-- Stop if preserving the weekly response schema, formulas, deterministic ordering, or 400/500 error taxonomy proves incompatible with explicit report inputs.
-- Stop if a proposed fix catches candle-store failures, probes a second store, reuses inline request candles, or reads `candle_revisions` from the weekly SQLite ledger adapter.
-- Stop before claiming PostgreSQL acceptance if the configured test database cannot run the new adapter and composition suites.
+Run: `pnpm vitest run src/adapters/postgres/__tests__/postgresEvidenceBundleRepository.append.test.ts`
+
+Expected: PASS when Postgres is configured and SKIP otherwise.
+
+Run: `pnpm exec eslint src/application/ports/evidenceBundleRepositoryPort.ts src/adapters/postgres/postgresEvidenceBundleRepository.ts src/adapters/postgres/__tests__/postgresEvidenceBundleRepository.append.test.ts`
+
+Expected: PASS with zero warnings.
+
+- [ ] **Step 5: Commit the append port and its only adapter atomically**
+
+```bash
+git add src/application/ports/evidenceBundleRepositoryPort.ts src/adapters/postgres/postgresEvidenceBundleRepository.ts src/adapters/postgres/__tests__/postgresEvidenceBundleRepository.append.test.ts
+git commit -m "m58: append immutable evidence bundles"
+```
 
 ## Repository Targets
 
 ### Expected Files
-- README.md
-- architecture.md
-- documentation.md
-- src/adapters/http/openapi.ts
-- src/composition/__tests__/buildApp.e2e.test.ts
-- docs/solutions/best-practices/composition-root-pattern-2026-05-08.md
+- src/application/ports/evidenceBundleRepositoryPort.ts
+- src/adapters/postgres/postgresEvidenceBundleRepository.ts
+- src/adapters/postgres/__tests__/postgresEvidenceBundleRepository.append.test.ts
 
 ## Validation Commands
 
 ```bash
-pnpm exec vitest run src/composition/__tests__/buildApp.e2e.test.ts -t "serves /v1/openapi.json"
-pnpm exec prettier --check README.md architecture.md documentation.md src/adapters/http/openapi.ts src/composition/__tests__/buildApp.e2e.test.ts docs/solutions/best-practices/composition-root-pattern-2026-05-08.md
-pnpm exec eslint src/adapters/http/openapi.ts src/composition/__tests__/buildApp.e2e.test.ts
+pnpm vitest run src/adapters/postgres/__tests__/postgresEvidenceBundleRepository.append.test.ts
+pnpm exec eslint src/application/ports/evidenceBundleRepositoryPort.ts src/adapters/postgres/postgresEvidenceBundleRepository.ts src/adapters/postgres/__tests__/postgresEvidenceBundleRepository.append.test.ts
 ```
+
+## Behavioral Invariants
+
+You MUST implement the following behavioral invariants as named tests first (TDD):
+
+- **new source run creates once**: An unseen idempotency tuple creates one immutable row and returns its receipt. (Test: `creates one immutable row for a new source run`)
+- **identical replay is idempotent**: A matching identity and canonical payload returns already_ingested without replacing payload or receipt time. (Test: `returns already_ingested for an identical source run replay`)
+- **changed replay conflicts**: A matching identity with a different payload throws EVIDENCE_RUN_CONFLICT and preserves the first row. (Test: `throws EVIDENCE_RUN_CONFLICT for a changed source run replay`)
+- **missing conflict winner is an invariant failure**: A losing insert that cannot read the winning row fails visibly rather than claiming idempotency. (Test: `fails when a losing append cannot load the winning row`)
 

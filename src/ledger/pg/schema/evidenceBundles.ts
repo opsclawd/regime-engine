@@ -20,7 +20,7 @@ export const evidenceBundles = regimeEngine.table(
     sourceId: varchar("source_id", { length: 256 }).notNull(),
     runId: varchar("run_id", { length: 256 }).notNull(),
     pair: varchar("pair", { length: 32 }).notNull(),
-    scopeKey: varchar("scope_key", { length: 64 }).notNull(),
+    scopeKey: varchar("scope_key", { length: 256 }).notNull(),
     correlationId: varchar("correlation_id", { length: 64 }).notNull(),
     asOfUnixMs: bigint("as_of_unix_ms", { mode: "number" }).notNull(),
     createdAtUnixMs: bigint("created_at_unix_ms", { mode: "number" }).notNull(),
