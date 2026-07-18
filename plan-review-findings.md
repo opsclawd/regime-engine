@@ -2,9 +2,10 @@
 
 ## verdict
 
-p1_found
+pass
 
 ## findings
 
-- [P1] `task-manifest.json:Task 3` | "The task modifies `sqliteWeeklyReportReadAdapter.ts` and changes the return type of its exported adapter factory function to `WeeklyReportLedgerReadPort` instead of `WeeklyReportReadPort`, but this exported API signature change is not declared in the task manifest's `signature_changes` list." | grounded
-- [P1] `task-manifest.json:Task 3` | "The task modifies `fakeWeeklyReportReadPort.ts` to implement the new port, altering the required member shape or class name of the exported fake, but this exported API signature change is not declared in the task manifest." | grounded
+- [P1] `task-manifest.json:Task 4` | "Task 4 dictates exporting EvidenceBundleInsert but fails to declare it in the signature_changes manifest array, representing an undeclared API surface change." | grounded | addressed
+- [P1] `task-manifest.json:Task 5` | "Task 5 exports EvidenceScopeQuery, EvidenceSourceFilter, EvidenceRunConflictError, and receipt types, but fails to declare them in the signature_changes manifest array." | grounded | addressed
+- [P1] `task-manifest.json:Task 2` | "Task 2 exports validateEvidenceBundleV1 which returns EvidenceValidationResult, requiring the export of EvidenceValidationResult and EvidenceValidationIssue types, yet they are missing from signature_changes." | grounded | addressed

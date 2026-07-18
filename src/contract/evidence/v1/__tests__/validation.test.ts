@@ -297,24 +297,24 @@ describe("EvidenceBundle v1 validation", () => {
 
   describe("programmatic edge cases", () => {
     it("should reject NaN in numeric fields", () => {
-      const bundle = JSON.parse(fixtures.valid.deterministicOnly);
-      (bundle as Record<string, unknown>).createdAt = "NaN";
+      const bundle = JSON.parse(fixtures.valid.deterministicOnly) as Record<string, unknown>;
+      (bundle.assessment as Record<string, unknown>).overallConfidenceBps = NaN;
       const result = validateEvidenceBundleV1(bundle);
       expect(result.ok).toBe(false);
     });
 
     it("should reject Infinity in numeric fields", () => {
-      const bundle = JSON.parse(fixtures.valid.deterministicOnly);
-      (bundle as Record<string, unknown>).createdAt = "Infinity";
+      const bundle = JSON.parse(fixtures.valid.deterministicOnly) as Record<string, unknown>;
+      (bundle.assessment as Record<string, unknown>).overallConfidenceBps = Infinity;
       const result = validateEvidenceBundleV1(bundle);
       expect(result.ok).toBe(false);
     });
 
-    it("should reject negative zero", () => {
-      const bundle = JSON.parse(fixtures.valid.deterministicOnly);
-      (bundle as Record<string, unknown>).createdAt = "-0";
+    it("should accept negative zero as valid (JSON Schema treats -0 as equal to 0)", () => {
+      const bundle = JSON.parse(fixtures.valid.deterministicOnly) as Record<string, unknown>;
+      (bundle.assessment as Record<string, unknown>).overallConfidenceBps = -0;
       const result = validateEvidenceBundleV1(bundle);
-      expect(result.ok).toBe(false);
+      expect(result.ok).toBe(true);
     });
   });
 

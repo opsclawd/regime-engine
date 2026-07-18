@@ -1,407 +1,662 @@
-# Canonical Weekly Report Candle Reads
+# EvidenceBundle v1 Contract and Persistence
 
-**Issue:** #55  
-**Status:** Proposed design  
-**Date:** 2026-07-16
+**Issue:** #58
+
+**Status:** Proposed design
+
+**Date:** 2026-07-17
 
 ## Problem and motivation
 
-The service currently has two candle authorities in one process. `buildApplication`
-selects a `CandleReadPort` and `CandleWritePort` from Postgres when `DATABASE_URL`
-is configured, otherwise from SQLite. Candle ingestion, `GET /v1/regime/current`, and
-position-scoped `POST /v1/plan` therefore agree on a store. In contrast,
-`createSqliteWeeklyReportReadAdapter` calls `generateWeeklyReport`, which queries
-the SQLite ledger's `candle_revisions` table directly.
+The intelligence engine needs a durable way to publish what it observed and
+derived without becoming a second policy authority. The current external
+insight path accepts a final recommendation and stores it in `clmm_insights`.
+That makes Regime Engine a mailbox and allows an external research process,
+including an LLM, to author fields that should be controlled by Regime Engine's
+deterministic policy and safety rules.
 
-In the deployed Postgres topology, valid candles can exist in
-`regime_engine.candle_revisions` while the report sees an empty or stale SQLite
-table. `computeBaselines` then returns initial NAV for SOL HODL and DCA, producing
-a plausible but incorrect report. This is more dangerous than a hard failure
-because regime and plan outputs can use current market data while analytics
-silently describe a different market history.
+The replacement boundary is an immutable `EvidenceBundle`: the intelligence
+engine authors structured evidence; Regime Engine validates and stores the
+accepted bundle; later issues select evidence and synthesize `PolicyInsight`;
+`clmm-v2` retains execution authority. The contract must be usable by the first
+deterministic-only publisher. Context collectors and an LLM brief are useful
+enrichments, not prerequisites. Treating their absence as zero or success would
+fabricate evidence, while requiring them would block the deterministic vertical
+slice.
 
-The direct report query also differs from the canonical adapters in important
-ways:
+This issue also establishes the cross-repository compatibility surface. A prose
+shape or TypeScript-only validator is insufficient: the intelligence repository
+must be able to validate payloads and reproduce hashes without importing Regime
+Engine code.
 
-- It keys by `source`, `network`, and `poolAddress`, but omits `symbol` and
-  `timeframe`.
-- It loads revisions in ascending order and relies on later `Map` writes for
-  deduplication instead of expressing the shared latest-revision-per-slot rule.
-- It can still let inline candles from legacy plan requests override stored
-  candles in `computeBaselines`.
-- It treats the SQLite `candle_revisions` table as an implicit fallback even
-  when application wiring selected Postgres.
+## Existing architecture and constraints
 
-Correcting the store selection and these semantic differences makes candle
-history have one authority across planning, regime classification, and reporting.
+The proposed design builds on these repository patterns:
+
+- `src/contract/v1/canonical.ts` recursively sorts object keys, preserves array
+  order, normalizes `-0`, rejects non-finite numbers, and produces compact JSON;
+  `src/contract/v1/hash.ts` computes lowercase SHA-256 hex.
+- The v1 insight and v2 S/R contracts use strict runtime validation, explicitly
+  distinguish unsupported schema versions, and reject unknown properties.
+- `InsightsStore` uses Postgres, stores the canonical payload and hash, and uses
+  a unique `(source, runId)` index plus `ON CONFLICT DO NOTHING` to make racing
+  identical writes idempotent and different writes deterministic conflicts.
+- Current reads use explicit ordering and history reads are bounded. Truth rows
+  are append-only.
+- New orchestration is moving behind application ports and use cases, with
+  Postgres/Drizzle as an outer adapter. New evidence persistence should follow
+  that boundary rather than exposing a concrete ledger store to future
+  selection code.
+- The repository currently has no normative standalone JSON Schema or schema
+  code-generation pipeline. Adding one is justified here because this contract
+  is explicitly consumed and reproduced by another repository.
 
 ## Goals
 
-- Make weekly SOL HODL and DCA baselines read candles through the active
-  `CandleReadPort` selected by the composition root.
-- Preserve SQLite-only local and test behavior when `DATABASE_URL` is absent.
-- Use the complete logical market identity: `symbol`, `source`, `network`,
-  `poolAddress`, and canonical source `timeframe`.
-- Read only candles that are closed as of the report window end, using the same
-  cutoff semantics as the regime and plan paths.
-- Preserve latest-revision-per-slot ordering and deterministic report output.
-- Remove any silent SQLite or inline-request candle fallback when the configured
-  candle source has no rows.
-- Preserve the public weekly report request and response contracts.
+- Publish one strict, versioned, machine-readable `evidence-bundle.v1` wire
+  contract and derived TypeScript types.
+- Make deterministic-only bundles valid while representing absent context and
+  research explicitly.
+- Keep deterministic features, contextual claims, and an optional LLM research
+  brief structurally and semantically separate.
+- Define unambiguous source/run idempotency, pair/scope identity, timestamps,
+  units, status/value relationships, lineage, ordering, and canonical hashing.
+- Persist the complete accepted bundle atomically and append-only, separately
+  from `clmm_insights` and future synthesized policy records.
+- Support exact-scope latest reads and deterministic, bounded history reads for
+  pair-, Whirlpool-, wallet-, and position-scoped evidence.
+- Publish fixtures, negative cases, hash vectors, artifact paths, and the
+  schema's SHA-256 so downstream work can proceed independently.
 
 ## Non-goals
 
-- Changing plan generation, candle ingestion, aggregation, classification, or
-  freshness policy.
-- Changing the weekly report response schema or adding candle-source metadata.
-- Moving plan, execution-result, or CLMM-event ledgers from SQLite to Postgres.
-- Supporting several market feeds in one report or combining their price series.
-- Adding a market-data provider fallback, cross-database retry, or store probing.
-- Backfilling or copying historical SQLite candles into Postgres.
-- Recomputing historical plans or execution results.
-
-## Current architecture
-
-```text
-buildStoreContext
-  -> SQLite ledger always
-  -> Postgres context when DATABASE_URL is set
-
-buildApplication
-  -> candleReadPort: Postgres or SQLite
-  -> ingestCandles/getCurrentRegime/generatePlan: selected candle port
-  -> getWeeklyReport: SQLite weekly adapter only
-
-SQLite weekly adapter
-  -> generateWeeklyReport
-       -> SQLite plans, plan_requests, execution_results
-       -> SQLite candle_revisions               <-- split-brain read
-       -> computeBaselines
-```
-
-The application layer already establishes the desired pattern: use cases own
-orchestration, depend on ports, and remain independent of concrete databases.
-The composition root is the only place that chooses adapters. The report fix
-should follow that pattern instead of teaching report code how to inspect
-`DATABASE_URL`.
+- HTTP routes, authentication, request handlers, or OpenAPI changes; those
+  belong to #59.
+- Evidence scoring, source ranking, family weighting, or selection policy; those
+  belong to #60.
+- `PolicyInsight` synthesis, recommendation fields, CLMM policy, or deterministic
+  guard evaluation; those belong to #61.
+- Removing the legacy final-insight write path; that is sequenced separately.
+- Implementing intelligence collectors, contextual packs, LLM prompts, or the
+  publisher client.
+- Changing `clmm-v2`, executing transactions, or handling wallet authority.
+- Migrating historical `clmm_insights` into evidence records or mutating an
+  accepted v1 record to a later contract version.
+- Generalizing application behavior beyond the defined pair. The identity shape
+  is future-compatible, but v1 accepts only `SOL/USDC`.
 
 ## Design alternatives
 
-### 1. Inject the active candle port into the existing SQLite weekly adapter
+### 1. Zod as the source of truth with a separately maintained JSON Schema
 
-The adapter could receive both `LedgerStore` and `CandleReadPort`, then fetch
-candles before invoking `generateWeeklyReport`.
+This follows the current contract style and minimizes runtime change. However,
+it creates two authoritative descriptions of a cross-repository contract.
+Conditional rules such as status/value compatibility and missing-family
+warnings are precisely where those descriptions would drift. Fixture tests can
+reduce, but not eliminate, that risk. This is not recommended.
 
-This is the smallest wiring change, but it makes an infrastructure adapter
-coordinate another port and either duplicates the plan-request query needed to
-choose a feed or pushes asynchronous port orchestration into `src/report`. It
-also leaves the nominal application use case as a pass-through. This conflicts
-with the repository's established use-case boundary and is not recommended.
+### 2. Normalize every feature and contextual claim into relational tables
 
-### 2. Add a Postgres-specific weekly report adapter
+This would make ad hoc feature queries convenient, but it expands the migration
+and transaction surface, couples storage to every v1 evidence family, and makes
+it harder to prove that the accepted bundle can be reconstructed byte-for-byte.
+Selection consumes bundles atomically, not arbitrary joins. This is not
+recommended for v1.
 
-A second adapter could duplicate the report query and read Postgres candles
-directly when `DATABASE_URL` is set.
+### 3. Normative JSON Schema with generated types and atomic bundle storage
 
-This would fix the immediate deployment symptom, but it preserves two report
-implementations, duplicates latest-revision and feed semantics, and creates the
-silent backend-selection behavior the issue explicitly rejects. It is not
-recommended.
+Check in one strict JSON Schema, generate TypeScript declarations from it, and
+validate at runtime with a JSON Schema 2020-12 validator. Store each accepted
+bundle as a complete JSONB value plus canonical text, hash, and indexed scalar
+identity columns. This adds a small validator/code-generation toolchain, but it
+provides one portable authority, supports JSON Schema conditional constraints,
+and matches the append-only unit used by later selection. This is the
+recommended approach.
 
-### 3. Separate report-fact reads from candle reads and coordinate in the use case
+## Proposed contract
 
-Refine the reporting port so the SQLite adapter supplies report facts only
-(plans, plan requests, and execution results). Inject that port and the active
-`CandleReadPort` into `GetWeeklyReportUseCase`. The use case chooses the baseline
-feed, requests its closed candle window, and passes both inputs to deterministic
-report rendering.
+### Normative artifact and strictness
 
-This is the recommended approach. It is a somewhat larger refactor, but it
-puts orchestration in the same layer as regime and plan orchestration, keeps
-backend selection in `buildApplication`, makes store choice directly testable,
-and removes candle SQL from reporting.
+`contracts/evidence-bundle/v1/evidence-bundle.schema.json` is the normative
+contract, using JSON Schema draft 2020-12 with a stable `$id`. Every object sets
+`additionalProperties: false`; every property is either required or explicitly
+nullable. There are no optional properties whose absence has ambiguous meaning.
+The root `schemaVersion` is the exact literal `evidence-bundle.v1`.
 
-## Proposed design
+Use pinned `ajv` with its 2020-12 entry point and `ajv-formats` for runtime
+validation, and `json-schema-to-typescript` for declaration generation. The
+generator is a build tool only; Ajv plus the semantic pass is the acceptance
+authority. Both commands are exposed as deterministic package scripts and a
+check-mode script runs in the quality gate.
 
-### 1. Make the weekly ledger port return report facts
+`src/contract/evidence/v1/types.generated.ts` is generated from that schema and
+contains a header with the schema path and schema SHA-256. Runtime validation
+lives in `src/contract/evidence/v1/validate.ts` and compiles the same checked-in
+schema. Semantic checks that JSON Schema cannot express clearly—cross-array ID
+uniqueness, timestamp ordering, reference resolution, and coverage/warning
+agreement—run immediately after structural validation and return deterministically
+sorted field-path errors. Callers cannot construct persistence input without a
+successfully validated `EvidenceBundleV1`.
 
-Replace the high-level `WeeklyReportReadPort.getWeeklyReport()` abstraction with
-a narrowly named ledger-data port, such as `WeeklyReportLedgerReadPort`. Its
-operation accepts `from` and `to` and returns a typed `WeeklyReportData` value:
-
-- parsed report window (`fromUnixMs`, `toUnixMs`);
-- ordered plan records;
-- ordered plan-request records;
-- ordered execution-result records.
-
-The SQLite adapter remains responsible for its existing three ledger queries
-and stable `ORDER BY` clauses. It must not read `candle_revisions`. Invalid date
-ranges continue to become `ReportRangeApplicationError`, preserving HTTP 400
-behavior. Malformed persisted JSON remains an unexpected error and therefore
-preserves the existing HTTP 500 behavior.
-
-The returned records should be domain-shaped rather than leaking SQLite column
-names or raw database handles. This keeps `GetWeeklyReportUseCase` independent of
-`LedgerStore` and allows `generateWeeklyReport` to operate on explicit inputs.
-
-### 2. Add an explicit canonical candle-window operation
-
-Extend `CandleReadPort` with a window-shaped operation, for example:
+The root shape is conceptually:
 
 ```ts
-getCandlesForFeedWindow({
-  symbol,
-  source,
-  network,
-  poolAddress,
-  timeframe,
-  fromUnixMs,
-  closedCandleCutoffUnixMs
-}): Promise<CandleRow[]>
+interface EvidenceBundleV1 {
+  schemaVersion: "evidence-bundle.v1";
+  pair: "SOL/USDC";
+  scope: EvidenceScope;
+  source: SourceIdentity;
+  runId: string;
+  correlationId: string;
+  createdAt: CanonicalTimestamp;
+  asOf: CanonicalTimestamp;
+  freshUntil: CanonicalTimestamp;
+  expiresAt: CanonicalTimestamp;
+  deterministicFeatures: DeterministicFeature[];
+  contextualEvidence: ContextualEvidence;
+  researchBrief: ResearchBrief | null;
+  sourceReferences: SourceReference[];
+  assessment: BundleAssessment;
+  provenance: BundleProvenance;
+}
 ```
 
-Both SQLite and Postgres adapters implement it with the same invariants already
-used by `getLatestCandlesForFeed`:
+Strings must already be trimmed, are non-empty and length-bounded, and use stable
+label syntax where they are identifiers. Leading or trailing whitespace is
+rejected rather than normalized. Arrays have explicit maximum sizes to bound
+validation and row size. Unknown enum values require a new schema version.
 
-- filter by the complete feed key, including `symbol` and `timeframe`;
-- include `unix_ms >= fromUnixMs` and
-  `unix_ms <= closedCandleCutoffUnixMs`;
-- select the latest revision for each `unix_ms` by
-  `source_recorded_at_unix_ms DESC, id DESC`;
-- return one row per slot ordered by `unix_ms ASC`.
+Global bounds are part of the schema, not implementation defaults:
 
-An explicit range operation is preferable to calculating a large `limit` for
-`getLatestCandlesForFeed`. The endpoint currently accepts arbitrary valid date
-ranges despite its weekly name, so a guessed limit can truncate long reports or
-cause excessive over-read. Regime and plan continue using the existing latest-N
-operation unchanged; all three paths still share the same port and concrete
-adapters.
+- label, feature, evidence, reference, source, and brief IDs are 1–128 Unicode
+  code points; `runId` and `correlationId` are 1–256;
+- versions, model IDs, warning codes, and calculator names are 1–128;
+- addresses and `positionId` are 1–128 opaque characters;
+- locators are 1–2,048, claim/finding/warning text is 1–2,048, and the research
+  summary is 1–4,096;
+- deterministic features number 1–128; each contextual family 0–64; source
+  references 1–256; bundle warnings 0–64; feature warnings 0–16; feature input
+  lineage 1–64; brief findings and uncertainties 0–32 each; brief evidence IDs
+  1–256; and upstream run IDs 0–128.
 
-The two adapter methods should share private query/result-mapping helpers where
-that reduces drift, while keeping backend-specific SQL inside their adapters.
+Arrays are required even when their minimum is zero. Arrays described as sets
+reject duplicate scalar values or duplicate identity IDs. Their order remains
+part of the payload and hash; no validator or persistence adapter reorders them.
 
-### 3. Let `GetWeeklyReportUseCase` coordinate the sources
+### Identity and scope
 
-`createGetWeeklyReportUseCase` receives:
+`source` contains `publisher` (literal
+`sol-usdc-clmm-intelligence` for v1), `sourceId` (stable logical pipeline ID),
+and `sourceVersion` (deployed producer version). `runId` identifies one immutable
+publisher run. `correlationId` traces the run across collection and publication
+and is not an idempotency key.
+
+The idempotency identity is the tuple
+`(schemaVersion, source.publisher, source.sourceId, runId)`. There is no separate
+free-form `idempotencyKey` field because it could disagree with the source/run
+identity. Documentation names this tuple the canonical idempotency key. An exact
+identity replay with the same recomputed payload hash is idempotent; the same
+identity with any different accepted field is a conflict. `correlationId` may be
+reused across deliberate reruns with different `runId` values.
+
+`scope` is a strict discriminated union:
+
+- `{ kind: "pair" }`
+- `{ kind: "whirlpool", network: "solana-mainnet", whirlpoolAddress }`
+- `{ kind: "wallet", network: "solana-mainnet", walletAddress }`
+- `{ kind: "position", network: "solana-mainnet", walletAddress,
+whirlpoolAddress, positionId }`
+
+Addresses and `positionId` are opaque, case-sensitive bounded strings; this
+contract does not perform RPC ownership checks. The persistence layer derives a
+canonical `scopeKey` from the validated discriminated union for indexing. Scope
+identity is never inferred from feature contents.
+
+### Time and lifecycle semantics
+
+All wire timestamps use one canonical UTC representation:
+`YYYY-MM-DDTHH:mm:ss.sssZ`. Offsets, missing milliseconds, leap-second strings,
+and invalid calendar dates are rejected rather than normalized after receipt.
+The semantic validator requires:
 
 ```text
-weeklyReportLedgerReadPort
-candleReadPort
+asOf <= createdAt < freshUntil <= expiresAt
 ```
 
-For each request it:
+`asOf` is the evidence cutoff, `createdAt` is publisher assembly time,
+`freshUntil` is the publisher-declared end of normal freshness, and `expiresAt`
+is the hard usability boundary. Regime Engine adds `receivedAt` from its injected
+clock; it is storage metadata and is not part of the publisher payload or hash.
 
-1. Reads the ordered ledger facts and parsed window.
-2. Scans plan requests in their existing chronological order for the first
-   request with a complete market identity: `symbol`, `source`, `network`,
-   `poolAddress`, and supported requested `timeframe`.
-3. Builds the existing regime candle read plan with the request's timeframe and
-   `nowUnixMs = window.toUnixMs`.
-4. Reads the selected feed from `window.fromUnixMs` through
-   `readPlan.sourceCutoffUnixMs`, using `readPlan.sourceTimeframe`.
-5. Passes the ledger facts and returned candles to the report renderer.
+At query time, Regime Engine derives, without updating the truth row:
 
-`buildRegimeCandleReadPlan` is reused only to establish canonical source
-timeframe and closed-candle cutoff policy. A requested `1h` feed therefore reads
-the canonical stored `15m` price series, matching current ingestion and the
-source read performed by regime and plan paths. Weekly baseline math needs
-closing prices rather than derived 1h indicator bars, so it does not aggregate
-the series to 1h.
+- `FRESH` when `now <= freshUntil`;
+- `STALE` when `freshUntil < now <= expiresAt`;
+- `EXPIRED` when `now > expiresAt`.
 
-If there are no plan requests, or no request has a complete supported feed, the
-use case skips the candle read. Existing baseline behavior remains: no plans
-produces all-zero baselines; plans without canonical candle data leave SOL HODL
-and DCA at initial NAV while USDC carry is still computed. It must not query a
-different backend as a fallback.
+These inclusive boundaries are test vectors. A stale bundle remains observable;
+whether it is selectable is deferred to #60. Clock-derived lifecycle state is
+response metadata, never persisted into the accepted bundle.
 
-### 4. Make report rendering consume explicit canonical candles
+### Deterministic features
 
-Refactor `generateWeeklyReport` to receive typed report facts and a canonical
-candle series instead of a `LedgerStore`. It remains responsible for the
-existing deterministic calculations and Markdown/JSON rendering.
+`deterministicFeatures` contains at least one and at most 128 items. Each item is
+a strict discriminated union with:
 
-Change `computeBaselines` from optional `fallbackCandles` plus legacy
-`request.market.candles` to one explicit candle input. Plan requests remain the
-source of initial NAV and baseline configuration, but never of price history.
-This enforces the issue's one-candle-authority rule and prevents old inline data
-from overriding active-store revisions.
+- `featureId`: unique within the bundle;
+- `family`: `market_state | price_quality | clmm_economics | position_state |
+liquidity | risk`;
+- `featureKind`: `number | boolean | category`;
+- `status`: `available | unavailable | invalid`;
+- `value` and `unit` linked to kind/status;
+- `observedAt`, `freshUntil`, and `confidenceBps`;
+- `calculator: { name, version }`;
+- non-empty `inputLineage`, containing referenced source-reference IDs or prior
+  deterministic feature IDs;
+- `warnings`, an ordered array of stable warning codes.
 
-The baseline module continues to filter candles to the parsed report window as
-a defensive invariant, sort by `unixMs`, and preserve current rounding, DCA,
-HODL, and USDC carry formulas. The public summary and Markdown remain unchanged.
+For `available`, number values are finite JSON numbers, booleans are JSON
+booleans, and categories are bounded snake-case strings. Numeric units are a
+closed enum: `usd | sol | usdc | percent | basis_points | ratio | seconds |
+milliseconds | count | price_usdc_per_sol`. Boolean and category values use
+`boolean` and `category` respectively. `count` values are non-negative integers;
+`seconds` and `milliseconds` are non-negative; ratios are dimensionless.
+Percentage and basis-point feature values may be signed because returns, funding,
+and deltas can be negative. Feature-specific ranges belong to the versioned
+calculator documentation and later selection policy.
 
-### 5. Wire the already-selected port once
+For `unavailable` or `invalid`, both `value` and `unit` are exactly `null`,
+`confidenceBps` is 0, and at least one warning is required. An absent metric is
+therefore never encoded as numeric zero. `observedAt` and `freshUntil` are null
+for `unavailable`; `invalid` may retain the attempted observation timestamps.
+Available feature timestamps must satisfy `observedAt <= asOf <= freshUntil`.
 
-`buildApplication` continues to select `candleReadPort` exactly once:
+`confidenceBps` is always an integer from 0 through 10,000. This bounded field is
+distinct from a signed feature whose unit is `basis_points`. Basis points avoid
+the ambiguity of a floating confidence fraction and make cross-language vectors
+stable.
+
+### Contextual evidence
+
+`contextualEvidence` is always present and has exactly these array properties:
+
+- `supportResistance`
+- `flows`
+- `derivatives`
+- `events`
+- `newsRegulatory`
+
+Every array may be empty and is bounded to 64 claims. A claim has a unique
+`evidenceId`, family-specific `kind` enum, bounded factual `claim`,
+`direction: bullish | bearish | neutral | mixed | unknown`, `confidenceBps`,
+`observedAt`, nullable `expiresAt`, one or more `sourceReferenceIds`, and
+`provenanceMethod: collected | derived | human_authored`. Claims cannot contain
+recommendation, action, allocation, range-width, or final-policy fields.
+
+Array order is publisher-significant and preserved in canonical JSON. Publishers
+must emit stable order, recommended as `evidenceId` ascending. Regime Engine does
+not reorder accepted payloads because doing so would make the stored payload
+differ from what the publisher signed or hashed.
+
+### Research brief
+
+`researchBrief` is either `null` or a strict object containing `briefId`,
+`generatedAt`, `summary`, bounded `keyFindings`, bounded `uncertainties`,
+`model: { provider, modelId, modelVersion }`, `promptVersion`, and non-empty
+`sourceEvidenceIds`. Every referenced ID must resolve to a deterministic feature
+or contextual claim in the same bundle.
+
+The brief has no deterministic metric values, recommended action, risk decision,
+CLMM posture, allocation, or execution fields. It summarizes bounded evidence
+and can never be the only source of a deterministic feature.
+
+### References, assessment, coverage, and provenance
+
+`sourceReferences` is an array of unique records containing `referenceId`,
+`sourceType` (closed enum including API, database, chain, document, and internal
+bundle), `locator`, nullable `publishedAt`, required `observedAt`, and nullable
+lowercase SHA-256 `contentHash`. All lineage/reference IDs used elsewhere must
+resolve within this array or, where explicitly allowed, to a feature in the same
+bundle. Extra unreferenced source records are allowed for audit completeness.
+
+`assessment` contains:
+
+- `overallConfidenceBps`;
+- `quality: complete | partial | degraded`;
+- `coverage`, with exactly one status for `deterministic`, each of the five
+  contextual families, and `researchBrief`;
+- an ordered `warnings` array of strict objects `{ code, message,
+affectedFamilies }`.
+
+Coverage values are `available | partial | unavailable | not_applicable`.
+`deterministic` cannot be `unavailable` because at least one deterministic
+feature is required. Each empty contextual array must have coverage
+`unavailable` or `not_applicable`; a non-empty family cannot be `unavailable`.
+`researchBrief: null` requires `coverage.researchBrief = "unavailable"` and a
+`RESEARCH_BRIEF_UNAVAILABLE` warning. Any unavailable contextual family requires
+an affected warning; a deterministic-only fixture uses the aggregate
+`CONTEXTUAL_EVIDENCE_UNAVAILABLE` warning. Quality cannot be `complete` if any
+required coverage entry is `unavailable`. These rules are semantic validation,
+not scoring policy.
+
+`provenance` contains publisher-owned `pipelineVersion`, `gitCommit`,
+`environment: production | staging | development | test`, and ordered
+`upstreamRunIds`. It describes how the payload was assembled without claiming
+Regime Engine accepted or selected it.
+
+## Canonical serialization and hashing
+
+The canonical payload is the entire successfully validated publisher payload;
+there is no `payloadHash` field in the request, avoiding a circular hash. The
+algorithm is the repository's existing canonical JSON behavior:
+
+1. Serialize objects with keys in ascending UTF-16 code-unit order, matching
+   JavaScript `Object.keys(value).sort()`.
+2. Preserve array order exactly.
+3. Use compact JSON with no insignificant whitespace.
+4. Serialize finite numbers using ECMAScript `JSON.stringify` semantics after
+   normalizing negative zero to zero.
+5. Serialize strings, booleans, and null as JSON primitives; reject unsupported
+   values.
+6. Compute SHA-256 over the UTF-8 bytes and encode lowercase hexadecimal.
+
+Because timestamps are already canonical on the wire, hashing performs no
+hidden timestamp transformation. Regime Engine computes `payloadHash` after
+validation and returns/persists it as Regime-owned receipt metadata. The
+publisher may precompute the same value for diagnostics but does not supply an
+authoritative hash.
+
+Arrays are never sorted by the canonicalizer. Arrays representing sets must be
+emitted in documented stable order: IDs ascending for features, claims, and
+references; warning code then message ascending; upstream run ID ascending.
+Semantic validation rejects duplicate IDs and duplicate set members, but does
+not silently reorder them. A different order is a different payload and hash.
+
+Hash vectors include the canonical payload string, UTF-8 byte length, expected
+SHA-256, schema SHA-256, and examples covering non-ASCII strings, negative zero,
+numeric exponent formatting, empty contextual arrays, and a null brief.
+
+## Persistence model
+
+### Table
+
+Add an append-only Postgres table `regime_engine.evidence_bundles` through a new
+Drizzle migration. One row represents one accepted bundle:
 
 ```text
-DATABASE_URL set   -> Postgres candle adapter
-DATABASE_URL unset -> SQLite candle adapter
+id                         bigserial primary key
+schema_version             varchar not null
+pair                       varchar not null
+scope_kind                 varchar not null
+scope_key                  varchar not null
+source_publisher           varchar not null
+source_id                  varchar not null
+source_version             varchar not null
+run_id                     varchar not null
+correlation_id             varchar not null
+as_of_unix_ms              bigint not null
+created_at_unix_ms         bigint not null
+fresh_until_unix_ms        bigint not null
+expires_at_unix_ms         bigint not null
+received_at_unix_ms        bigint not null
+payload_json               jsonb not null
+payload_canonical          text not null
+payload_hash               char(64) not null
 ```
 
-It constructs the SQLite weekly ledger adapter separately and passes both ports
-to `createGetWeeklyReportUseCase`. There is no conditional report wiring and no
-SQLite fallback branch inside the use case, report module, or HTTP handler.
+`payload_json` is the complete validated publisher payload for efficient typed
+rehydration. `payload_canonical` is the exact canonical string used for the hash
+and cross-repository audit. Scalar columns are deliberately duplicated only for
+identity, lifecycle, and indexed query predicates; they are derived from the
+validated payload in one adapter operation. No feature or contextual child rows
+are required in v1.
 
-The HTTP route and handler remain unchanged because the use-case input and output
-contracts do not change. `ApplicationDependencies` should expose only the
-dependencies needed by composition/tests; a concrete `weeklyReportReadPort`
-does not need to remain public if it is no longer consumed outside wiring.
+The table has no update/delete repository method and no foreign key to
+`clmm_insights`. A future `policy_insights` record may store selected evidence
+hashes or IDs as lineage, but it must not reuse or overwrite the bundle's
+lineage.
 
-## Resulting data flow
+### Constraints and indexes
+
+- Unique idempotency index on
+  `(schema_version, source_publisher, source_id, run_id)`.
+- Current-read index on
+  `(pair, scope_key, source_publisher, source_id, as_of_unix_ms DESC, id DESC)`.
+- History index on
+  `(pair, scope_key, received_at_unix_ms DESC, id DESC)`.
+- Correlation lookup index on `(correlation_id, id DESC)` for diagnostics; it is
+  not unique.
+- Check constraints enforce timestamp ordering, 64 lowercase hex hash format,
+  and known v1 schema/pair values as defense in depth.
+
+Postgres is required for evidence persistence, consistent with current JSONB and
+concurrent-read features. This issue does not add a SQLite shadow or fallback;
+silently storing different evidence sets by environment would undermine a
+single policy authority.
+
+### Repository port and adapter behavior
+
+Define an application-facing `EvidenceBundleRepositoryPort` using contract/domain
+types, with a Postgres adapter implementing:
+
+- `append(bundle, canonical, hash, receivedAt)`;
+- `getLatest(exactScopeQuery, optionalSource)`;
+- `getHistory(exactScopeQuery, page)`.
+
+`append` uses the existing race-safe pattern: insert with conflict-do-nothing,
+then load the conflicting identity. Equal stored and incoming payload hashes
+return `already_ingested`; different hashes return a typed
+`EVIDENCE_RUN_CONFLICT`. Hash equality is sufficient because SHA-256 is the
+contract identity, while canonical strings are also compared in tests and may
+be compared defensively in the adapter. A losing insert that cannot load the
+winner is an invariant error, not an idempotent response.
+
+The operation returns accepted row ID, hash, and original `receivedAt`. A replay
+does not replace receipt time or payload bytes. All persistence errors are
+atomic: no partial feature/context state exists because the bundle is one row.
+
+### Current and history semantics
+
+Queries require `pair` and one exact validated scope; they never mix pair-level
+and position-level evidence implicitly. #60 may deliberately request multiple
+scopes and combine candidates.
+
+`getLatest` partitions by publisher/source when no source filter is supplied and
+returns at most one latest row per source, ordered by `asOf DESC, receivedAt DESC,
+id DESC`. With a source filter it returns at most one row. Results include the
+derived `FRESH | STALE | EXPIRED` lifecycle so expired data remains auditable;
+selection eligibility is not decided here.
+
+`getHistory` orders by `receivedAt DESC, id DESC`, uses a cursor containing both
+values, defaults to 30 items, and rejects limits outside 1 through 100. Cursor
+pagination avoids duplicates or skips when new rows arrive. History can filter
+by source but always uses exact pair/scope identity. It returns the original
+bundle, stored hash, receipt metadata, and derived lifecycle without mutation.
+
+## Ownership of fields and metadata
+
+The intelligence publisher supplies every field in `EvidenceBundleV1`, including
+source/run identity, scope, publisher timestamps, evidence, coverage, warnings,
+and publisher provenance. Regime Engine validates those claims but does not
+rewrite them.
+
+Regime Engine alone calculates and owns:
+
+- database row ID;
+- `receivedAt`;
+- `payloadCanonical` and `payloadHash` receipt metadata;
+- query-time `FRESH | STALE | EXPIRED` lifecycle;
+- ingest outcome (`created | already_ingested`) and conflict errors;
+- later selection lineage and synthesized policy lineage.
+
+Neither owner may place final recommendation or execution fields in the evidence
+payload.
+
+## Machine-readable artifacts
+
+Implementation publishes these stable paths:
 
 ```text
-GET /v1/report/weekly?from&to
-  -> HTTP handler
-  -> GetWeeklyReportUseCase
-       -> WeeklyReportLedgerReadPort
-            -> SQLite plan_requests, plans, execution_results
-       -> choose first complete plan market feed
-       -> build canonical source read plan and closed cutoff
-       -> CandleReadPort.getCandlesForFeedWindow
-            -> Postgres when DATABASE_URL is set
-            -> SQLite otherwise
-       -> generateWeeklyReport(report facts, canonical candles)
-       -> computeBaselines(canonical candles)
-  -> unchanged response envelope
+contracts/evidence-bundle/v1/evidence-bundle.schema.json
+contracts/evidence-bundle/v1/schema.sha256
+contracts/evidence-bundle/v1/hash-vectors.json
+contracts/evidence-bundle/v1/fixtures/valid/deterministic-only.json
+contracts/evidence-bundle/v1/fixtures/valid/contextual.json
+contracts/evidence-bundle/v1/fixtures/invalid/*.json
+src/contract/evidence/v1/types.generated.ts
+src/contract/evidence/v1/validate.ts
+docs/contracts/evidence-bundle.v1.md
 ```
 
-## Error handling and compatibility
+`schema.sha256` contains the lowercase SHA-256 of the schema file bytes followed
+by its relative path. The documentation repeats that value and explains how to
+recompute it; CI fails if it, the generated type header, or the recorded hash
+vectors differ from regeneration. Build asset copying includes the schema,
+fixtures, hash vectors, and schema hash under `dist/contracts/...` so a packaged
+build does not lose the cross-repository artifacts.
 
-- Missing `from` or `to` remains a handler-level 400.
-- Invalid or reversed dates remain `INVALID_REPORT_RANGE` 400 responses with
-  the current messages.
-- Candle adapter failures are not converted into empty candle sets and do not
-  trigger fallback reads; they propagate as 500 errors. A visible failure is
-  safer than publishing a report from the wrong authority.
-- A successful canonical read returning no rows preserves current baseline
-  semantics rather than creating a new public error.
-- Malformed ledger JSON continues to fail as 500.
-- No response field, hash, plan record, or execution record changes.
-- Deterministic output is preserved for identical ledger facts and canonical
-  candle rows.
+Invalid fixtures cover at least: wrong/missing schema version, unknown fields,
+unsupported units, non-canonical/invalid timestamps, reversed lifecycle times,
+non-finite or out-of-range numeric values, status/value/unit mismatches,
+duplicate/unresolved lineage IDs, malformed contextual families, non-null brief
+with unresolved evidence, null brief with successful coverage, empty context
+without warnings, and a payload hash vector mismatch.
 
-## Testing strategy
+## Validation and test strategy
 
-### Use-case tests
+### Contract tests
 
-Replace the pass-through fake with a fake weekly ledger-data port and reuse or
-extend `FakeCandleReadPort`.
+- The deterministic-only fixture validates with at least one available
+  deterministic feature, all five contextual arrays empty,
+  `researchBrief: null`, explicit unavailable coverage, and both contextual and
+  brief warnings.
+- The fuller fixture validates contextual claims and a research brief whose
+  references all resolve.
+- Every invalid fixture fails with stable, sorted error paths and expected codes.
+- Unknown properties fail at every object nesting level.
+- Boundary tests cover string/array limits, all enums and units, confidence 0 and
+  10,000, canonical timestamp precision, and all timestamp equality boundaries.
+- Conditional tests cover every feature kind/status/value/unit combination and
+  every coverage/absence relationship.
+- Generated types and runtime validator are regenerated in CI and produce no
+  diff.
 
-Cover:
+### Canonical/hash tests
 
-- complete feed selection includes `symbol`, `source`, `network`,
-  `poolAddress`, and canonical source `timeframe`;
-- requested `15m` and `1h` reports both read stored `15m` candles, with the
-  latter using the existing derived read plan's source metadata;
-- the upper bound is the shared closed-candle cutoff at report end;
-- rows outside the report window and not-yet-closed rows do not affect baselines;
-- canonical candle prices change SOL HODL/DCA as expected;
-- no complete feed skips the candle port without probing another store;
-- candle-port errors propagate;
-- range errors preserve `ReportRangeApplicationError`.
+- Same semantic object-key order produces byte-identical canonical JSON and hash.
+- Array reorder changes the hash; exact replay does not.
+- The checked-in deterministic-only and contextual vectors reproduce in a clean
+  Node process using only published artifact rules.
+- Schema file SHA-256 matches `schema.sha256`, documentation, and generated type
+  header.
+- The existing canonical helper remains the implementation primitive; vectors
+  protect its cross-language contract rather than relying only on snapshots.
 
-### Adapter contract tests
+### Persistence tests
 
-Run equivalent SQLite and Postgres tests for the new window operation:
-
-- full feed-key isolation, including symbol and timeframe;
-- inclusive lower and closed upper bounds;
-- newest revision wins for a slot, including the `id` tie-breaker;
-- ascending deterministic output;
-- empty result behavior.
-
-Postgres tests remain conditional on `DATABASE_URL`, following the repository's
-existing `test:pg` pattern and using unique feed keys/cleanup to prevent test
-contamination.
-
-### Composition and regression tests
-
-- In Postgres-backed store-context mode, place report ledger facts in SQLite and
-  baseline candles only in Postgres; the endpoint must calculate non-flat SOL
-  baselines from Postgres.
-- Put conflicting or stale candles in SQLite in that test; verify they do not
-  influence the result. This directly guards against reintroducing fallback.
-- In SQLite-only mode, ingest/write candles and ledger facts in SQLite and verify
-  the endpoint preserves local behavior.
-- Keep deterministic report snapshots, updated to provide explicit canonical
-  candles. Add a regression proving legacy inline request candles cannot
-  override the canonical series.
-- Run the repository quality gate:
-  `pnpm run typecheck && pnpm run test && pnpm run lint && pnpm run build`, plus
-  the configured Postgres test command.
-
-## Documentation changes
-
-Update current documentation that calls reports "ledger-only." The accurate
-statement is that plan/execution facts come from the append-only SQLite ledger,
-while SOL baseline prices come from the active canonical candle store. At
-minimum this includes `README.md`, the current architecture/milestone notes in
-`plan.md`, and the weekly endpoint OpenAPI summary. Historical design records
-may remain historical if clearly dated, but current guidance such as the
-composition-root solution should show the weekly use case receiving both its
-ledger-data port and the selected candle port.
+- Create persists the complete payload, scalar identities, canonical text, hash,
+  and receipt time exactly once.
+- Sequential and concurrent identical replays return one create and one
+  idempotent result.
+- Sequential and concurrent different-payload replays for the same source/run
+  produce a deterministic typed conflict and retain exactly one truth row.
+- Different sources or run IDs may publish identical payload content.
+- Pair and every scope kind remain isolated in latest/history queries.
+- Latest ordering and tie-breakers are deterministic; multi-source current reads
+  return one row per source.
+- Fresh/stale/expired boundaries are derived without updating stored rows.
+- History limit and cursor behavior are bounded and stable under intervening
+  inserts.
+- Payload rehydration is validated against the v1 schema so corrupt JSONB fails
+  visibly rather than leaking malformed evidence to selection.
+- A migration test confirms evidence and policy tables are distinct and existing
+  insight rows are unchanged.
 
 ## Assumptions
 
-- A weekly report continues to represent one baseline market feed. The first
-  chronologically ordered plan request with a complete supported feed remains
-  authoritative, preserving current selection behavior.
-- Current plan requests contain a `RegimeReadTimeframe` of `15m` or `1h`.
-  Legacy requests without a complete feed are ignored for feed selection but
-  remain included in plan/report totals and baseline configuration ordering.
-- Provider ingestion remains canonical at `15m`; requested `1h` market data is
-  derived for regime decisions and does not have a separately stored candle
-  authority.
-- Raw canonical 15m closes are appropriate for weekly HODL/DCA baselines even
-  when the selected plan requested a 1h regime view.
-- The report's `to` end-of-day timestamp is the as-of time for closed-candle
-  eligibility. The normal configured ingestion delay remains part of that
-  cutoff, matching regime and plan read semantics.
-- An empty canonical result is a valid data condition with existing flat SOL
-  baseline behavior; only querying a different source to hide it is forbidden.
-- The SQLite ledger remains required in Postgres mode for plans and execution
-  facts.
+- `evidence-bundle.v1` is the canonical version identifier requested by the
+  issue; it does not reuse the service-wide `"1.0"` constant because the
+  resource has an independent lifecycle.
+- The first publisher is `sol-usdc-clmm-intelligence`, and v1 supports only
+  `SOL/USDC` on Solana mainnet. Later support requires a new compatible enum
+  expansion or a new schema version plus explicit policy.
+- The intelligence publisher can emit canonical millisecond UTC timestamps and
+  deterministic array ordering.
+- Postgres is the durable evidence authority in deployed environments. Local
+  contract tests do not require Postgres; adapter integration tests use the
+  repository's existing opt-in Postgres suite.
+- `freshUntil` and `expiresAt` are publisher claims validated by Regime Engine;
+  #60 decides whether source-specific policy shortens those windows.
+- Contextual claims may be absent for any run. A deterministic-only bundle must
+  not be rejected or withheld solely because context or an LLM brief is absent.
+- Source URLs and internal locators may be sensitive, but this issue defines
+  persistence rather than public read authorization. #59 must choose exposure
+  and redaction policy before adding routes.
+- Schema generation and validation dependencies are acceptable because the JSON
+  Schema is a required public artifact; dependency choice should support draft
+  2020-12 and deterministic generation in the pinned lockfile.
 
-## Risks and mitigations
+## Risks and concerns
 
-### Historical output changes
+- **Canonical JSON is repository-defined, not RFC 8785.** ECMAScript number
+  formatting and Unicode key ordering must be implemented identically by the
+  intelligence publisher. Published vectors are load-bearing; calling the
+  algorithm merely “canonical JSON” is not sufficient.
+- **JSON Schema cannot express every graph invariant.** Reference resolution,
+  ID uniqueness, and some coverage relationships require a second semantic
+  pass. Keeping both passes behind one validator API prevents callers from
+  accidentally persisting structurally valid but semantically invalid bundles.
+- **Generated types can overstate conditional precision.** Runtime validation
+  remains authoritative. Code should narrow discriminated feature variants
+  after validation rather than trusting arbitrary casts.
+- **Large JSONB rows can become an abuse or performance vector.** Every string
+  and array needs a specified maximum, and #59 should enforce a request body
+  limit. The atomic model can be normalized later only if measured selection
+  queries require it.
+- **Publisher-declared freshness may be optimistic.** Storing both lifecycle
+  timestamps and Regime receipt time makes delays visible; #60 must cap or score
+  source freshness rather than blindly trusting it.
+- **Current semantics can be misunderstood as selection.** The repository returns
+  latest rows and lifecycle only. It must not silently discard conflicting,
+  stale, or lower-quality sources before #60 records explicit selection reasons.
+- **Scope fan-out can leak position identifiers.** Exact-scope indexes and query
+  APIs reduce accidental mixing, but HTTP authentication/redaction remains a
+  required #59 decision.
+- **Existing stores bypass newer application ports.** Reusing their SQL pattern
+  is appropriate, but exposing a new `EvidenceBundlesStore` directly through
+  HTTP dependencies would deepen architectural debt. The evidence adapter should
+  implement an application port from the outset.
+- **Append-only is an application convention today.** Database privileges do not
+  necessarily forbid updates/deletes. The migration, repository API, and tests
+  provide practical enforcement; stronger role-level controls are an operations
+  follow-up if required.
 
-Reports that previously used SQLite or inline candles can produce different SOL
-baselines after the fix. This is the intended correction. Snapshot changes must
-be explained by their explicit canonical candle fixtures, not accepted as broad
-snapshot churn.
+## Resulting boundary
 
-### Ambiguous multi-feed reports
+```text
+sol-usdc-clmm-intelligence
+  -> validates against published evidence-bundle.v1 schema
+  -> POST is added later by #59
 
-The endpoint can include plan facts from multiple feeds while computing one SOL
-baseline. Preserving first-complete-feed selection avoids scope expansion, but
-the limitation should be documented. Multi-feed segmentation is future work.
+Regime Engine contract/application
+  -> strict structural + semantic validation
+  -> canonical payload + SHA-256
+  -> EvidenceBundleRepositoryPort
 
-### Closed-cutoff edge behavior
+Postgres adapter
+  -> append-only evidence_bundles row
+  -> exact replay or deterministic source/run conflict
+  -> exact-scope latest and bounded history
 
-Using the shared delay may exclude the last nominal bar of a report window. This
-is deliberate: a bar is eligible only if it would be considered closed by the
-same market-data policy used elsewhere. Boundary tests should use exact aligned
-timestamps to prevent accidental lookahead.
+#60 / #61 (later)
+  -> select recorded evidence with explicit reasons
+  -> synthesize separate canonical PolicyInsight
 
-### Large report windows
+clmm-v2
+  -> consumes PolicyInsight and retains execution authority
+```
 
-The endpoint does not enforce a seven-day maximum. A bounded window query avoids
-the correctness problems of a guessed latest-N limit, but callers can still
-request large datasets. Existing feed-window indexes should support the query;
-range limits or pagination are out of scope unless profiling demonstrates a
-production problem.
-
-### Port expansion drift
-
-Adding a second candle-read operation creates another adapter contract that
-SQLite and Postgres must match. Shared invariants, mirrored contract tests, and
-centralized row mapping reduce this risk.
-
-### Layer refactor breadth
-
-Changing the weekly port from rendered-output reads to ledger-data reads touches
-tests and report function signatures. Keeping HTTP contracts, formulas, and
-ordering unchanged contains the blast radius, and the cleaner separation makes
-the store-selection guarantee testable without Fastify or real databases.
+This boundary allows the deterministic-only MVP to ship immediately, makes
+missing research visible rather than fabricated, and preserves a durable audit
+trail from publisher evidence to later Regime-owned policy without conflating
+the two records.

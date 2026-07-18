@@ -1,434 +1,688 @@
 <!-- plan-review-required -->
 
-# Canonical Weekly Report Candle Reads Implementation Plan
+# EvidenceBundle v1 Contract and Persistence Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Make weekly SOL HODL and DCA baselines use the same active canonical candle store, complete feed identity, and closed-candle policy as regime and plan reads while preserving the public weekly-report contract.
+**Goal:** Publish a strict, portable `evidence-bundle.v1` contract and persist validated bundles in an append-only Postgres repository with deterministic replay, exact-scope latest reads, bounded cursor history, and query-time lifecycle metadata.
 
-**Architecture:** Keep SQLite as the source of report facts, expose those facts through a ledger-data port, and let `GetWeeklyReportUseCase` coordinate that port with the already-selected `CandleReadPort`. Add one bounded feed-window operation to both candle adapters, then make the pure report renderer consume explicit facts and canonical candles instead of querying a database or considering legacy inline candles.
+**Architecture:** A checked-in JSON Schema 2020-12 document is the normative publisher contract. Generated TypeScript declarations and an Ajv structural validator consume that schema, while a deterministic semantic pass enforces graph, timestamp, feature-status, and coverage invariants that JSON Schema cannot express cleanly. The application owns an `EvidenceBundleRepositoryPort`; a Drizzle/Postgres adapter stores the complete canonical payload plus indexed identity/lifecycle columns in one immutable row and derives `FRESH | STALE | EXPIRED` at read time.
 
-**Tech Stack:** TypeScript, Node.js, Vitest, Fastify, SQLite (`node:sqlite`), PostgreSQL/Drizzle, pnpm.
+**Tech Stack:** TypeScript 5.8, Node 22, JSON Schema 2020-12, Ajv 8 with `ajv-formats`, `json-schema-to-typescript`, Drizzle ORM/drizzle-kit, Postgres, Vitest, pnpm.
+
+**Source documents:** `design.md`, `issue.md`, and the empty `issue-comments.md`.
 
 ---
 
+**Goals**
+
+- Make `contracts/evidence-bundle/v1/evidence-bundle.schema.json` the single machine-readable authority for the wire shape.
+- Accept deterministic-only bundles with five empty contextual collections and `researchBrief: null`, while requiring coverage and warning metadata that makes those absences explicit.
+- Preserve deterministic features, contextual claims, and research summaries as separate typed structures with no policy/recommendation fields.
+- Publish generated types, valid and invalid fixtures, canonical/hash vectors, the schema SHA-256, artifact documentation, and packaged build assets.
+- Store complete accepted bundles atomically and append-only, separately from `clmm_insights`.
+- Implement the source/run replay state machine and exact-scope latest/history reads, including stable ordering, bounded keyset pagination, payload revalidation, and lifecycle derivation.
+
 **Non-goals**
 
-- Do not change `/v1/plan`, candle ingestion, aggregation, regime classification, or freshness configuration.
-- Do not change the weekly report request, response envelope, summary schema, Markdown sections, formulas, or rounding.
-- Do not move plan requests, plans, execution results, or CLMM-event facts from SQLite.
-- Do not add cross-store retries, fallback probing, backfills, multi-feed reports, pagination, or report-window limits.
-- Do not aggregate canonical 15-minute prices into hourly candles for baseline math.
+- HTTP routes, handlers, authentication, request-body limits, OpenAPI, or public response redaction (#59).
+- Evidence selection, ranking, scoring, or source-family weighting (#60).
+- `PolicyInsight` synthesis, recommendations, allocation, CLMM policy, or guard evaluation (#61).
+- Removing or migrating the legacy `clmm_insights` path.
+- Intelligence collectors, prompts, publisher clients, Solana RPC validation, or changes to `clmm-v2`.
+- SQLite persistence or a local fallback for evidence bundles.
+- Supporting pairs other than `SOL/USDC` or networks other than `solana-mainnet` in v1.
 
 **Affected files**
 
-- `src/application/ports/candlePorts.ts` — bounded canonical candle-window contract.
-- `src/adapters/sqlite/sqliteCandleReadAdapter.ts` — SQLite implementation of the window read.
-- `src/adapters/postgres/postgresCandleReadAdapter.ts` — PostgreSQL implementation of the window read.
-- `src/application/use-cases/__tests__/fakes/fakeCandleReadPort.ts` — in-memory implementation of both candle-read methods.
-- `src/adapters/sqlite/__tests__/sqliteCandleReadAdapter.test.ts` — SQLite window-query contract tests (new).
-- `src/adapters/postgres/__tests__/postgresCandleReadAdapter.test.ts` — PostgreSQL window-query contract tests (new).
-- `src/report/baselines.ts` — explicit canonical price-series input; remove inline-candle authority.
-- `src/report/__tests__/baselines.test.ts` — baseline authority and window-filter regression tests.
-- `src/application/ports/weeklyReportReadPort.ts` — replace rendered-report port with typed ledger-facts port.
-- `src/adapters/sqlite/sqliteWeeklyReportReadAdapter.ts` — return parsed, ordered SQLite report facts only.
-- `src/adapters/sqlite/__tests__/sqliteWeeklyReportReadAdapter.test.ts` — ledger adapter range, ordering, and parse tests (new).
-- `src/report/weekly.ts` — pure date-window helper and explicit-input report renderer.
-- `src/report/__tests__/weeklyReport.snapshot.test.ts` — deterministic renderer and HTTP error regression updates.
-- `src/report/__tests__/__snapshots__/weeklyReport.snapshot.test.ts.snap` — expected deterministic output, changed only if explicit inputs alter the stored serialization.
-- `src/application/use-cases/getWeeklyReportUseCase.ts` — feed selection, canonical read planning, and report orchestration.
-- `src/application/use-cases/__tests__/fakes/fakeWeeklyReportReadPort.ts` — fake ledger-facts port.
-- `src/application/use-cases/__tests__/getWeeklyReportUseCase.test.ts` — use-case invariants and error propagation.
-- `src/composition/buildApplication.ts` — inject the selected candle port and SQLite report-facts port into the use case.
-- `src/composition/__tests__/weeklyReportCandleStore.e2e.test.ts` — SQLite-only composition regression (new).
-- `src/composition/__tests__/weeklyReportCandleStore.e2e.pg.test.ts` — PostgreSQL authority/no-SQLite-fallback regression (new).
-- `package.json` — include the new PostgreSQL tests in `test:pg`.
-- `README.md` — replace “ledger-only” wording with split fact/price authority.
-- `architecture.md` — document canonical report candle flow and store responsibilities.
-- `documentation.md` — correct current weekly-report descriptions while retaining historical milestone context as historical.
-- `src/adapters/http/openapi.ts` — describe ledger facts plus active canonical candle prices.
-- `src/composition/__tests__/buildApp.e2e.test.ts` — assert the corrected OpenAPI summary.
-- `docs/solutions/best-practices/composition-root-pattern-2026-05-08.md` — update the durable composition-root example.
+| Path from repository root                                                                                                                                                                                                                                                                                                                                                                                                                      | Responsibility                                                                                      |
+| ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------- |
+| `package.json`                                                                                                                                                                                                                                                                                                                                                                                                                                 | Pin contract tooling, add generation/check scripts, and include evidence PG tests in `test:pg`.     |
+| `pnpm-lock.yaml`                                                                                                                                                                                                                                                                                                                                                                                                                               | Lock Ajv, formats, and schema-to-TypeScript generator versions.                                     |
+| `scripts/generateEvidenceContract.ts`                                                                                                                                                                                                                                                                                                                                                                                                          | Generate declarations/schema digest and check checked-in artifacts without rewriting in check mode. |
+| `scripts/copyBuildAssets.mjs`                                                                                                                                                                                                                                                                                                                                                                                                                  | Copy the public contract tree into `dist/contracts/evidence-bundle/v1`.                             |
+| `contracts/evidence-bundle/v1/evidence-bundle.schema.json`                                                                                                                                                                                                                                                                                                                                                                                     | Normative strict JSON Schema 2020-12 contract.                                                      |
+| `contracts/evidence-bundle/v1/schema.sha256`                                                                                                                                                                                                                                                                                                                                                                                                   | Lowercase SHA-256 of the exact schema bytes and relative schema path.                               |
+| `contracts/evidence-bundle/v1/hash-vectors.json`                                                                                                                                                                                                                                                                                                                                                                                               | Cross-repository canonical JSON and SHA-256 vectors.                                                |
+| `contracts/evidence-bundle/v1/fixtures/valid/deterministic-only.json`                                                                                                                                                                                                                                                                                                                                                                          | Minimal valid deterministic-only bundle.                                                            |
+| `contracts/evidence-bundle/v1/fixtures/valid/contextual.json`                                                                                                                                                                                                                                                                                                                                                                                  | Valid contextual bundle with a resolved research brief.                                             |
+| `contracts/evidence-bundle/v1/fixtures/invalid/wrong-schema-version.json`, `unknown-field.json`, `unsupported-unit.json`, `noncanonical-timestamp.json`, `reversed-lifecycle.json`, `out-of-range-number.json`, `status-value-mismatch.json`, `duplicate-lineage.json`, `unresolved-lineage.json`, `malformed-contextual-family.json`, `unresolved-brief-evidence.json`, `null-brief-available-coverage.json`, `empty-context-no-warning.json` | One-purpose invalid payloads beneath `contracts/evidence-bundle/v1/fixtures/invalid/`.              |
+| `src/contract/evidence/v1/types.generated.ts`                                                                                                                                                                                                                                                                                                                                                                                                  | Generated wire declarations tied to schema path and digest.                                         |
+| `src/contract/evidence/v1/validate.ts`                                                                                                                                                                                                                                                                                                                                                                                                         | Unified Ajv structural and deterministic semantic validator.                                        |
+| `src/contract/evidence/v1/__tests__/generation.test.ts`                                                                                                                                                                                                                                                                                                                                                                                        | Schema/type/digest reproducibility tests.                                                           |
+| `src/contract/evidence/v1/__tests__/validation.test.ts`                                                                                                                                                                                                                                                                                                                                                                                        | Valid fixture, invalid fixture, boundary, conditional, and graph-invariant tests.                   |
+| `src/contract/evidence/v1/__tests__/canonicalHash.test.ts`                                                                                                                                                                                                                                                                                                                                                                                     | Published hash-vector reproduction and array/object ordering tests.                                 |
+| `src/application/ports/evidenceBundleRepositoryPort.ts`                                                                                                                                                                                                                                                                                                                                                                                        | Application-facing append/latest/history types and repository interface.                            |
+| `src/adapters/postgres/postgresEvidenceBundleRepository.ts`                                                                                                                                                                                                                                                                                                                                                                                    | Postgres implementation of every repository method.                                                 |
+| `src/adapters/postgres/__tests__/postgresEvidenceBundleRepository.append.test.ts`                                                                                                                                                                                                                                                                                                                                                              | PG-gated append/replay/conflict tests.                                                              |
+| `src/adapters/postgres/__tests__/postgresEvidenceBundleRepository.latest.test.ts`                                                                                                                                                                                                                                                                                                                                                              | PG-gated exact-scope latest/lifecycle/rehydration tests.                                            |
+| `src/adapters/postgres/__tests__/postgresEvidenceBundleRepository.history.test.ts`                                                                                                                                                                                                                                                                                                                                                             | PG-gated cursor/history/isolation tests.                                                            |
+| `src/ledger/pg/schema/evidenceBundles.ts`                                                                                                                                                                                                                                                                                                                                                                                                      | Drizzle table, constraints, indexes, row and insert types.                                          |
+| `src/ledger/pg/schema/index.ts`                                                                                                                                                                                                                                                                                                                                                                                                                | Re-export evidence schema symbols.                                                                  |
+| `src/ledger/pg/schema/__tests__/evidenceBundles.shape.test.ts`                                                                                                                                                                                                                                                                                                                                                                                 | Table and index shape smoke test.                                                                   |
+| `src/ledger/pg/__tests__/evidenceBundlesMigration.test.ts`                                                                                                                                                                                                                                                                                                                                                                                     | PG-gated migration separation/constraint test.                                                      |
+| `drizzle/0004_create_evidence_bundles.sql`                                                                                                                                                                                                                                                                                                                                                                                                     | Generated additive migration.                                                                       |
+| `drizzle/meta/0004_snapshot.json`                                                                                                                                                                                                                                                                                                                                                                                                              | Generated Drizzle schema snapshot.                                                                  |
+| `drizzle/meta/_journal.json`                                                                                                                                                                                                                                                                                                                                                                                                                   | Generated migration journal entry.                                                                  |
+| `docs/contracts/evidence-bundle.v1.md`                                                                                                                                                                                                                                                                                                                                                                                                         | Ownership, artifact, canonicalization, hash, lifecycle, idempotency, and query documentation.       |
 
 **Behavioral invariants**
 
-- A window read matches all five feed fields: `symbol`, `source`, `network`, `poolAddress`, and `timeframe`.
-- The window is inclusive at `fromUnixMs` and `closedCandleCutoffUnixMs`.
-- Exactly one candle is returned per slot; newest `sourceRecordedAtUnixMs` wins, then greatest row `id` breaks ties.
-- Window results are ordered by `unixMs ASC` and an empty match returns `[]`.
-- The first chronologically ordered plan request with a complete, supported market identity selects the report feed.
-- Both requested `15m` and `1h` use canonical source timeframe `15m`; the report never aggregates the price series.
-- The read upper bound is the shared source closed-candle cutoff calculated with `window.toUnixMs` as `nowUnixMs`.
-- Missing or incomplete feed metadata skips the candle port; an empty canonical result stays empty and never triggers another store read.
-- Candle-read failures propagate; they are never converted to empty candles.
-- Inline `request.market.candles` never override or supplement canonical rows.
-- Invalid/reversed report dates remain `ReportRangeApplicationError` at the application boundary and HTTP 400 at the handler; malformed persisted JSON remains an unexpected HTTP 500.
-- Identical ordered ledger facts and canonical candle rows produce byte-identical Markdown and JSON output.
+The named cases below are written first in the task that owns the behavior and are also recorded in `task-manifest.json`.
 
-## Task 1: Add the canonical feed-window candle read to every adapter
+- `accepts deterministic-only evidence with explicit unavailable coverage`: empty contextual arrays plus `researchBrief: null` are valid only with unavailable/not-applicable family coverage, degraded/partial quality, and the required absence warnings.
+- `rejects available features whose value does not match featureKind`: available number/boolean/category features require their matching value primitive and unit relationship.
+- `rejects unavailable features encoded as numeric zero`: unavailable/invalid features require `value: null`, `unit: null`, zero confidence, and at least one warning.
+- `rejects noncanonical or reversed publisher timestamps`: timestamps must be exact millisecond UTC strings and obey `asOf <= createdAt < freshUntil <= expiresAt`; available feature times obey `observedAt <= asOf <= freshUntil`.
+- `rejects duplicate or unresolved evidence lineage`: IDs are unique in their namespace and every source/feature/brief reference resolves according to the contract.
+- `rejects coverage that fabricates absent evidence`: empty contextual families and a null brief cannot report successful coverage; present evidence cannot report unavailable coverage.
+- `creates one immutable row for a new source run`: a previously unseen idempotency tuple inserts once and returns `created` with the original receipt metadata.
+- `returns already_ingested for an identical source run replay`: a matching idempotency tuple and payload hash returns the stored row without replacing payload bytes or `receivedAt`.
+- `throws EVIDENCE_RUN_CONFLICT for a changed source run replay`: a matching tuple with a different payload hash fails deterministically and preserves the first truth row.
+- `fails when a losing append cannot load the winning row`: conflict-without-winner is an invariant failure, never an idempotent success.
+- `derives lifecycle at inclusive freshness and expiry boundaries`: `now <= freshUntil` is `FRESH`, `freshUntil < now <= expiresAt` is `STALE`, and `now > expiresAt` is `EXPIRED` without updating storage.
+- `returns latest evidence independently for each source`: unfiltered current reads partition by publisher/source ID and order each partition by `asOf DESC, receivedAt DESC, id DESC`; filtered reads return at most one row.
+- `never mixes exact evidence scopes`: pair, Whirlpool, wallet, and position scope keys are distinct and queries match both pair and the full validated scope.
+- `paginates history without duplicates across intervening inserts`: history uses `(receivedAtUnixMs, id)` descending as an exclusive cursor, so a new head insert cannot duplicate or skip rows on the next page.
+- `rejects history limits outside one through one hundred`: default is 30; explicit limits below 1 or above 100 fail before SQL executes.
+- `fails visibly when stored payload JSON is corrupt`: every row is revalidated during mapping; malformed JSONB never escapes as an `EvidenceBundleV1`.
+
+## Task 1: Establish the normative schema and reproducible type-generation toolchain
 
 **Files:**
 
-- Modify: `src/application/ports/candlePorts.ts`
-- Modify: `src/adapters/sqlite/sqliteCandleReadAdapter.ts`
-- Modify: `src/adapters/postgres/postgresCandleReadAdapter.ts`
-- Modify: `src/application/use-cases/__tests__/fakes/fakeCandleReadPort.ts`
-- Create: `src/adapters/sqlite/__tests__/sqliteCandleReadAdapter.test.ts`
-- Create: `src/adapters/postgres/__tests__/postgresCandleReadAdapter.test.ts`
+- Create: `contracts/evidence-bundle/v1/evidence-bundle.schema.json`
+- Create: `contracts/evidence-bundle/v1/schema.sha256`
+- Create: `scripts/generateEvidenceContract.ts`
+- Create: `src/contract/evidence/v1/types.generated.ts`
+- Create: `src/contract/evidence/v1/__tests__/generation.test.ts`
 - Modify: `package.json`
-- Modify: `src/composition/buildApplication.ts`
+- Modify: `pnpm-lock.yaml`
 
-**Exported API change:** Add required `CandleReadPort.getCandlesForFeedWindow(params)` and export its parameter shape from `candlePorts.ts`. The port, SQLite adapter, PostgreSQL adapter, and test fake are deliberately in this same task so the workspace-wide typecheck gate never sees a port-only state.
+- [ ] **Step 1: Write the failing reproducibility test**
 
-**Invariants to test first:**
+Create `src/contract/evidence/v1/__tests__/generation.test.ts`. It must spawn `pnpm run contract:evidence:check`, assert exit code zero after generation exists, independently hash the schema bytes, parse `schema.sha256` as `<hex>  <relative-path>`, and assert the generated declaration header contains both the schema path and digest. Name the cases exactly:
 
-- `returns only the complete feed key within inclusive bounds in ascending order`
-- `returns the newest revision per slot and uses id as the tie breaker`
-- `returns an empty array when the feed window has no rows`
+- `keeps generated types and schema digest reproducible` invokes check mode from a child process and asserts a zero exit code.
+- `records the exact schema byte hash in every generated authority marker` reads the schema, digest file, and generated declaration header, computes SHA-256 with `node:crypto`, and asserts all three lowercase digests are identical.
 
-- [ ] **Step 1: Write equivalent failing adapter contract tests.** Seed rows that vary one field at a time across symbol, source, network, pool address, and timeframe; include rows immediately below, at, and above both bounds; include two revisions of one slot plus equal-recorded-at rows inserted in a known order. Assert full OHLCV rows, not just closes. The PostgreSQL suite must use `describe.skipIf(!process.env.DATABASE_URL)`, unique feed values, and cleanup only its seeded keys.
+Run: `pnpm vitest run src/contract/evidence/v1/__tests__/generation.test.ts`
 
-- [ ] **Step 2: Run the focused tests and confirm the missing method is the failure.**
+Expected: FAIL because the schema, generator, and package scripts do not exist.
 
-  ```bash
-  pnpm exec vitest run src/adapters/sqlite/__tests__/sqliteCandleReadAdapter.test.ts
-  DATABASE_URL=postgres://test:test@localhost:5432/regime_engine_test PG_SSL=false pnpm exec vitest run src/adapters/postgres/__tests__/postgresCandleReadAdapter.test.ts
-  ```
+- [ ] **Step 2: Add pinned tooling and deterministic scripts**
 
-  Expected before implementation: TypeScript/runtime failure because `getCandlesForFeedWindow` is absent. If PostgreSQL is unavailable, record that environment limitation; do not weaken or remove the conditional suite.
+Add `ajv` and `ajv-formats` to `dependencies`, and `json-schema-to-typescript` to `devDependencies`. Add these scripts:
 
-- [ ] **Step 3: Add the port input and required method.** Use the complete logical key and explicit lower/upper bounds:
+```json
+{
+  "contract:evidence:generate": "tsx scripts/generateEvidenceContract.ts --write",
+  "contract:evidence:check": "tsx scripts/generateEvidenceContract.ts --check"
+}
+```
 
-  ```ts
-  export interface GetCandlesForFeedWindowParams extends CandleFeed {
-    fromUnixMs: number;
-    closedCandleCutoffUnixMs: number;
-  }
+Run `pnpm install` so `pnpm-lock.yaml` records the chosen exact resolution and the focused tests can load the new packages. Do not add a general schema code-generation framework.
 
-  export interface CandleReadPort {
-    getLatestCandlesForFeed(params: GetLatestCandlesParams): Promise<CandleRow[]>;
-    getCandlesForFeedWindow(params: GetCandlesForFeedWindowParams): Promise<CandleRow[]>;
-  }
-  ```
+- [ ] **Step 3: Author the complete strict JSON Schema**
 
-- [ ] **Step 4: Implement the SQLite query.** Reuse a private `RawRow` mapper. The query must filter all feed columns and `unix_ms >= ? AND unix_ms <= ?`, rank revisions with `row_number() OVER (PARTITION BY unix_ms ORDER BY source_recorded_at_unix_ms DESC, id DESC)`, retain `rn = 1`, and finish with `ORDER BY unix_ms ASC`. Do not call `getLatestCandlesForFeed` with a guessed limit.
+Create a draft 2020-12 schema with stable `$id`, root title `EvidenceBundleV1`, `additionalProperties: false` on every object, every root property required, explicit nullable unions, and these root properties:
 
-- [ ] **Step 5: Implement the PostgreSQL query with identical semantics.** Keep the qualified `regime_engine.candle_revisions` table and numeric null checks. Extract the current row conversion to a private mapper so latest-N and window reads cannot drift in their result shape.
+```json
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.opsclawd.dev/regime-engine/evidence-bundle/v1/evidence-bundle.schema.json",
+  "title": "EvidenceBundleV1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "pair",
+    "scope",
+    "source",
+    "runId",
+    "correlationId",
+    "createdAt",
+    "asOf",
+    "freshUntil",
+    "expiresAt",
+    "deterministicFeatures",
+    "contextualEvidence",
+    "researchBrief",
+    "sourceReferences",
+    "assessment",
+    "provenance"
+  ]
+}
+```
 
-- [ ] **Step 6: Extend `FakeCandleReadPort`.** Track window calls separately and filter configured rows by inclusive lower and upper bounds without applying a limit. Preserve the current latest-N behavior and provide a configured error hook needed by Task 3.
+Implement `$defs` for the four exact scope variants; source identity; three discriminated feature kinds crossed with `available | unavailable | invalid`; five contextual claim families; research brief/model; source reference; coverage, warning, assessment, and provenance. Encode all enumerations and bounds from `design.md`, including 1–128 identifiers, 1–256 run/correlation IDs, canonical timestamp regex `^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d{3}Z$`, lowercase 64-hex hashes, confidence integers 0–10000, finite JSON numeric bounds, array min/max/uniqueness, exact five contextual properties, and numeric units `usd | sol | usdc | percent | basis_points | ratio | seconds | milliseconds | count | price_usdc_per_sol` plus `boolean | category` for their matching feature kinds. Fix family-specific claim kinds to `support_zone | resistance_zone | breakout_level`, `spot_flow | stablecoin_flow | exchange_flow`, `funding | open_interest | liquidation | options_skew`, `scheduled_event | protocol_incident | network_incident`, and `ecosystem_news | regulatory_update`, respectively. Fix source types to `api | database | chain | document | internal_bundle`. Use `if`/`then` branches so feature kind/status determines `value`, `unit`, timestamps, confidence, and warning minima. Keep cross-record reference resolution and time ordering out of the schema for Task 2.
 
-- [ ] **Step 7: Add both focused PostgreSQL test paths to `test:pg`, then run scoped acceptance checks.**
+- [ ] **Step 4: Implement write/check generation modes**
 
-  ```bash
-  pnpm exec vitest run src/adapters/sqlite/__tests__/sqliteCandleReadAdapter.test.ts
-  DATABASE_URL=postgres://test:test@localhost:5432/regime_engine_test PG_SSL=false pnpm exec vitest run src/adapters/postgres/__tests__/postgresCandleReadAdapter.test.ts
-  pnpm exec eslint src/application/ports/candlePorts.ts src/adapters/sqlite/sqliteCandleReadAdapter.ts src/adapters/postgres/postgresCandleReadAdapter.ts src/application/use-cases/__tests__/fakes/fakeCandleReadPort.ts src/adapters/sqlite/__tests__/sqliteCandleReadAdapter.test.ts src/adapters/postgres/__tests__/postgresCandleReadAdapter.test.ts
-  ```
+`scripts/generateEvidenceContract.ts` must:
 
-  Expected: all available focused tests pass and ESLint reports zero warnings.
+1. read the schema as bytes and parse it;
+2. compute lowercase SHA-256 of those exact bytes;
+3. call `compileFromFile` with deterministic `json-schema-to-typescript` options (`bannerComment: ""`, `style.singleQuote: false`, no timestamp-bearing output);
+4. prepend `// Generated from contracts/evidence-bundle/v1/evidence-bundle.schema.json (sha256: <digest>). Do not edit.`;
+5. render `schema.sha256` as `<digest>  contracts/evidence-bundle/v1/evidence-bundle.schema.json\n`;
+6. in `--write`, update only files whose bytes differ;
+7. in `--check`, compare expected bytes and exit nonzero with the exact stale paths, without writing.
 
-- [ ] **Step 8: Commit the atomic port-and-adapters change.**
+Reject missing or multiple modes. Resolve paths relative to the repository root derived from `import.meta.url`; do not depend on the caller's current directory.
 
-  ```bash
-  git add src/application/ports/candlePorts.ts src/adapters/sqlite/sqliteCandleReadAdapter.ts src/adapters/postgres/postgresCandleReadAdapter.ts src/application/use-cases/__tests__/fakes/fakeCandleReadPort.ts src/adapters/sqlite/__tests__/sqliteCandleReadAdapter.test.ts src/adapters/postgres/__tests__/postgresCandleReadAdapter.test.ts package.json
-  git commit -m "m55: add canonical candle window reads"
-  ```
+- [ ] **Step 5: Generate declarations and digest, then prove stability**
 
-## Task 2: Make baseline calculations accept only explicit canonical candles
+Run: `pnpm run contract:evidence:generate`
 
-**Files:**
+Expected: creates `types.generated.ts` and `schema.sha256` with no timestamps.
 
-- Modify: `src/report/baselines.ts`
-- Modify: `src/report/__tests__/baselines.test.ts`
-- Modify: `src/report/weekly.ts`
+Run: `pnpm run contract:evidence:check`
 
-**Exported API change:** Replace `BaselineInputs.fallbackCandles?` with required `candles`, and remove `market.candles` from the plan-request shape used by baseline computation. `computeBaselines` remains the exported function but its required input member shape changes. `weekly.ts` is updated in the same commit to keep its caller compiling; Task 3 will remove its temporary database ownership entirely.
+Expected: PASS without changing either generated file.
 
-**Invariants to test first:**
+Run: `pnpm vitest run src/contract/evidence/v1/__tests__/generation.test.ts`
 
-- `uses only explicit canonical candles when legacy inline candles conflict`
-- `filters canonical candles to the report window and sorts them by unixMs`
-- `keeps SOL baselines at initial NAV and still accrues USDC when canonical candles are empty`
-- `returns all-zero baselines when there are no plan requests`
+Expected: PASS.
 
-- [ ] **Step 1: Rewrite the baseline tests around an explicit `candles` array.** Include unsorted in-window rows, rows outside both sides of the window, conflicting legacy inline candles represented through a cast for regression coverage, no-candle behavior, and no-plan behavior. Keep the existing USDC duration assertion.
+Run: `pnpm exec prettier --check package.json scripts/generateEvidenceContract.ts contracts/evidence-bundle/v1/evidence-bundle.schema.json src/contract/evidence/v1/types.generated.ts src/contract/evidence/v1/__tests__/generation.test.ts`
 
-- [ ] **Step 2: Run the focused tests and verify the old fallback/inline merge causes the new authority test to fail.**
+Expected: PASS.
 
-  ```bash
-  pnpm exec vitest run src/report/__tests__/baselines.test.ts
-  ```
+- [ ] **Step 6: Commit the schema authority as one unit**
 
-  Expected before implementation: the conflicting inline series changes SOL HODL/DCA or the new required input does not typecheck.
+```bash
+git add package.json pnpm-lock.yaml scripts/generateEvidenceContract.ts contracts/evidence-bundle/v1/evidence-bundle.schema.json contracts/evidence-bundle/v1/schema.sha256 src/contract/evidence/v1/types.generated.ts src/contract/evidence/v1/__tests__/generation.test.ts
+git commit -m "m58: publish EvidenceBundle v1 schema"
+```
 
-- [ ] **Step 3: Replace the fallback merge with a single canonical series.** The central shape is:
-
-  ```ts
-  export interface BaselineInputs {
-    window: { fromUnixMs: number; toUnixMs: number };
-    planRequests: Array<{
-      asOfUnixMs: number;
-      request: {
-        portfolio: { navUsd: number };
-        config: { baselines: PlanRequestConfig["baselines"] };
-      };
-    }>;
-    candles: Array<{ unixMs: number; close: number }>;
-  }
-  ```
-
-  Build the price series only from `input.candles`, defensively filter it to the report window, and sort ascending. Preserve the existing request ordering, first-request configuration, formulas, and six-decimal rounding.
-
-- [ ] **Step 4: Update the existing `generateWeeklyReport` call site to pass the currently queried rows through the new `candles` property and remove any cast that advertises inline candles to `computeBaselines`.** This is an intermediate compatibility edit only; do not broaden or otherwise improve the direct SQLite query because Task 3 deletes it.
-
-- [ ] **Step 5: Run scoped acceptance checks.**
-
-  ```bash
-  pnpm exec vitest run src/report/__tests__/baselines.test.ts src/report/__tests__/weeklyReport.snapshot.test.ts
-  pnpm exec eslint src/report/baselines.ts src/report/weekly.ts src/report/__tests__/baselines.test.ts
-  ```
-
-  Expected: baseline and existing report regressions pass with no snapshot churn unrelated to explicit candle authority.
-
-- [ ] **Step 6: Commit the baseline authority change.**
-
-  ```bash
-  git add src/report/baselines.ts src/report/weekly.ts src/report/__tests__/baselines.test.ts
-  git commit -m "m55: make report baselines use explicit candles"
-  ```
-
-## Task 3: Coordinate report facts and canonical candles in the weekly use case
+## Task 2: Add fixtures and unified structural-semantic validation
 
 **Files:**
 
-- Modify: `src/application/ports/weeklyReportReadPort.ts`
-- Modify: `src/adapters/sqlite/sqliteWeeklyReportReadAdapter.ts`
-- Create: `src/adapters/sqlite/__tests__/sqliteWeeklyReportReadAdapter.test.ts`
-- Modify: `src/report/weekly.ts`
-- Modify: `src/report/__tests__/weeklyReport.snapshot.test.ts`
-- Modify: `src/report/__tests__/__snapshots__/weeklyReport.snapshot.test.ts.snap`
-- Modify: `src/application/use-cases/getWeeklyReportUseCase.ts`
-- Modify: `src/application/use-cases/__tests__/fakes/fakeWeeklyReportReadPort.ts`
-- Modify: `src/application/use-cases/__tests__/getWeeklyReportUseCase.test.ts`
-- Modify: `src/composition/buildApplication.ts` (updated atomically with use-case API changes to maintain the typecheck gate)
+- Create: `contracts/evidence-bundle/v1/fixtures/valid/deterministic-only.json`
+- Create: `contracts/evidence-bundle/v1/fixtures/valid/contextual.json`
+- Create: `contracts/evidence-bundle/v1/fixtures/invalid/wrong-schema-version.json`
+- Create: `contracts/evidence-bundle/v1/fixtures/invalid/unknown-field.json`
+- Create: `contracts/evidence-bundle/v1/fixtures/invalid/unsupported-unit.json`
+- Create: `contracts/evidence-bundle/v1/fixtures/invalid/noncanonical-timestamp.json`
+- Create: `contracts/evidence-bundle/v1/fixtures/invalid/reversed-lifecycle.json`
+- Create: `contracts/evidence-bundle/v1/fixtures/invalid/out-of-range-number.json`
+- Create: `contracts/evidence-bundle/v1/fixtures/invalid/status-value-mismatch.json`
+- Create: `contracts/evidence-bundle/v1/fixtures/invalid/duplicate-lineage.json`
+- Create: `contracts/evidence-bundle/v1/fixtures/invalid/unresolved-lineage.json`
+- Create: `contracts/evidence-bundle/v1/fixtures/invalid/malformed-contextual-family.json`
+- Create: `contracts/evidence-bundle/v1/fixtures/invalid/unresolved-brief-evidence.json`
+- Create: `contracts/evidence-bundle/v1/fixtures/invalid/null-brief-available-coverage.json`
+- Create: `contracts/evidence-bundle/v1/fixtures/invalid/empty-context-no-warning.json`
+- Create: `src/contract/evidence/v1/validate.ts`
+- Create: `src/contract/evidence/v1/__tests__/validation.test.ts`
 
-**Exported API changes:** Replace `WeeklyReportReadPort.getWeeklyReport` with `WeeklyReportLedgerReadPort.getWeeklyReportData`; export `WeeklyReportData` and its domain-shaped records. Change `generateWeeklyReport` to accept `{ data, candles }`. Change `GetWeeklyReportUseCaseDeps` from `{ port }` to `{ weeklyReportLedgerReadPort, candleReadPort }`. The port declaration, its sole SQLite adapter/fake implementations, report caller, and use-case consumer are intentionally migrated in one task to satisfy the workspace typecheck gate.
+- [ ] **Step 1: Write the named contract tests first**
 
-**Invariants to test first:**
+Load JSON fixtures with `node:fs`, then add exact test names for the six contract invariants listed at the top of this plan. Add table-driven cases for every invalid fixture, asserting a stable result shape:
 
-- `selects the first complete supported feed in chronological request order`
-- `reads a 15m request from the canonical 15m source window`
-- `reads a 1h request from the canonical 15m source window without aggregation`
-- `uses the shared source closed-candle cutoff at the report end`
-- `skips candle reads when no request has a complete supported feed`
-- `does not retry or fall back when the canonical read returns no rows`
-- `propagates canonical candle read failures`
-- `preserves report range application errors`
-- `returns ledger facts ordered by timestamp then insertion id`
-- `keeps malformed persisted JSON as an unexpected error`
-- `renders byte-identical output for identical explicit facts and candles`
+```ts
+type EvidenceValidationIssue = {
+  path: string;
+  code: "STRUCTURAL" | "SEMANTIC" | "UNSUPPORTED_SCHEMA_VERSION";
+  message: string;
+};
 
-- [ ] **Step 1: Replace pass-through use-case tests with orchestration tests.** Configure the fake ledger port with ordered facts and parsed windows, and assert the exact window call:
+type EvidenceValidationResult =
+  | { ok: true; value: EvidenceBundleV1 }
+  | { ok: false; issues: EvidenceValidationIssue[] };
+```
 
-  ```ts
-  expect(candleReadPort.windowCalls).toEqual([
-    {
-      symbol: "SOL/USDC",
-      source: "geckoterminal",
-      network: "solana",
-      poolAddress: "PoolWeekly1",
-      timeframe: "15m",
-      fromUnixMs,
-      closedCandleCutoffUnixMs: expectedCutoff
-    }
-  ]);
-  ```
+Also test canonical timestamp equality boundaries, invalid calendar dates despite regex match, confidence 0/10000, scalar and array min/max boundaries, every scope variant, all unit enums, all feature kind/status combinations, all contextual family coverage relationships, unknown fields at root and nested levels, duplicate feature/evidence/reference IDs, feature-to-feature and feature-to-reference lineage, and research-brief references. Programmatically pass `NaN`, infinities, and `-0` to the validator because they cannot be represented in JSON fixtures.
 
-  Give the `1h` case the same expected source timeframe and assert returned baseline values reflect the canonical closes. Add incomplete/unsupported feed, empty result, candle error, and range-error cases. Use the exact invariant names above as test names.
+Run: `pnpm vitest run src/contract/evidence/v1/__tests__/validation.test.ts`
 
-- [ ] **Step 2: Add focused SQLite weekly-ledger adapter tests.** Insert same-timestamp rows in reverse semantic order to prove `ORDER BY as_of_unix_ms ASC, id ASC`, assert parsed domain-shaped objects and window timestamps, assert invalid/reversed dates map to `ReportRangeApplicationError`, and assert malformed JSON rejects without conversion.
+Expected: FAIL because `validate.ts` and fixtures do not exist.
 
-- [ ] **Step 3: Refactor the deterministic report snapshot test.** Build `WeeklyReportData` explicitly, call `generateWeeklyReport({ data, candles })`, and keep the existing summary/Markdown snapshots. Move endpoint-only invalid-date and malformed-row checks to use the composed path without reintroducing store access in the renderer.
+- [ ] **Step 2: Create the two valid publisher fixtures**
 
-- [ ] **Step 4: Run the focused suites and confirm failures describe the old APIs.**
+The deterministic fixture must use pair scope, one available numeric feature, one source reference, five empty contextual arrays, `researchBrief: null`, contextual and brief coverage `unavailable`, quality `partial` or `degraded`, and both `CONTEXTUAL_EVIDENCE_UNAVAILABLE` and `RESEARCH_BRIEF_UNAVAILABLE` warnings. The contextual fixture must use position scope, include at least one claim in each contextual family, and a non-null brief whose `sourceEvidenceIds` all resolve. Emit feature, claim, reference, warning, and upstream-run arrays in their documented stable order.
 
-  ```bash
-  pnpm exec vitest run src/application/use-cases/__tests__/getWeeklyReportUseCase.test.ts src/adapters/sqlite/__tests__/sqliteWeeklyReportReadAdapter.test.ts src/report/__tests__/weeklyReport.snapshot.test.ts
-  ```
+- [ ] **Step 3: Create one-purpose invalid fixtures**
 
-  Expected before implementation: failures reference the pass-through port, store-based renderer, or missing ledger-data method.
+Derive every invalid file from `deterministic-only.json` and introduce only the defect named by its filename. `malformed-contextual-family.json` uses an invalid family-specific `kind`; `duplicate-lineage.json` repeats an ID; `unresolved-lineage.json` points at a missing reference/feature; `null-brief-available-coverage.json` reports brief coverage `available` with a null brief; `empty-context-no-warning.json` removes the contextual absence warning. Keep each file valid JSON so downstream consumers can use the same corpus.
 
-- [ ] **Step 5: Define the ledger-facts port.** Keep the existing file path to minimize import churn, but export shapes equivalent to:
+- [ ] **Step 4: Implement one acceptance API around Ajv and semantic checks**
 
-  ```ts
-  export interface WeeklyReportData {
-    window: { from: string; to: string; fromUnixMs: number; toUnixMs: number };
-    plans: Array<{ asOfUnixMs: number; plan: PlanResponse }>;
-    planRequests: Array<{ asOfUnixMs: number; request: PlanRequest }>;
-    executionResults: Array<{ asOfUnixMs: number; result: ExecutionResultRequest }>;
-  }
+Use `Ajv2020` with `allErrors: true`, `strict: true`, and `ajv-formats`. Detect a non-literal `schemaVersion` first and return `UNSUPPORTED_SCHEMA_VERSION`; then run the compiled schema. Map Ajv errors to JSON-pointer-like paths and stable messages. Only after structural success, run pure semantic checks for:
 
-  export interface WeeklyReportLedgerReadPort {
-    getWeeklyReportData(input: { from: string; to: string }): Promise<WeeklyReportData>;
-  }
-  ```
+- real calendar validity and exact round-trip canonical timestamps;
+- root and available-feature time ordering;
+- unique IDs across features, claims, and source references;
+- allowed feature input lineage resolution without self-reference or cycles;
+- contextual source-reference and brief evidence-reference resolution;
+- empty/present family coverage agreement;
+- required warning coverage for every unavailable family and null brief;
+- quality not `complete` when required coverage is unavailable.
 
-  Use the repository's actual execution-result contract name. Do not expose SQLite column names, JSON strings, or `LedgerStore`.
+Sort all issues by `path`, then `code`, then `message`; never mutate or reorder the input. Export `validateEvidenceBundleV1(input: unknown): EvidenceValidationResult` and `parseEvidenceBundleV1(input: unknown): EvidenceBundleV1`, where the parser throws an `EvidenceBundleValidationError` containing the same sorted issues.
 
-- [ ] **Step 6: Convert the SQLite adapter to facts-only reads.** Parse and validate the date window, execute only the existing `plans`, `plan_requests`, and `execution_results` queries with stable ordering, parse JSON into the port shapes, and translate only `ReportRangeError` to `ReportRangeApplicationError`. Delete every `candle_revisions` query and baseline-feed key construction from this adapter path.
+- [ ] **Step 5: Run focused contract verification**
 
-- [ ] **Step 7: Make `generateWeeklyReport` pure over explicit data.** Export/reuse the date-window parser where the adapter needs it, but make rendering accept already parsed `WeeklyReportData` plus canonical `CandleRow[]`. Preserve calculations, Markdown labels, public summary fields, ordering, and rounding. Pass `{ unixMs, close }` projections to `computeBaselines`.
+Run: `pnpm vitest run src/contract/evidence/v1/__tests__/validation.test.ts`
 
-- [ ] **Step 8: Implement use-case orchestration.** After `getWeeklyReportData`, scan `data.planRequests` in adapter order. Treat a request as selectable only when symbol/source/network/pool address are non-empty strings and timeframe is `15m` or `1h`. Call `buildRegimeCandleReadPlan({ requestedTimeframe, nowUnixMs: data.window.toUnixMs })`, then `getCandlesForFeedWindow` with `data.window.fromUnixMs`, `readPlan.sourceTimeframe`, and `readPlan.sourceCutoffUnixMs`. If no feed qualifies, pass `[]` directly to the renderer. Do not catch candle errors or perform a second read.
+Expected: PASS with every invalid fixture rejected for its intended path/code and both valid fixtures accepted.
 
-- [ ] **Step 9: Update both fakes.** `FakeWeeklyReportReadPort` becomes a `WeeklyReportLedgerReadPort` fake with call capture and configurable `WeeklyReportData`/error. Keep candle window call/error tracking in `FakeCandleReadPort` deterministic and independent of latest-N calls.
+Run: `pnpm exec eslint src/contract/evidence/v1/validate.ts src/contract/evidence/v1/__tests__/validation.test.ts`
 
-- [ ] **Step 10: Update the composition root.** Update `buildApplication.ts` to construct `getWeeklyReport` with `weeklyReportLedgerReadPort` and `candleReadPort` to satisfy the new `GetWeeklyReportUseCaseDeps` signature. Do not branch on `DATABASE_URL` in reporting code.
+Expected: PASS with zero warnings.
 
-- [ ] **Step 11: Run scoped acceptance checks and inspect snapshot changes.**
+- [ ] **Step 6: Commit fixtures and acceptance authority**
 
-  ```bash
-  pnpm exec vitest run src/application/use-cases/__tests__/getWeeklyReportUseCase.test.ts src/adapters/sqlite/__tests__/sqliteWeeklyReportReadAdapter.test.ts src/report/__tests__/baselines.test.ts src/report/__tests__/weeklyReport.snapshot.test.ts
-  pnpm exec eslint src/application/ports/weeklyReportReadPort.ts src/adapters/sqlite/sqliteWeeklyReportReadAdapter.ts src/adapters/sqlite/__tests__/sqliteWeeklyReportReadAdapter.test.ts src/report/weekly.ts src/report/__tests__/weeklyReport.snapshot.test.ts src/application/use-cases/getWeeklyReportUseCase.ts src/application/use-cases/__tests__/fakes/fakeWeeklyReportReadPort.ts src/application/use-cases/__tests__/getWeeklyReportUseCase.test.ts
-  ```
+```bash
+git add contracts/evidence-bundle/v1/fixtures src/contract/evidence/v1/validate.ts src/contract/evidence/v1/__tests__/validation.test.ts
+git commit -m "m58: validate EvidenceBundle v1 semantics"
+```
 
-  Expected: every named invariant passes; snapshots retain the same response shape and deterministic values for the explicit fixture.
-
-- [ ] **Step 12: Commit the coordinated weekly-report refactor.**
-
-  ```bash
-  git add src/application/ports/weeklyReportReadPort.ts src/adapters/sqlite/sqliteWeeklyReportReadAdapter.ts src/adapters/sqlite/__tests__/sqliteWeeklyReportReadAdapter.test.ts src/report/weekly.ts src/report/__tests__/weeklyReport.snapshot.test.ts src/report/__tests__/__snapshots__/weeklyReport.snapshot.test.ts.snap src/application/use-cases/getWeeklyReportUseCase.ts src/application/use-cases/__tests__/fakes/fakeWeeklyReportReadPort.ts src/application/use-cases/__tests__/getWeeklyReportUseCase.test.ts src/composition/buildApplication.ts
-  git commit -m "m55: route weekly reports through canonical candles"
-  ```
-
-## Task 4: Wire and prove active-store selection without fallback
+## Task 3: Publish cross-repository canonical JSON and hash vectors
 
 **Files:**
 
-- Create: `src/composition/__tests__/weeklyReportCandleStore.e2e.test.ts`
-- Create: `src/composition/__tests__/weeklyReportCandleStore.e2e.pg.test.ts`
+- Create: `contracts/evidence-bundle/v1/hash-vectors.json`
+- Create: `src/contract/evidence/v1/__tests__/canonicalHash.test.ts`
+- Modify: `scripts/generateEvidenceContract.ts`
+
+- [ ] **Step 1: Write failing published-vector tests**
+
+Use `canonicalJson` and `sha256Hex` from `src/contract/v1`. Define the vector file shape explicitly:
+
+```ts
+interface EvidenceHashVector {
+  name: string;
+  payload: unknown;
+  canonical: string;
+  utf8ByteLength: number;
+  sha256: string;
+  schemaSha256: string;
+}
+```
+
+Name tests `reproduces every published EvidenceBundle hash vector`, `ignores object insertion order but preserves array order`, `normalizes negative zero and preserves ECMAScript exponent formatting`, and `detects a deliberately mismatched published hash`. Validate each payload first, except focused primitive canonicalizer vectors. Assert the schema digest on every vector.
+
+Run: `pnpm vitest run src/contract/evidence/v1/__tests__/canonicalHash.test.ts`
+
+Expected: FAIL because `hash-vectors.json` is absent.
+
+- [ ] **Step 2: Generate deterministic vectors**
+
+Extend the generator to derive vectors from the two valid fixtures plus focused non-ASCII, negative-zero, exponent, empty-context, null-brief, and array-reorder inputs. For every vector, compute canonical text, UTF-8 byte length, SHA-256, and current schema SHA-256. `--write` writes stable pretty JSON with a final newline; `--check` compares bytes and reports the vector path as stale. Do not accept a publisher-supplied `payloadHash` field.
+
+- [ ] **Step 3: Prove vectors and regeneration are stable**
+
+Run: `pnpm run contract:evidence:generate`
+
+Run: `pnpm run contract:evidence:check`
+
+Expected: PASS without rewriting published vectors.
+
+Run: `pnpm vitest run src/contract/evidence/v1/__tests__/canonicalHash.test.ts src/contract/evidence/v1/__tests__/generation.test.ts`
+
+Expected: PASS.
+
+Run: `pnpm exec prettier --check scripts/generateEvidenceContract.ts contracts/evidence-bundle/v1/hash-vectors.json src/contract/evidence/v1/__tests__/canonicalHash.test.ts`
+
+Expected: PASS.
+
+- [ ] **Step 4: Commit portable hash vectors**
+
+```bash
+git add scripts/generateEvidenceContract.ts contracts/evidence-bundle/v1/hash-vectors.json src/contract/evidence/v1/__tests__/canonicalHash.test.ts
+git commit -m "m58: publish EvidenceBundle hash vectors"
+```
+
+## Task 4: Add the append-only evidence table and migration
+
+**Files:**
+
+- Create: `src/ledger/pg/schema/evidenceBundles.ts`
+- Modify: `src/ledger/pg/schema/index.ts`
+- Create: `src/ledger/pg/schema/__tests__/evidenceBundles.shape.test.ts`
+- Create: `drizzle/0004_create_evidence_bundles.sql`
+- Create: `drizzle/meta/0004_snapshot.json`
+- Modify: `drizzle/meta/_journal.json`
+- Create: `src/ledger/pg/__tests__/evidenceBundlesMigration.test.ts`
+
+- [ ] **Step 1: Write failing schema and migration tests**
+
+The shape test must assert the exact 18 columns, unique idempotency tuple, current/history/correlation indexes, and the absence of update/delete helpers. The PG-gated migration cases are named `keeps evidence bundles separate from final insight rows` and `rejects invalid evidence scalar invariants at the database boundary`; they assert `regime_engine.evidence_bundles` and `regime_engine.clmm_insights` are distinct tables, existing insight rows remain untouched, and invalid timestamp ordering/hash/schema/pair rows fail database checks.
+
+Run: `pnpm vitest run src/ledger/pg/schema/__tests__/evidenceBundles.shape.test.ts src/ledger/pg/__tests__/evidenceBundlesMigration.test.ts`
+
+Expected: FAIL because the table is not defined or migrated.
+
+- [ ] **Step 2: Define the Drizzle table and exports**
+
+Create `evidenceBundles` with `bigserial`/`serial` ID consistent with repository support, varchar identity columns, bigint `{ mode: "number" }` timestamps, `jsonb` full payload, canonical text, and 64-character hash. Export `EvidenceBundleRow` and `EvidenceBundleInsert`. Add:
+
+```ts
+uniqueIndex("uniq_evidence_bundles_source_run").on(
+  t.schemaVersion,
+  t.sourcePublisher,
+  t.sourceId,
+  t.runId
+);
+index("idx_evidence_bundles_current").on(
+  t.pair,
+  t.scopeKey,
+  t.sourcePublisher,
+  t.sourceId,
+  t.asOfUnixMs,
+  t.id
+);
+index("idx_evidence_bundles_history").on(t.pair, t.scopeKey, t.receivedAtUnixMs, t.id);
+index("idx_evidence_bundles_correlation").on(t.correlationId, t.id);
+```
+
+Add check constraints for `evidence-bundle.v1`, `SOL/USDC`, `as_of <= created_at < fresh_until <= expires_at`, and lowercase `[0-9a-f]{64}` hash. Re-export table and row/insert types from `schema/index.ts`.
+
+- [ ] **Step 3: Generate and inspect migration 0004**
+
+Run: `pnpm exec drizzle-kit generate --name create_evidence_bundles`
+
+Expected: writes `drizzle/0004_create_evidence_bundles.sql`, `drizzle/meta/0004_snapshot.json`, and journal index 4. Confirm the generated SQL creates only the additive evidence table, constraints, and four indexes; it must not alter `clmm_insights`.
+
+- [ ] **Step 4: Run focused schema verification**
+
+Run: `pnpm vitest run src/ledger/pg/schema/__tests__/evidenceBundles.shape.test.ts src/ledger/pg/__tests__/evidenceBundlesMigration.test.ts`
+
+Expected: shape test PASS; PG test PASS when `DATABASE_URL` is configured and SKIP otherwise.
+
+Run: `pnpm exec prettier --check src/ledger/pg/schema/evidenceBundles.ts src/ledger/pg/schema/index.ts src/ledger/pg/schema/__tests__/evidenceBundles.shape.test.ts src/ledger/pg/__tests__/evidenceBundlesMigration.test.ts drizzle/meta/_journal.json drizzle/meta/0004_snapshot.json`
+
+Expected: PASS.
+
+- [ ] **Step 5: Commit schema and migration together**
+
+```bash
+git add src/ledger/pg/schema/evidenceBundles.ts src/ledger/pg/schema/index.ts src/ledger/pg/schema/__tests__/evidenceBundles.shape.test.ts src/ledger/pg/__tests__/evidenceBundlesMigration.test.ts drizzle/0004_create_evidence_bundles.sql drizzle/meta/0004_snapshot.json drizzle/meta/_journal.json
+git commit -m "m58: add evidence bundle persistence schema"
+```
+
+## Task 5: Implement append, replay, and conflict through the repository port
+
+**Files:**
+
+- Create: `src/application/ports/evidenceBundleRepositoryPort.ts`
+- Create: `src/adapters/postgres/postgresEvidenceBundleRepository.ts`
+- Create: `src/adapters/postgres/__tests__/postgresEvidenceBundleRepository.append.test.ts`
+
+- [ ] **Step 1: Write the append state-machine tests first**
+
+Write exact named cases `creates one immutable row for a new source run`, `returns already_ingested for an identical source run replay`, `throws EVIDENCE_RUN_CONFLICT for a changed source run replay`, and `fails when a losing append cannot load the winning row`. Add sequential and concurrent identical/different replay cases, different run/source acceptance, full JSON/canonical/scalar persistence, and original `receivedAt` retention.
+
+Run: `pnpm vitest run src/adapters/postgres/__tests__/postgresEvidenceBundleRepository.append.test.ts`
+
+Expected: FAIL because the port and adapter do not exist.
+
+- [ ] **Step 2: Define the append contract and exact scope-key derivation**
+
+In the application port, export `EvidenceScopeQuery`, `EvidenceSourceFilter`, receipt/result types, `EvidenceRunConflictError` with `errorCode = "EVIDENCE_RUN_CONFLICT"`, and:
+
+```ts
+export interface EvidenceBundleRepositoryPort {
+  append(input: {
+    bundle: EvidenceBundleV1;
+    payloadCanonical: string;
+    payloadHash: string;
+    receivedAtUnixMs: number;
+  }): Promise<
+    | { status: "created"; receipt: EvidenceBundleReceipt }
+    | { status: "already_ingested"; receipt: EvidenceBundleReceipt }
+  >;
+}
+```
+
+Export a pure `evidenceScopeKey(scope)` helper using unambiguous tagged length-prefixed components, for example `pair`, `whirlpool:<address>`, `wallet:<address>`, and `position:<wallet-length>:<wallet><pool-length>:<pool><position-length>:<position>`. Scope values remain case-sensitive and are never inferred from features.
+
+- [ ] **Step 3: Implement append in the Postgres adapter in the same task**
+
+Create `createPostgresEvidenceBundleRepository(db): EvidenceBundleRepositoryPort`. Derive every scalar column from the already-validated bundle. Insert with conflict-do-nothing on `(schemaVersion, source.publisher, source.sourceId, runId)`, returning the row. When no row is returned, read the winning identity: equal hash (and defensively equal canonical text) returns `already_ingested`; different bytes throw `EvidenceRunConflictError`; missing winner throws the append-only invariant error. Return row ID, stored hash, and stored original receipt time. Expose no update or delete operation.
+
+- [ ] **Step 4: Run focused append verification**
+
+Run: `pnpm vitest run src/adapters/postgres/__tests__/postgresEvidenceBundleRepository.append.test.ts`
+
+Expected: PASS when Postgres is configured and SKIP otherwise.
+
+Run: `pnpm exec eslint src/application/ports/evidenceBundleRepositoryPort.ts src/adapters/postgres/postgresEvidenceBundleRepository.ts src/adapters/postgres/__tests__/postgresEvidenceBundleRepository.append.test.ts`
+
+Expected: PASS with zero warnings.
+
+- [ ] **Step 5: Commit the append port and its only adapter atomically**
+
+```bash
+git add src/application/ports/evidenceBundleRepositoryPort.ts src/adapters/postgres/postgresEvidenceBundleRepository.ts src/adapters/postgres/__tests__/postgresEvidenceBundleRepository.append.test.ts
+git commit -m "m58: append immutable evidence bundles"
+```
+
+## Task 6: Add exact-scope latest reads and lifecycle derivation
+
+**Files:**
+
+- Modify: `src/application/ports/evidenceBundleRepositoryPort.ts`
+- Modify: `src/adapters/postgres/postgresEvidenceBundleRepository.ts`
+- Create: `src/adapters/postgres/__tests__/postgresEvidenceBundleRepository.latest.test.ts`
+
+- [ ] **Step 1: Write latest-read invariants first**
+
+Add exact named cases `derives lifecycle at inclusive freshness and expiry boundaries`, `returns latest evidence independently for each source`, `never mixes exact evidence scopes`, and `fails visibly when stored payload JSON is corrupt`. Cover all four scope kinds, source-filtered and unfiltered reads, ties on as-of/receipt/id, expired rows remaining observable, and no row returning an empty list rather than falling back to another scope.
+
+Run: `pnpm vitest run src/adapters/postgres/__tests__/postgresEvidenceBundleRepository.latest.test.ts`
+
+Expected: FAIL because `getLatest` is absent.
+
+- [ ] **Step 2: Add the method to the port and adapter together**
+
+Extend the same exported interface and implementation with:
+
+```ts
+getLatest(input: {
+  pair: "SOL/USDC";
+  scope: EvidenceScope;
+  source: EvidenceSourceFilter | null;
+  nowUnixMs: number;
+}): Promise<EvidenceBundleRecord[]>;
+```
+
+Define `EvidenceBundleRecord` as validated `bundle`, row ID, payload hash, received time, and `lifecycle: "FRESH" | "STALE" | "EXPIRED"`. Use `row_number() over (partition by source_publisher, source_id order by as_of_unix_ms desc, received_at_unix_ms desc, id desc)` for unfiltered reads and the same ordering with `limit 1` for a filter. Match pair and derived exact `scopeKey` in every query.
+
+Map rows by calling `parseEvidenceBundleV1(row.payloadJson)` before returning. Derive lifecycle with the inclusive transition table from the invariant; do not update the row and do not decide selection eligibility.
+
+- [ ] **Step 3: Run focused latest verification**
+
+Run: `pnpm vitest run src/adapters/postgres/__tests__/postgresEvidenceBundleRepository.latest.test.ts src/adapters/postgres/__tests__/postgresEvidenceBundleRepository.append.test.ts`
+
+Expected: PASS when Postgres is configured and SKIP otherwise.
+
+Run: `pnpm exec eslint src/application/ports/evidenceBundleRepositoryPort.ts src/adapters/postgres/postgresEvidenceBundleRepository.ts src/adapters/postgres/__tests__/postgresEvidenceBundleRepository.latest.test.ts`
+
+Expected: PASS.
+
+- [ ] **Step 4: Commit the method with all implementation changes**
+
+```bash
+git add src/application/ports/evidenceBundleRepositoryPort.ts src/adapters/postgres/postgresEvidenceBundleRepository.ts src/adapters/postgres/__tests__/postgresEvidenceBundleRepository.latest.test.ts
+git commit -m "m58: query latest evidence by exact scope"
+```
+
+## Task 7: Add bounded cursor history without scope mixing
+
+**Files:**
+
+- Modify: `src/application/ports/evidenceBundleRepositoryPort.ts`
+- Modify: `src/adapters/postgres/postgresEvidenceBundleRepository.ts`
+- Create: `src/adapters/postgres/__tests__/postgresEvidenceBundleRepository.history.test.ts`
+
+- [ ] **Step 1: Write cursor and limit invariants first**
+
+Add exact named cases `paginates history without duplicates across intervening inserts`, `rejects history limits outside one through one hundred`, `never mixes exact evidence scopes in history`, and `orders evidence history by receipt time and id descending`. Cover default 30, explicit 1 and 100, source filtering, `(receivedAt DESC, id DESC)` tie-breaking, empty history, cursor exclusivity, new rows inserted between pages, lifecycle derivation, and corrupt stored payload rejection.
+
+Run: `pnpm vitest run src/adapters/postgres/__tests__/postgresEvidenceBundleRepository.history.test.ts`
+
+Expected: FAIL because `getHistory` is absent.
+
+- [ ] **Step 2: Add history to the port and adapter together**
+
+Extend both with:
+
+```ts
+export interface EvidenceHistoryCursor {
+  receivedAtUnixMs: number;
+  id: number;
+}
+
+getHistory(input: {
+  pair: "SOL/USDC";
+  scope: EvidenceScope;
+  source: EvidenceSourceFilter | null;
+  limit?: number;
+  cursor: EvidenceHistoryCursor | null;
+  nowUnixMs: number;
+}): Promise<{
+  records: EvidenceBundleRecord[];
+  nextCursor: EvidenceHistoryCursor | null;
+}>;
+```
+
+Validate limit before SQL. Query `limit + 1` rows to determine continuation, ordered by receipt and ID descending. For a cursor, add the exclusive predicate `received_at_unix_ms < cursor.receivedAtUnixMs OR (received_at_unix_ms = cursor.receivedAtUnixMs AND id < cursor.id)`. Return a cursor from the last emitted record only when an extra row exists. Reuse exact scope-key mapping, payload revalidation, and lifecycle derivation.
+
+- [ ] **Step 3: Run focused history and regression verification**
+
+Run: `pnpm vitest run src/adapters/postgres/__tests__/postgresEvidenceBundleRepository.history.test.ts src/adapters/postgres/__tests__/postgresEvidenceBundleRepository.latest.test.ts src/adapters/postgres/__tests__/postgresEvidenceBundleRepository.append.test.ts`
+
+Expected: PASS when Postgres is configured and SKIP otherwise.
+
+Run: `pnpm exec eslint src/application/ports/evidenceBundleRepositoryPort.ts src/adapters/postgres/postgresEvidenceBundleRepository.ts src/adapters/postgres/__tests__/postgresEvidenceBundleRepository.history.test.ts`
+
+Expected: PASS.
+
+- [ ] **Step 4: Commit the method with its adapter implementation**
+
+```bash
+git add src/application/ports/evidenceBundleRepositoryPort.ts src/adapters/postgres/postgresEvidenceBundleRepository.ts src/adapters/postgres/__tests__/postgresEvidenceBundleRepository.history.test.ts
+git commit -m "m58: paginate evidence bundle history"
+```
+
+## Task 8: Package and document the public compatibility surface
+
+**Files:**
+
+- Create: `docs/contracts/evidence-bundle.v1.md`
+- Modify: `scripts/copyBuildAssets.mjs`
+- Modify: `scripts/generateEvidenceContract.ts`
+- Modify: `src/contract/evidence/v1/__tests__/generation.test.ts`
 - Modify: `package.json`
 
-**Exported API change:** (none — composition root wiring was updated in Task 3)
+- [ ] **Step 1: Write failing documentation and packaging checks**
 
-**Invariants to test first:**
+Extend generation check mode to require the documentation to contain the exact current schema digest and every stable artifact path. Add focused cases to `generation.test.ts` named `publishes every EvidenceBundle artifact with the documented schema digest` and `rejects stale EvidenceBundle documentation metadata`. The first runs a build into the normal `dist` path, then asserts the schema, digest, vectors, and fixture directories exist beneath `dist/contracts/evidence-bundle/v1` with byte-identical contents. The second invokes check logic against a temporary stale documentation copy and asserts a non-writing failure that names the documentation path.
 
-- `uses SQLite canonical candles when DATABASE_URL is absent`
-- `uses PostgreSQL canonical candles when DATABASE_URL is configured`
-- `ignores conflicting SQLite candles when PostgreSQL is the active candle store`
-- `does not fall back to SQLite when the active PostgreSQL feed is empty`
+Run: `pnpm vitest run src/contract/evidence/v1/__tests__/generation.test.ts`
 
-- [ ] **Step 1: Write the SQLite composition regression.** Create an isolated SQLite ledger, write a plan request/plan plus canonical revisions through the SQLite candle writer, build `RuntimeStoreContext` with `pg: null`, and call the composed weekly use case. Assert non-flat HODL/DCA values derived from those revisions and unchanged report envelope fields.
+Expected: FAIL until documentation and build copying are implemented.
 
-- [ ] **Step 2: Write the conditional PostgreSQL composition regressions.** Use `describe.skipIf(!process.env.DATABASE_URL)`, a unique feed key, SQLite plan facts, and PostgreSQL candle revisions. Seed conflicting SQLite closes that would yield visibly different baselines; assert only PostgreSQL prices win. In a separate test leave the PostgreSQL feed empty while SQLite has rows and assert flat SOL baselines, proving no fallback. Clean up only the unique PostgreSQL rows and close both stores in `finally`/hooks.
+- [ ] **Step 2: Document ownership and exact portable algorithms**
 
-- [ ] **Step 3: Run the focused tests against the composed application.** The composition root was updated in Task 3, so these tests validate the new wiring:
+Create `docs/contracts/evidence-bundle.v1.md` with:
 
-  ```bash
-  pnpm exec vitest run src/composition/__tests__/weeklyReportCandleStore.e2e.test.ts
-  DATABASE_URL=postgres://test:test@localhost:5432/regime_engine_test PG_SSL=false pnpm exec vitest run src/composition/__tests__/weeklyReportCandleStore.e2e.pg.test.ts
-  ```
+- artifact paths and the literal generated schema SHA-256;
+- commands `pnpm run contract:evidence:generate` and `pnpm run contract:evidence:check`;
+- the exact UTF-16 key ordering, array preservation, compact ECMAScript JSON, negative-zero normalization, UTF-8 SHA-256 algorithm;
+- all publisher-owned fields versus Regime-owned row ID, receipt time, canonical/hash metadata, lifecycle, ingest outcome, and future selection lineage;
+- canonical source/run idempotency tuple and replay/conflict behavior;
+- scope-key/query isolation, latest ordering, cursor format, limits, and lifecycle boundary table;
+- deterministic-only semantics and the rule that missing context/brief is unavailable evidence, never zero/success;
+- explicit statement that evidence cannot author policy, allocation, recommendations, or execution.
 
-  Expected before implementation: dependency-shape/type failures or PostgreSQL authority assertions fail.
+Teach the generator to replace/check a single `<!-- schema-sha256:... -->` marker so digest drift cannot be hand-maintained.
 
-- [ ] **Step 4: Add the PostgreSQL composition suite to `test:pg` and run scoped acceptance checks.**
+- [ ] **Step 3: Copy the entire public artifact tree during build**
 
-  ```bash
-  pnpm exec vitest run src/composition/__tests__/weeklyReportCandleStore.e2e.test.ts
-  DATABASE_URL=postgres://test:test@localhost:5432/regime_engine_test PG_SSL=false pnpm exec vitest run src/composition/__tests__/weeklyReportCandleStore.e2e.pg.test.ts
-  pnpm exec eslint src/composition/__tests__/weeklyReportCandleStore.e2e.test.ts src/composition/__tests__/weeklyReportCandleStore.e2e.pg.test.ts
-  ```
+Extend `copyBuildAssets.mjs` with a recursive, deterministic directory copy from `contracts/evidence-bundle/v1` to `dist/contracts/evidence-bundle/v1`, preserving file bytes and creating parent directories. Keep the existing `schema.sql` copy. Add the three evidence PG test paths to `test:pg`; do not add any HTTP tests.
 
-  Expected: SQLite-only, PostgreSQL authority, conflicting-SQLite, and empty-active-store cases pass.
+- [ ] **Step 4: Run focused artifact verification**
 
-- [ ] **Step 5: Commit the composition proof.**
+Run: `pnpm run contract:evidence:generate`
 
-  ```bash
-  git add src/composition/__tests__/weeklyReportCandleStore.e2e.test.ts src/composition/__tests__/weeklyReportCandleStore.e2e.pg.test.ts package.json
-  git commit -m "m55: wire weekly reports to the active candle store"
-  ```
+Run: `pnpm run contract:evidence:check`
 
-## Task 5: Correct current architecture and API documentation
+Expected: PASS without rewriting documentation or generated artifacts.
 
-**Files:**
+Run: `pnpm vitest run src/contract/evidence/v1/__tests__/generation.test.ts`
 
-- Modify: `README.md`
-- Modify: `architecture.md`
-- Modify: `documentation.md`
-- Modify: `src/adapters/http/openapi.ts`
-- Modify: `src/composition/__tests__/buildApp.e2e.test.ts`
-- Modify: `docs/solutions/best-practices/composition-root-pattern-2026-05-08.md`
+Expected: PASS and all packaged artifacts byte-match their source files.
 
-- [ ] **Step 1: Add an OpenAPI regression assertion.** Extend only the existing `serves /v1/openapi.json` case to assert the weekly endpoint summary states that report facts come from the ledger and baseline prices come from the active canonical candle store.
+Run: `pnpm exec prettier --check docs/contracts/evidence-bundle.v1.md scripts/copyBuildAssets.mjs scripts/generateEvidenceContract.ts package.json`
 
-- [ ] **Step 2: Run the focused OpenAPI test and confirm the old “ledger data” summary fails the new assertion.**
+Expected: PASS.
 
-  ```bash
-  pnpm exec vitest run src/composition/__tests__/buildApp.e2e.test.ts -t "serves /v1/openapi.json"
-  ```
+- [ ] **Step 5: Commit documentation and packaged artifacts**
 
-- [ ] **Step 3: Update current documentation.** In README and architecture descriptions, replace “ledger-only” with the precise split: append-only SQLite provides plan/execution facts; the active SQLite/PostgreSQL `CandleReadPort` provides SOL baseline closes. Update the weekly-report flow to include complete feed selection, canonical 15-minute source timeframe, and closed cutoff. In `documentation.md`, correct current endpoint/module descriptions while leaving dated Milestone 15 claims explicitly framed as historical implementation history.
-
-- [ ] **Step 4: Update the durable composition-root solution.** Show `WeeklyReportLedgerReadPort` plus the selected `CandleReadPort` entering `createGetWeeklyReportUseCase`; remove the obsolete high-level SQLite weekly adapter example. Do not rewrite unrelated historical guidance.
-
-- [ ] **Step 5: Update the OpenAPI summary and run scoped acceptance checks.**
-
-  ```bash
-  pnpm exec vitest run src/composition/__tests__/buildApp.e2e.test.ts -t "serves /v1/openapi.json"
-  pnpm exec prettier --check README.md architecture.md documentation.md src/adapters/http/openapi.ts src/composition/__tests__/buildApp.e2e.test.ts docs/solutions/best-practices/composition-root-pattern-2026-05-08.md
-  pnpm exec eslint src/adapters/http/openapi.ts src/composition/__tests__/buildApp.e2e.test.ts
-  ```
-
-  Expected: the focused contract assertion passes and all changed documentation/code is formatted.
-
-- [ ] **Step 6: Commit the documentation correction.**
-
-  ```bash
-  git add README.md architecture.md documentation.md src/adapters/http/openapi.ts src/composition/__tests__/buildApp.e2e.test.ts docs/solutions/best-practices/composition-root-pattern-2026-05-08.md
-  git commit -m "m55: document canonical report candle authority"
-  ```
+```bash
+git add docs/contracts/evidence-bundle.v1.md scripts/copyBuildAssets.mjs scripts/generateEvidenceContract.ts src/contract/evidence/v1/__tests__/generation.test.ts package.json
+git commit -m "m58: document and package EvidenceBundle artifacts"
+```
 
 **Tests to add or update**
 
-- Add mirrored SQLite/PostgreSQL candle-window adapter contracts for complete feed isolation, inclusive bounds, revision tie-breaking, deterministic order, and empty results.
-- Expand baseline tests to prove canonical-only authority, defensive window filtering, deterministic sorting, empty candles, and no requests.
-- Add SQLite weekly-ledger adapter tests for parsed windows, stable row ordering, malformed persisted JSON, and range-error translation.
-- Replace pass-through weekly use-case tests with feed-selection, `15m`/`1h`, cutoff, missing-feed, empty-store, and error-propagation cases.
-- Update deterministic weekly report snapshots to use explicit report facts and candles.
-- Add SQLite-only and PostgreSQL-backed composition tests, including conflicting SQLite data and empty-active-store no-fallback cases.
-- Extend the existing OpenAPI composition test only within its weekly endpoint assertion.
+- New schema generation/digest test: `src/contract/evidence/v1/__tests__/generation.test.ts`.
+- New structural/semantic validation matrix: `src/contract/evidence/v1/__tests__/validation.test.ts`.
+- New cross-language canonical/hash vector test: `src/contract/evidence/v1/__tests__/canonicalHash.test.ts`.
+- New Drizzle shape and migration tests: `src/ledger/pg/schema/__tests__/evidenceBundles.shape.test.ts`, `src/ledger/pg/__tests__/evidenceBundlesMigration.test.ts`.
+- Three focused PG adapter suites, split by port method: append, latest, and history. These are new files, so the existing-test-file >500 line/>10 case splitting rule is not triggered; nevertheless, keep each suite restricted to one repository method.
+- Update `package.json` `test:pg` to include all three adapter suites and the migration test. Contract tests remain in the default `pnpm test` discovery.
 
-**Validation commands**
+**Validation commands after all implementation tasks**
 
-Run after all implementation tasks complete; this is the validate phase, not a standalone implementation task:
+The dedicated validate phase, not a standalone implementation task, runs:
 
 ```bash
-pnpm -r typecheck
+pnpm run contract:evidence:check
+pnpm run typecheck
 pnpm run test
+pnpm run test:pg
 pnpm run lint
-pnpm run build
 pnpm run boundaries
+pnpm run build
 pnpm run format
-DATABASE_URL=postgres://test:test@localhost:5432/regime_engine_test PG_SSL=false pnpm run test:pg
+git diff --exit-code -- contracts/evidence-bundle/v1/schema.sha256 contracts/evidence-bundle/v1/hash-vectors.json src/contract/evidence/v1/types.generated.ts docs/contracts/evidence-bundle.v1.md
 ```
 
-Expected: every command exits zero. The PostgreSQL command requires the repository's test database; inability to connect is an environment blocker, not permission to mark PostgreSQL coverage complete.
+Expected: every command exits 0; PG suites may only be skipped in the non-PG default test command, not in `test:pg`; the final diff check proves generation/check mode left published outputs unchanged.
 
 **Risk areas**
 
-- The shared closed-candle delay can intentionally exclude the last nominal bar; boundary fixtures must calculate expectations through `buildRegimeCandleReadPlan`, not hard-code a looser report cutoff.
-- PostgreSQL numeric values may arrive as strings; the existing null guard and `Number(...)` conversion must remain common to both read methods.
-- Reports spanning several market feeds still select one baseline feed. Preserving the first complete chronological request avoids an unrequested multi-feed redesign.
-- Existing snapshots may change because old SQLite/inline prices were wrong. Accept only differences explained by the new explicit canonical fixtures; public fields and Markdown structure must not drift.
-- Malformed legacy requests may lack the modern market shape. They remain in totals/config ordering but cannot select a feed unless all required fields and a supported timeframe are present.
-- Large report ranges can return many candles. The bounded indexed query is intentional; adding a guessed limit would silently truncate results.
-- PostgreSQL tests share a database. Unique feed keys and scoped cleanup are required to avoid deleting another suite's rows.
+- The canonicalizer is repository-defined rather than RFC 8785; ECMAScript number rendering, UTF-16 object-key sorting, Unicode byte encoding, negative zero, and array order are compatibility-critical.
+- JSON Schema and semantic validation can drift. One public validation API and fixture-driven generation checks must prevent structural-only acceptance.
+- Generated TypeScript unions may be less precise than runtime conditionals. Runtime validation remains authoritative; persistence never accepts casts as proof.
+- JSONB rows are bounded only if every string and array constraint is present. Missing a nested maximum creates a storage/validation abuse path for #59.
+- Replay correctness is concurrency-sensitive. Conflict-do-nothing followed by winner lookup must retain the first payload/receipt and distinguish a missing winner from idempotency.
+- Exact scope keys contain sensitive opaque identifiers. Their encoding must be collision-free and case-preserving; no route is added in this issue.
+- JavaScript numeric timestamps are safe for the specified dates but database bigint mapping and cursor equality must remain exact integers.
+- Generated Drizzle metadata is coupled to current migration history. If `0004` is no longer the next index when implementation starts, stop and re-plan rather than overwriting another migration.
 
 **Stop conditions**
 
-- Stop if repository types show that plan requests cannot provide `symbol`, `source`, `network`, `poolAddress`, and supported `timeframe` without changing the public request contract; revise the design rather than inventing feed defaults.
-- Stop if implementing the window read requires a schema migration or index change not described by the design; document the query-plan evidence and obtain scope approval.
-- Stop if any existing `CandleReadPort` implementation or fake is discovered beyond the SQLite adapter, PostgreSQL adapter, and application fake; add it to Task 1 before changing the interface.
-- Stop if preserving the weekly response schema, formulas, deterministic ordering, or 400/500 error taxonomy proves incompatible with explicit report inputs.
-- Stop if a proposed fix catches candle-store failures, probes a second store, reuses inline request candles, or reads `candle_revisions` from the weekly SQLite ledger adapter.
-- Stop before claiming PostgreSQL acceptance if the configured test database cannot run the new adapter and composition suites.
+- Abort if `design.md` or issue acceptance criteria change the wire shape, ownership boundary, or idempotency tuple before implementation completes; regenerate the plan and artifacts from the new authority.
+- Abort if migration index `0004` already exists or the current Drizzle snapshot no longer matches the inspected repository; never overwrite or renumber an unrelated migration.
+- Abort if Ajv/json-schema-to-typescript cannot support draft 2020-12 and deterministic checked-in output under Node 22 with pinned versions; choose and document a compatible toolchain before proceeding.
+- Abort if the schema cannot express the promised deterministic-only fixture without weakening strict unknown-field rejection or allowing fabricated zero values.
+- Abort if the append method cannot atomically distinguish identical replay from different-payload conflict under concurrent Postgres transactions; do not substitute a read-before-write race.
+- Abort if exact scope-key derivation is ambiguous/collision-prone or a query would implicitly combine pair, wallet, Whirlpool, and position scopes.
+- Abort if implementation requires HTTP, selection, policy synthesis, SQLite fallback, legacy insight mutation, or any other non-goal; split that work into its owning issue.
+- Abort on evidence of user-owned overlapping edits in any expected file; preserve those edits and request coordination rather than overwriting them.
+
+**Assumptions**
+
+- `evidence-bundle.v1`, `SOL/USDC`, `sol-usdc-clmm-intelligence`, and `solana-mainnet` are the v1 literal identities.
+- Postgres is the sole durable evidence authority; default contract tests require no database, while `test:pg` runs migrations against the configured test database.
+- Publisher arrays are ordered deliberately and remain hash-significant; validation rejects duplicates but never sorts accepted payloads.
+- `receivedAtUnixMs` and query `nowUnixMs` are supplied by future use cases/clock ports; this issue defines repository behavior without adding an ingest use case or composition wiring.
+- Existing canonical JSON and SHA-256 helpers remain the implementation primitive and are extended by vectors, not replaced.
+- Because the design names contextual families but not their closed `kind` literals, v1 uses the explicit family-specific enums fixed in Task 1; changing those enums after publication requires an intentional compatibility review.

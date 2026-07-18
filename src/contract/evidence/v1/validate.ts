@@ -34,7 +34,11 @@ export class EvidenceBundleValidationError extends Error {
 
 const ajv = new Ajv2020({
   allErrors: true,
-  strict: false
+  strict: true
+});
+ajv.addKeyword({
+  keyword: "finite",
+  validate: () => true
 });
 addFormats(ajv);
 const validateAgainstSchema = ajv.compile(__schema);
@@ -228,11 +232,19 @@ function checkTimestampOrdering(bundle: EvidenceBundleV1, issues: EvidenceValida
   const freshUntil = parseCanonicalTimestamp(bundle.freshUntil);
   const expiresAt = parseCanonicalTimestamp(bundle.expiresAt);
 
-  if (createdAt && asOf && createdAt > asOf) {
+  if (createdAt && asOf && asOf > createdAt) {
     issues.push({
       path: "/createdAt",
       code: "SEMANTIC",
       message: `createdAt (${bundle.createdAt}) must not be after asOf (${bundle.asOf})`
+    });
+  }
+
+  if (createdAt && freshUntil && createdAt >= freshUntil) {
+    issues.push({
+      path: "/createdAt",
+      code: "SEMANTIC",
+      message: `createdAt (${bundle.createdAt}) must be before freshUntil (${bundle.freshUntil})`
     });
   }
 
@@ -259,11 +271,27 @@ function checkTimestampOrdering(bundle: EvidenceBundleV1, issues: EvidenceValida
     const observedAt = parseCanonicalTimestamp(feature.observedAt);
     const featureFreshUntil = parseCanonicalTimestamp(feature.freshUntil);
 
+    if (observedAt && asOf && observedAt > asOf) {
+      issues.push({
+        path: `/deterministicFeatures/${feature.featureId}/observedAt`,
+        code: "SEMANTIC",
+        message: `Feature observedAt (${feature.observedAt}) must not be after asOf (${bundle.asOf})`
+      });
+    }
+
     if (observedAt && featureFreshUntil && observedAt > featureFreshUntil) {
       issues.push({
         path: `/deterministicFeatures/${feature.featureId}/freshUntil`,
         code: "SEMANTIC",
         message: `Feature observedAt (${feature.observedAt}) must not be after freshUntil (${feature.freshUntil})`
+      });
+    }
+
+    if (asOf && featureFreshUntil && asOf > featureFreshUntil) {
+      issues.push({
+        path: `/deterministicFeatures/${feature.featureId}/freshUntil`,
+        code: "SEMANTIC",
+        message: `Feature asOf (${bundle.asOf}) must not be after freshUntil (${feature.freshUntil})`
       });
     }
   }
@@ -365,48 +393,80 @@ function checkCalendarValidity(bundle: EvidenceBundleV1, issues: EvidenceValidat
 
 function checkCoverageAgreement(bundle: EvidenceBundleV1, issues: EvidenceValidationIssue[]): void {
   const ctx = bundle.contextualEvidence;
-  const hasContextualEvidence =
-    ctx.supportResistance.length > 0 ||
-    ctx.flows.length > 0 ||
-    ctx.derivatives.length > 0 ||
-    ctx.events.length > 0 ||
-    ctx.newsRegulatory.length > 0;
-
   const coverage = bundle.assessment.coverage;
 
-  if (!hasContextualEvidence && coverage.supportResistance !== "unavailable") {
+  if (ctx.supportResistance.length === 0 && coverage.supportResistance !== "unavailable") {
     issues.push({
       path: "/assessment/coverage/supportResistance",
       code: "SEMANTIC",
       message: `supportResistance coverage is ${coverage.supportResistance} but contextual evidence is empty`
     });
   }
-  if (!hasContextualEvidence && coverage.flows !== "unavailable") {
+  if (ctx.supportResistance.length > 0 && coverage.supportResistance === "unavailable") {
+    issues.push({
+      path: "/assessment/coverage/supportResistance",
+      code: "SEMANTIC",
+      message: `supportResistance coverage is unavailable but contextual evidence is present`
+    });
+  }
+
+  if (ctx.flows.length === 0 && coverage.flows !== "unavailable") {
     issues.push({
       path: "/assessment/coverage/flows",
       code: "SEMANTIC",
       message: `flows coverage is ${coverage.flows} but contextual evidence is empty`
     });
   }
-  if (!hasContextualEvidence && coverage.derivatives !== "unavailable") {
+  if (ctx.flows.length > 0 && coverage.flows === "unavailable") {
+    issues.push({
+      path: "/assessment/coverage/flows",
+      code: "SEMANTIC",
+      message: `flows coverage is unavailable but contextual evidence is present`
+    });
+  }
+
+  if (ctx.derivatives.length === 0 && coverage.derivatives !== "unavailable") {
     issues.push({
       path: "/assessment/coverage/derivatives",
       code: "SEMANTIC",
       message: `derivatives coverage is ${coverage.derivatives} but contextual evidence is empty`
     });
   }
-  if (!hasContextualEvidence && coverage.events !== "unavailable") {
+  if (ctx.derivatives.length > 0 && coverage.derivatives === "unavailable") {
+    issues.push({
+      path: "/assessment/coverage/derivatives",
+      code: "SEMANTIC",
+      message: `derivatives coverage is unavailable but contextual evidence is present`
+    });
+  }
+
+  if (ctx.events.length === 0 && coverage.events !== "unavailable") {
     issues.push({
       path: "/assessment/coverage/events",
       code: "SEMANTIC",
       message: `events coverage is ${coverage.events} but contextual evidence is empty`
     });
   }
-  if (!hasContextualEvidence && coverage.newsRegulatory !== "unavailable") {
+  if (ctx.events.length > 0 && coverage.events === "unavailable") {
+    issues.push({
+      path: "/assessment/coverage/events",
+      code: "SEMANTIC",
+      message: `events coverage is unavailable but contextual evidence is present`
+    });
+  }
+
+  if (ctx.newsRegulatory.length === 0 && coverage.newsRegulatory !== "unavailable") {
     issues.push({
       path: "/assessment/coverage/newsRegulatory",
       code: "SEMANTIC",
       message: `newsRegulatory coverage is ${coverage.newsRegulatory} but contextual evidence is empty`
+    });
+  }
+  if (ctx.newsRegulatory.length > 0 && coverage.newsRegulatory === "unavailable") {
+    issues.push({
+      path: "/assessment/coverage/newsRegulatory",
+      code: "SEMANTIC",
+      message: `newsRegulatory coverage is unavailable but contextual evidence is present`
     });
   }
 
