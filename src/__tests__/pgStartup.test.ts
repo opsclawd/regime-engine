@@ -2,7 +2,8 @@ import { describe, expect, it } from "vitest";
 import {
   verifyPgConnection,
   verifyCandleRevisionsTable,
-  verifyClmmInsightsTable
+  verifyClmmInsightsTable,
+  verifyEvidenceBundlesTable
 } from "../ledger/pg/db.js";
 
 describe("verifyPgConnection", () => {
@@ -61,6 +62,22 @@ describe("verifyClmmInsightsTable", () => {
     const { db, client } = createDb(connectionString);
 
     await expect(verifyClmmInsightsTable(db)).resolves.toBeUndefined();
+
+    await client.end();
+  });
+});
+
+describe("verifyEvidenceBundlesTable", () => {
+  it("resolves when evidence_bundles exists in regime_engine schema", async () => {
+    const connectionString = process.env.DATABASE_URL;
+    if (!connectionString) {
+      return;
+    }
+
+    const { createDb } = await import("../ledger/pg/db.js");
+    const { db, client } = createDb(connectionString);
+
+    await expect(verifyEvidenceBundlesTable(db)).resolves.toBeUndefined();
 
     await client.end();
   });
