@@ -45,17 +45,11 @@ const isTransientPostgresFailure = (error: unknown): boolean => {
     return false;
   }
   const code = (error as { code?: string }).code;
-  if (code == null) {
-    return false;
-  }
-  if (TRANSIENT_NET_CODES.has(code)) {
-    return true;
-  }
-  if (TRANSIENT_POSTGRES_CODES.has(code)) {
+  if (code != null && (TRANSIENT_NET_CODES.has(code) || TRANSIENT_POSTGRES_CODES.has(code))) {
     return true;
   }
   const message = (error as { message?: string }).message ?? "";
-  if (code === "ECONNRESET" || message === "Connection terminated") {
+  if (message === "Connection terminated") {
     return true;
   }
   return false;

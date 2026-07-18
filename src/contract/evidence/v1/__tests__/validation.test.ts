@@ -324,6 +324,9 @@ describe("EvidenceBundle v1 validation", () => {
       const bundle = JSON.parse(fixtures.valid.deterministicOnly) as Record<string, unknown>;
       const otherValue = bundle[otherField] as string;
       bundle[field] = otherValue;
+      if (field === "asOf" && (bundle.createdAt as string) < otherValue) {
+        bundle.createdAt = otherValue;
+      }
       const result = validateEvidenceBundleV1(bundle);
       expect(result.ok).toBe(true);
     });

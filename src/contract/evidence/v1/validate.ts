@@ -297,7 +297,7 @@ function checkTimestampOrdering(bundle: EvidenceBundleV1, issues: EvidenceValida
     });
   }
 
-  if (createdAt && freshUntil && createdAt >= freshUntil) {
+  if (createdAt && freshUntil && createdAt > freshUntil) {
     issues.push({
       path: "/createdAt",
       code: "SEMANTIC",
