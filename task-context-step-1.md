@@ -1,7 +1,6 @@
 # Task Context: Task 1
 
 Title: Add the canonical feed-window candle read to every adapter
-
 ## Workspace & Scope Constraints
 
 ## WORKSPACE CONSTRAINTS
@@ -87,13 +86,12 @@ Start Commit: bbd4e0d6cb492a7e4ed4cbcc6a2f59e1161aaeea
 ## Repository Targets
 
 ### Expected Files
-
 - src/application/ports/candlePorts.ts
 - src/adapters/sqlite/sqliteCandleReadAdapter.ts
 - src/adapters/postgres/postgresCandleReadAdapter.ts
-- src/application/use-cases/**tests**/fakes/fakeCandleReadPort.ts
-- src/adapters/sqlite/**tests**/sqliteCandleReadAdapter.test.ts
-- src/adapters/postgres/**tests**/postgresCandleReadAdapter.test.ts
+- src/application/use-cases/__tests__/fakes/fakeCandleReadPort.ts
+- src/adapters/sqlite/__tests__/sqliteCandleReadAdapter.test.ts
+- src/adapters/postgres/__tests__/postgresCandleReadAdapter.test.ts
 - package.json
 
 ## Validation Commands
@@ -111,3 +109,4 @@ You MUST implement the following behavioral invariants as named tests first (TDD
 - **complete feed key and inclusive bounds**: A window read matches symbol, source, network, poolAddress, and timeframe, includes both time bounds, excludes all neighboring rows, and returns ascending slots. (Test: `returns only the complete feed key within inclusive bounds in ascending order`)
 - **latest revision per slot**: For each unixMs, greatest sourceRecordedAtUnixMs wins and greatest insertion id breaks equal-recorded-at ties. (Test: `returns the newest revision per slot and uses id as the tie breaker`)
 - **empty feed window**: A valid feed window with no matching rows resolves to an empty array without probing another source. (Test: `returns an empty array when the feed window has no rows`)
+

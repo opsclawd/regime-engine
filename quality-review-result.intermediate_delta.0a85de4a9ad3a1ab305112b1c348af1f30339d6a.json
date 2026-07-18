@@ -1,0 +1,11 @@
+{
+  "result": "fail",
+  "findings": [
+    {
+      "severity": "P2",
+      "summary": "Resource leak in tests: database connections and file handles are leaked if test setup or assertions fail before the cleanup blocks.",
+      "file": "src/composition/__tests__/weeklyReportCandleStore.e2e.pg.test.ts",
+      "suggested_fix": "Move `ctx.close()` and `pgClient.end()` into an `afterEach` block, or ensure that the `try` block covers the entire test body including the setup phase (`insertPgCandles`, etc.) so that the `finally` block is guaranteed to run even if setup fails."
+    }
+  ]
+}

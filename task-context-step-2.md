@@ -1,7 +1,6 @@
 # Task Context: Task 2
 
 Title: Make baseline calculations accept only explicit canonical candles
-
 ## Workspace & Scope Constraints
 
 ## WORKSPACE CONSTRAINTS
@@ -81,9 +80,8 @@ Start Commit: bbd4e0d6cb492a7e4ed4cbcc6a2f59e1161aaeea
 ## Repository Targets
 
 ### Expected Files
-
 - src/report/baselines.ts
-- src/report/**tests**/baselines.test.ts
+- src/report/__tests__/baselines.test.ts
 - src/report/weekly.ts
 
 ## Validation Commands
@@ -101,3 +99,4 @@ You MUST implement the following behavioral invariants as named tests first (TDD
 - **defensive window normalization**: Canonical rows outside the report window are ignored and remaining rows are sorted by unixMs before baseline math. (Test: `filters canonical candles to the report window and sorts them by unixMs`)
 - **empty canonical series**: With plan requests but no canonical rows, SOL baselines remain at initial NAV while USDC carry still accrues over the explicit window. (Test: `keeps SOL baselines at initial NAV and still accrues USDC when canonical candles are empty`)
 - **no plan facts**: With no plan requests, all three baseline values remain zero regardless of candle input. (Test: `returns all-zero baselines when there are no plan requests`)
+

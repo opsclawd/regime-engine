@@ -1,0 +1,17 @@
+{
+  "result": "fail",
+  "findings": [
+    {
+      "severity": "P1",
+      "summary": "The test for ordering by timestamp and id only inserts a single row, failing to prove that same-timestamp rows inserted in reverse semantic order are correctly sorted by as_of_unix_ms ASC, id ASC.",
+      "file": "src/adapters/sqlite/__tests__/sqliteWeeklyReportReadAdapter.test.ts",
+      "suggested_fix": "Modify the test to insert multiple rows with the same timestamp but in a different order (e.g. reverse id order) and assert that the adapter returns them ordered correctly by id."
+    },
+    {
+      "severity": "P2",
+      "summary": "The window call assertion uses .toMatchObject() with a partial shape instead of checking the exact window call using .toEqual(), failing to assert fromUnixMs and closedCandleCutoffUnixMs as explicitly required by Step 1.",
+      "file": "src/application/use-cases/__tests__/getWeeklyReportUseCase.test.ts",
+      "suggested_fix": "Change the expect(candlePort.windowCalls[0]).toMatchObject(...) to expect(candlePort.windowCalls).toEqual([{ ... fromUnixMs, closedCandleCutoffUnixMs }])."
+    }
+  ]
+}

@@ -1,192 +1,112 @@
-# Regime Engine Microservice — prompt.md (Source of Truth)
+You are writing an implementation plan.
 
-You are Codex acting as a senior staff engineer and tech lead. Implement ONLY the **Regime Engine** microservice for a two-service Solana trading system:
+## CONTEXT
 
-- **Regime Engine (this repo):** policy + analytics. Computes regime (UP/DOWN/CHOP), target exposures (SOL/USDC bps), CLMM allowance gate, churn/stand-down constraints, and emits REQUEST\_\* actions. Maintains an append-only truth ledger and weekly reports.
-- **CLMM Autopilot (other microservice):** execution. Owns all on-chain interactions (Orca/Jupiter/Solana), receipts/idempotency, and posts execution results back to Regime Engine.
+## WORKSPACE CONSTRAINTS
 
-This repo MUST NOT contain any on-chain execution adapters or Solana RPC logic beyond integration stubs for contract tests.
+Your working directory is a dedicated git worktree with the repository's complete history. Run all commands from it. Do NOT cd to or read paths outside this directory — external-directory access is automatically rejected. git log, git diff, etc. work here directly.
 
-Reference blueprint file: 0
+.ai-orchestrator.local.json, if one exists, lives only in the main checkout and is intentionally not copied into your worktree — it is operator-machine-specific and not part of your task. Do not search for it or read it outside this directory. Reason about configuration using only .ai-orchestrator.json in your own working directory; treat it as the effective config for your task.
 
----
+You are working in the repository worktree.
+Design doc: `design.md` (produced in the previous brainstorming step)
+Issue file: `issue.md`
+Comments file: `issue-comments.md` (may not exist)
 
-## One-sentence goal
+## TASK
 
-Given candle history + portfolio state + autopilot counters, produce a deterministic Plan (regime + targets + constraints + REQUEST\_\* actions) and record a truth ledger suitable for audit-grade performance evaluation and scaling decisions.
+1. Load the writing-plans skill: say exactly `/skill writing-plans` to activate it.
+2. Read `design.md`, `issue.md`, and `issue-comments.md` (if it exists).
+3. Using the writing-plans skill guidance, produce a complete implementation plan at `./plan.md`.
+4. ALSO write `./task-manifest.json` alongside `plan.md` (see schema below).
 
----
+The plan MUST include:
 
-## Core goals
+- goal
+- non-goals
+- affected files (full paths from repo root)
+- ordered implementation tasks (numbered, clear description per task) — each task MUST be an H2 heading starting at column 0, e.g. `## Task 1: Title` (never H3 `###` or deeper). Task numbers are always plain integers matching `tasks[].n` — NEVER use letter suffixes like `## Task 4a` or `## Task 4b`. If splitting a task, assign each part its own sequential integer (e.g., Task 4 and Task 5).
+- behavioral invariants: state-machine, loop, or stateful tasks MUST enumerate their behavioral invariants (e.g., "when input is X and state is Y, transition to Z"). These become named test cases the implementer writes FIRST.
+- tests to add or update
+- validation commands (exact commands to verify correctness)
+- risk areas
+- stop conditions (what would cause you to abort instead of continue)
+- Verification commands must be scoped to the files/paths explicitly changed by each task. Do NOT use whole-file grep/rg on files where the task only changes a subset — scope to specific line ranges or file sections.
+- HARD RULE — PORT/INTERFACE CHANGES: When a task adds new methods to a port/interface, ALL adapter/implementation changes for those methods MUST be in the same task. Never split the port change from its adapter updates across separate tasks. After every implementation step the implement loop runs `pnpm -r typecheck` workspace-wide as an automatic gate — a port-only step will always fail this gate because downstream adapters haven't been updated yet, and no change to the task's validation command can bypass it. If the combined port + adapters task is too large, split by method (one new method per task, port + all its adapters together) — never split by layer.
+- Prefer making verification an acceptance criterion of implementing tasks rather than a standalone "Full verification" task. If a standalone verification task is necessary, its verification commands must reference only files/paths explicitly in scope for that task.
+- HARD RULE: DO NOT create standalone tasks whose purpose is "run the validation suite", "make CI green", "fix failing tests", "run full validation", or any variant thereof. Validation runs automatically after ALL implement tasks complete (dedicated validate phase). If a test file needs updating, that is its own implementation task with the test file explicitly in scope — NOT a validation task.
+- SPLIT OVERSIZED TEST-UPDATE TASKS: If a task's primary purpose is updating an existing test file (modifying tests in a `*.test.ts`, `*.test.tsx`, `*.spec.ts`, or `*.bats` file), and that test file exceeds ~500 lines or ~10 test cases (`describe`/`it`/`test` blocks), you MUST split the task into multiple smaller tasks. Each split task should target a subset of describe-blocks or test cases. Each split task must be independently committable (one commit, all tests pass for that subset). Non-test tasks (implementation code, configuration, new files) are unaffected by this heuristic.
 
-- Deterministic, testable **policy engine**:
-  - Regime classification: UP / DOWN / CHOP with hysteresis.
-  - Allocation policy: partial shifts, turnover caps, volatility targeting.
-  - CHOP-only CLMM permission signal (`allowClmm` true only in CHOP and not stand-down).
-  - Churn governor: budgets, cooldowns, two-strike stand-down.
-- Locally runnable microservice with a clean developer experience:
-  - One command start (document exact commands).
-  - Runs fully locally.
-- Truth ledger + reporting:
-  - Append-only store of requests, plans, and execution results.
-  - Weekly report generator from ledger only (no external calls).
-  - Baseline comparisons: SOL HODL, SOL DCA, USDC carry.
+## TASK MANIFEST SCHEMA
 
----
+Write `task-manifest.json` as a JSON file with this exact structure:
 
-## Hard requirements
+```json
+{
+  "version": 2,
+  "task_count": N,
+  "tasks": [
+    {
+      "n": 1,
+      "title": "Short task title",
+      "expected_files": ["path/to/file1", "path/to/file2"],
+      "validation_commands": ["command to verify"],
+      "signature_changes": [
+        {
+          "declaration_file": "path/to/declaration.ts",
+          "symbol": "ExportedSymbolName"
+        }
+      ],
+      "invariants": [
+        {
+          "name": "invariant name",
+          "description": "behavioral description",
+          "test_case_name": "exact name of the test case to write"
+        }
+      ]
+    }
+  ]
+}
+```
 
-### Local run experience
+Fields:
 
-- Must run on macOS with Node 22.13.0+.
-- Must run fully locally: no hosted services.
-- One command to start the service (document exact commands).
-- Provide scripts:
-  - `dev`, `build`, `test`, `lint`, `typecheck`, `format`
-  - `harness` (or `report`) to run fixtures end-to-end and emit a weekly report artifact.
+- `version`: always `2`
+- `task_count`: must equal `tasks.length`
+- `tasks[].n`: sequential 1-indexed task number
+- `tasks[].title`: one-line summary matching the prose task header
+- `tasks[].expected_files`: files the task touches (optional but encouraged)
+- `tasks[].validation_commands`: commands to verify task completion (optional but encouraged)
+- `tasks[].signature_changes`: REQUIRED when the task changes the surface of an exported API (parameter-list, return-type, overload-set, required-generic parameter, or required-member-shape). Each entry names a repository-relative declaration file and the exact symbol being changed. Declaration files MUST be in `expected_files` (or legacy `files`). This field is nullish (optional) when no exported-API signatures change.
+- `tasks[].invariants`: behavioral invariants to be implemented as tests first (REQUIRED for stateful/logic-heavy tasks)
 
-### Tech stack
+The manifest is the machine-readable source of truth for task boundaries. `plan.md` remains the human-readable document with full prose.
 
-- Node + TypeScript.
-- HTTP server: Fastify (preferred) or Express.
-- Runtime validation: zod or JSON schema.
-- Testing: Vitest.
-- Open source deps only.
+## PLAN RISK CLASSIFICATION
 
-### Determinism & auditability
+After writing `plan.md`, check whether your plan contains any of these patterns:
 
-- Canonical JSON serialization: stable key ordering, stable numeric formatting rules.
-- `planHash = sha256(canonicalPlanJson)` and must be stable across runs.
-- Snapshot tests must prove determinism for:
-  - canonical JSON
-  - plan hash
-  - plan generation fixtures
-  - weekly report output (fixtures -> byte-identical report)
+- A retry loop or recovery path
+- A state machine with explicit transitions
+- An irreversible side effect (e.g., posting to an external API, writing to a database)
 
-### Microservice boundary
+If ANY of these patterns exist, add this HTML comment to the VERY FIRST LINE of `plan.md`:
 
-- Regime Engine outputs REQUEST\_\* actions only (never claims execution happened).
-- Autopilot is authoritative for:
-  - what executed
-  - costs (tx fees/priority/slippage)
-  - portfolioAfter
-- Regime Engine must accept and persist execution results via API.
+```
+<!-- plan-review-required -->
+```
 
----
+If none exist, do NOT add the comment. Simple/mechanical plans (adapters, CRUD, schema changes) should skip review.
 
-## Product spec (build this)
+## CRITICAL RULES
 
-### A) Policy compute API (v1)
-
-Implement these endpoints:
-
-- `GET /health` → `{ ok: true }`
-- `GET /version` → `{ name, version, commit? }`
-- `GET /v1/openapi.json` → OpenAPI spec
-- `POST /v1/plan` → validate request, compute deterministic plan, write ledger, return plan
-- `POST /v1/execution-result` → validate + link to planId/planHash, write ledger, return ack
-- `GET /v1/report/weekly?from=YYYY-MM-DD&to=YYYY-MM-DD` → markdown + JSON summary (ledger-only)
-
-### B) Contract (must be explicit and versioned)
-
-- Every request/response includes `schemaVersion: "1.0"`.
-- `/v1/plan` request must include:
-  - `asOfUnixMs`
-  - `market`: symbol, timeframe, candles[]
-  - `portfolio`: navUsd, solUnits, usdcUnits
-  - `autopilotState`: activeClmm flag, cooldowns, churn counters (stopouts/redeploys)
-  - `config`: regime thresholds + allocation targets/caps + churn rules + baseline settings
-- `/v1/plan` response must include:
-  - `planId`, `planHash`, `asOfUnixMs`
-  - `regime: UP|DOWN|CHOP`
-  - `targets: { solBps, usdcBps, allowClmm }`
-  - `actions[]`: REQUEST\_\* and/or HOLD/STAND_DOWN (no imperative “EXECUTE” semantics)
-  - `constraints`: cooldowns/budgets + notes
-  - `reasons[]`: canonical codes with severity
-  - `telemetry`: computed indicator values for inspection
-- `/v1/execution-result` must include:
-  - `(planId, planHash)`
-  - per-action statuses: SUCCESS|FAILED|SKIPPED
-  - costs: tx fees, priority fees, slippage (as provided by Autopilot)
-  - `portfolioAfter`: navUsd, solUnits, usdcUnits
-
-### C) Strategy kernel (pure)
-
-- Indicators from candles: realized vol short/long + ratio, trend strength proxy, compression proxy.
-- Regime classifier with hysteresis:
-  - confirm bars
-  - separate enter/exit thresholds
-  - minimum hold bars after switching
-- Churn governor:
-  - max stopouts/redeploys per window
-  - cooldown after stopout
-  - two-strike stand-down
-- Allocation policy:
-  - partial shifts by regime
-  - volatility targeting
-  - turnover and delta exposure caps
-- CHOP gate:
-  - `allowClmm` true only in CHOP and not stand-down.
-
-### D) Truth ledger (append-only)
-
-Persist:
-
-- `plan_requests`
-- `plans`
-- `execution_results`
-
-Preferred store: SQLite (local file) with transactional writes.
-
-### E) Weekly reporting (ledger-only)
-
-Generate:
-
-- regime distribution over window
-- churn / stand-down metrics
-- execution success rate + cost summaries (from results)
-- baseline comparisons:
-  - SOL HODL
-  - SOL DCA (schedule defined in config)
-  - USDC carry APR (config)
-
----
-
-## Process requirements (follow strictly)
-
-1. Planning first
-
-- Ensure `plan.md` exists and matches actual milestones.
-- Do not implement beyond the current milestone.
-
-2. Implement milestone-by-milestone
-   For each milestone:
-
-- implement only the scoped deliverables
-- add/extend tests (unit + snapshot where required)
-- run verification commands (lint/typecheck/test/build)
-- fix failures immediately
-- update documentation and mark milestone complete
-
-3. Quality gates
-
-- Determinism is a blocker: any non-determinism must be fixed before proceeding.
-- Contract drift is a blocker: OpenAPI and contract fixtures must remain correct.
-
----
-
-## Definition of Done (exit conditions)
-
-- `npm run dev` starts service locally and /health works.
-- All milestones in plan.md are implemented and checked off.
-- All scripts exist and pass:
-  - lint, typecheck, tests, build
-- End-to-end harness can:
-  - generate plans from fixtures
-  - post simulated execution results
-  - produce a weekly report from ledger-only
-- OpenAPI available at `/v1/openapi.json`.
-- Documentation explains:
-  - data flow and boundary with Autopilot
-  - determinism strategy
-  - how to run the demo in <3 minutes
+- Do NOT ask questions. Make reasonable assumptions and document them.
+- Do NOT rely on agent memory. Write everything to `plan.md`.
+- Do NOT switch branches (no `git checkout`, `git switch`, `git stash branch`).
+- Stop after writing `plan.md` AND `task-manifest.json`. Do not implement anything.
+- All shell commands in the plan MUST be relative — no absolute paths, no `cd` to directories outside the worktree.
+- Do NOT edit any source files (`*.ts`, `*.js`, `*.sh`, `*.py`, etc.). Your ONLY output is `plan.md` and `task-manifest.json`.
+- When a plan needs to show example task headers (e.g., in validation instructions or test fixtures), indent them by at least 2 spaces or wrap in inline code. Real task headings start at column 0; anything indented is treated as an example. Violating this rule causes task extraction to misread the plan.
+- Do NOT create standalone "run validation suite" or "make CI green" tasks.
+- Task numbers in `plan.md` headings MUST be plain integers (e.g., `## Task 4`) matching `tasks[].n` in the manifest. Letter suffixes (`## Task 4a`) are forbidden and will cause validation to fail.
+- Write `plan.md` first, then `task-manifest.json`.

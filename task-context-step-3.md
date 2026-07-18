@@ -1,7 +1,6 @@
 # Task Context: Task 3
 
 Title: Coordinate report facts and canonical candles in the weekly use case
-
 ## Workspace & Scope Constraints
 
 ## WORKSPACE CONSTRAINTS
@@ -49,17 +48,15 @@ Start Commit: bbd4e0d6cb492a7e4ed4cbcc6a2f59e1161aaeea
 - [ ] **Step 1: Replace pass-through use-case tests with orchestration tests.** Configure the fake ledger port with ordered facts and parsed windows, and assert the exact window call:
 
   ```ts
-  expect(candleReadPort.windowCalls).toEqual([
-    {
-      symbol: "SOL/USDC",
-      source: "geckoterminal",
-      network: "solana",
-      poolAddress: "PoolWeekly1",
-      timeframe: "15m",
-      fromUnixMs,
-      closedCandleCutoffUnixMs: expectedCutoff
-    }
-  ]);
+  expect(candleReadPort.windowCalls).toEqual([{
+    symbol: "SOL/USDC",
+    source: "geckoterminal",
+    network: "solana",
+    poolAddress: "PoolWeekly1",
+    timeframe: "15m",
+    fromUnixMs,
+    closedCandleCutoffUnixMs: expectedCutoff
+  }]);
   ```
 
   Give the `1h` case the same expected source timeframe and assert returned baseline values reflect the canonical closes. Add incomplete/unsupported feed, empty result, candle error, and range-error cases. Use the exact invariant names above as test names.
@@ -122,16 +119,15 @@ Start Commit: bbd4e0d6cb492a7e4ed4cbcc6a2f59e1161aaeea
 ## Repository Targets
 
 ### Expected Files
-
 - src/application/ports/weeklyReportReadPort.ts
 - src/adapters/sqlite/sqliteWeeklyReportReadAdapter.ts
-- src/adapters/sqlite/**tests**/sqliteWeeklyReportReadAdapter.test.ts
+- src/adapters/sqlite/__tests__/sqliteWeeklyReportReadAdapter.test.ts
 - src/report/weekly.ts
-- src/report/**tests**/weeklyReport.snapshot.test.ts
-- src/report/**tests**/**snapshots**/weeklyReport.snapshot.test.ts.snap
+- src/report/__tests__/weeklyReport.snapshot.test.ts
+- src/report/__tests__/__snapshots__/weeklyReport.snapshot.test.ts.snap
 - src/application/use-cases/getWeeklyReportUseCase.ts
-- src/application/use-cases/**tests**/fakes/fakeWeeklyReportReadPort.ts
-- src/application/use-cases/**tests**/getWeeklyReportUseCase.test.ts
+- src/application/use-cases/__tests__/fakes/fakeWeeklyReportReadPort.ts
+- src/application/use-cases/__tests__/getWeeklyReportUseCase.test.ts
 - src/composition/buildApplication.ts
 
 ## Validation Commands
@@ -156,3 +152,4 @@ You MUST implement the following behavioral invariants as named tests first (TDD
 - **stable ledger ordering**: SQLite facts are returned by asOfUnixMs ascending and insertion id ascending for equal timestamps. (Test: `returns ledger facts ordered by timestamp then insertion id`)
 - **malformed ledger JSON remains unexpected**: Malformed persisted JSON rejects as an unexpected error and is not translated into a range error or empty report. (Test: `keeps malformed persisted JSON as an unexpected error`)
 - **deterministic explicit rendering**: Identical ordered report facts and canonical candle rows produce byte-identical Markdown and JSON output. (Test: `renders byte-identical output for identical explicit facts and candles`)
+

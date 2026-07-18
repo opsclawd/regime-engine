@@ -1,740 +1,434 @@
-# Regime Engine — plan.md (Long-Horizon Implementation Plan)
+<!-- plan-review-required -->
 
-This document is the complete execution plan, risk register, demo script, and architecture summary for the **Regime Engine microservice**. Implement milestone-by-milestone, validating each step with lint, typecheck, tests, and deterministic snapshots. Patterned after the blueprint structure. 0
+# Canonical Weekly Report Candle Reads Implementation Plan
 
-Guiding principles:
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-- Determinism over flash: stable ordering, canonical serialization, stable hashes.
-- Hard microservice boundary: policy here, execution in Autopilot service.
-- Demo-ready throughout: always keep runnable fixtures and a working harness.
+**Goal:** Make weekly SOL HODL and DCA baselines use the same active canonical candle store, complete feed identity, and closed-candle policy as regime and plan reads while preserving the public weekly-report contract.
 
----
+**Architecture:** Keep SQLite as the source of report facts, expose those facts through a ledger-data port, and let `GetWeeklyReportUseCase` coordinate that port with the already-selected `CandleReadPort`. Add one bounded feed-window operation to both candle adapters, then make the pure report renderer consume explicit facts and canonical candles instead of querying a database or considering legacy inline candles.
 
-## Verification checklist (kept current)
-
-Core commands (run after every milestone):
-
-- [x] `npm run lint`
-- [x] `npm run typecheck`
-- [x] `npm run test`
-- [x] `npm run build`
-
-Final validation sweep (exit criteria):
-
-- [x] `npm run dev` (service starts; /health ok)
-- [x] `npm run build`
-- [x] `npm run lint`
-- [x] `npm run typecheck`
-- [x] `npm run test`
-- [x] `npm run harness -- --fixture ./fixtures/demo --from 2026-01-01 --to 2026-01-31`
-- [x] `curl -s http://localhost:<PORT>/v1/openapi.json | jq . >/dev/null`
+**Tech Stack:** TypeScript, Node.js, Vitest, Fastify, SQLite (`node:sqlite`), PostgreSQL/Drizzle, pnpm.
 
 ---
 
-## Milestones (executed in order)
+**Non-goals**
+
+- Do not change `/v1/plan`, candle ingestion, aggregation, regime classification, or freshness configuration.
+- Do not change the weekly report request, response envelope, summary schema, Markdown sections, formulas, or rounding.
+- Do not move plan requests, plans, execution results, or CLMM-event facts from SQLite.
+- Do not add cross-store retries, fallback probing, backfills, multi-feed reports, pagination, or report-window limits.
+- Do not aggregate canonical 15-minute prices into hourly candles for baseline math.
+
+**Affected files**
+
+- `src/application/ports/candlePorts.ts` — bounded canonical candle-window contract.
+- `src/adapters/sqlite/sqliteCandleReadAdapter.ts` — SQLite implementation of the window read.
+- `src/adapters/postgres/postgresCandleReadAdapter.ts` — PostgreSQL implementation of the window read.
+- `src/application/use-cases/__tests__/fakes/fakeCandleReadPort.ts` — in-memory implementation of both candle-read methods.
+- `src/adapters/sqlite/__tests__/sqliteCandleReadAdapter.test.ts` — SQLite window-query contract tests (new).
+- `src/adapters/postgres/__tests__/postgresCandleReadAdapter.test.ts` — PostgreSQL window-query contract tests (new).
+- `src/report/baselines.ts` — explicit canonical price-series input; remove inline-candle authority.
+- `src/report/__tests__/baselines.test.ts` — baseline authority and window-filter regression tests.
+- `src/application/ports/weeklyReportReadPort.ts` — replace rendered-report port with typed ledger-facts port.
+- `src/adapters/sqlite/sqliteWeeklyReportReadAdapter.ts` — return parsed, ordered SQLite report facts only.
+- `src/adapters/sqlite/__tests__/sqliteWeeklyReportReadAdapter.test.ts` — ledger adapter range, ordering, and parse tests (new).
+- `src/report/weekly.ts` — pure date-window helper and explicit-input report renderer.
+- `src/report/__tests__/weeklyReport.snapshot.test.ts` — deterministic renderer and HTTP error regression updates.
+- `src/report/__tests__/__snapshots__/weeklyReport.snapshot.test.ts.snap` — expected deterministic output, changed only if explicit inputs alter the stored serialization.
+- `src/application/use-cases/getWeeklyReportUseCase.ts` — feed selection, canonical read planning, and report orchestration.
+- `src/application/use-cases/__tests__/fakes/fakeWeeklyReportReadPort.ts` — fake ledger-facts port.
+- `src/application/use-cases/__tests__/getWeeklyReportUseCase.test.ts` — use-case invariants and error propagation.
+- `src/composition/buildApplication.ts` — inject the selected candle port and SQLite report-facts port into the use case.
+- `src/composition/__tests__/weeklyReportCandleStore.e2e.test.ts` — SQLite-only composition regression (new).
+- `src/composition/__tests__/weeklyReportCandleStore.e2e.pg.test.ts` — PostgreSQL authority/no-SQLite-fallback regression (new).
+- `package.json` — include the new PostgreSQL tests in `test:pg`.
+- `README.md` — replace “ledger-only” wording with split fact/price authority.
+- `architecture.md` — document canonical report candle flow and store responsibilities.
+- `documentation.md` — correct current weekly-report descriptions while retaining historical milestone context as historical.
+- `src/adapters/http/openapi.ts` — describe ledger facts plus active canonical candle prices.
+- `src/composition/__tests__/buildApp.e2e.test.ts` — assert the corrected OpenAPI summary.
+- `docs/solutions/best-practices/composition-root-pattern-2026-05-08.md` — update the durable composition-root example.
+
+**Behavioral invariants**
+
+- A window read matches all five feed fields: `symbol`, `source`, `network`, `poolAddress`, and `timeframe`.
+- The window is inclusive at `fromUnixMs` and `closedCandleCutoffUnixMs`.
+- Exactly one candle is returned per slot; newest `sourceRecordedAtUnixMs` wins, then greatest row `id` breaks ties.
+- Window results are ordered by `unixMs ASC` and an empty match returns `[]`.
+- The first chronologically ordered plan request with a complete, supported market identity selects the report feed.
+- Both requested `15m` and `1h` use canonical source timeframe `15m`; the report never aggregates the price series.
+- The read upper bound is the shared source closed-candle cutoff calculated with `window.toUnixMs` as `nowUnixMs`.
+- Missing or incomplete feed metadata skips the candle port; an empty canonical result stays empty and never triggers another store read.
+- Candle-read failures propagate; they are never converted to empty candles.
+- Inline `request.market.candles` never override or supplement canonical rows.
+- Invalid/reversed report dates remain `ReportRangeApplicationError` at the application boundary and HTTP 400 at the handler; malformed persisted JSON remains an unexpected HTTP 500.
+- Identical ordered ledger facts and canonical candle rows produce byte-identical Markdown and JSON output.
 
-Each milestone includes scope, key files/modules, acceptance criteria, and verification commands.
+## Task 1: Add the canonical feed-window candle read to every adapter
+
+**Files:**
+
+- Modify: `src/application/ports/candlePorts.ts`
+- Modify: `src/adapters/sqlite/sqliteCandleReadAdapter.ts`
+- Modify: `src/adapters/postgres/postgresCandleReadAdapter.ts`
+- Modify: `src/application/use-cases/__tests__/fakes/fakeCandleReadPort.ts`
+- Create: `src/adapters/sqlite/__tests__/sqliteCandleReadAdapter.test.ts`
+- Create: `src/adapters/postgres/__tests__/postgresCandleReadAdapter.test.ts`
+- Modify: `package.json`
+- Modify: `src/composition/buildApplication.ts`
+
+**Exported API change:** Add required `CandleReadPort.getCandlesForFeedWindow(params)` and export its parameter shape from `candlePorts.ts`. The port, SQLite adapter, PostgreSQL adapter, and test fake are deliberately in this same task so the workspace-wide typecheck gate never sees a port-only state.
+
+**Invariants to test first:**
+
+- `returns only the complete feed key within inclusive bounds in ascending order`
+- `returns the newest revision per slot and uses id as the tie breaker`
+- `returns an empty array when the feed window has no rows`
+
+- [ ] **Step 1: Write equivalent failing adapter contract tests.** Seed rows that vary one field at a time across symbol, source, network, pool address, and timeframe; include rows immediately below, at, and above both bounds; include two revisions of one slot plus equal-recorded-at rows inserted in a known order. Assert full OHLCV rows, not just closes. The PostgreSQL suite must use `describe.skipIf(!process.env.DATABASE_URL)`, unique feed values, and cleanup only its seeded keys.
+
+- [ ] **Step 2: Run the focused tests and confirm the missing method is the failure.**
+
+  ```bash
+  pnpm exec vitest run src/adapters/sqlite/__tests__/sqliteCandleReadAdapter.test.ts
+  DATABASE_URL=postgres://test:test@localhost:5432/regime_engine_test PG_SSL=false pnpm exec vitest run src/adapters/postgres/__tests__/postgresCandleReadAdapter.test.ts
+  ```
+
+  Expected before implementation: TypeScript/runtime failure because `getCandlesForFeedWindow` is absent. If PostgreSQL is unavailable, record that environment limitation; do not weaken or remove the conditional suite.
+
+- [ ] **Step 3: Add the port input and required method.** Use the complete logical key and explicit lower/upper bounds:
+
+  ```ts
+  export interface GetCandlesForFeedWindowParams extends CandleFeed {
+    fromUnixMs: number;
+    closedCandleCutoffUnixMs: number;
+  }
 
-### Milestone 01 — Repo scaffold + tooling foundation
+  export interface CandleReadPort {
+    getLatestCandlesForFeed(params: GetLatestCandlesParams): Promise<CandleRow[]>;
+    getCandlesForFeedWindow(params: GetCandlesForFeedWindowParams): Promise<CandleRow[]>;
+  }
+  ```
+
+- [ ] **Step 4: Implement the SQLite query.** Reuse a private `RawRow` mapper. The query must filter all feed columns and `unix_ms >= ? AND unix_ms <= ?`, rank revisions with `row_number() OVER (PARTITION BY unix_ms ORDER BY source_recorded_at_unix_ms DESC, id DESC)`, retain `rn = 1`, and finish with `ORDER BY unix_ms ASC`. Do not call `getLatestCandlesForFeed` with a guessed limit.
+
+- [ ] **Step 5: Implement the PostgreSQL query with identical semantics.** Keep the qualified `regime_engine.candle_revisions` table and numeric null checks. Extract the current row conversion to a private mapper so latest-N and window reads cannot drift in their result shape.
 
-Status: completed (2026-03-03)
+- [ ] **Step 6: Extend `FakeCandleReadPort`.** Track window calls separately and filter configured rows by inclusive lower and upper bounds without applying a limit. Preserve the current latest-N behavior and provide a configured error hook needed by Task 3.
 
-Goal:
+- [ ] **Step 7: Add both focused PostgreSQL test paths to `test:pg`, then run scoped acceptance checks.**
 
-- Establish a runnable local Fastify + TypeScript service foundation with strict tooling.
+  ```bash
+  pnpm exec vitest run src/adapters/sqlite/__tests__/sqliteCandleReadAdapter.test.ts
+  DATABASE_URL=postgres://test:test@localhost:5432/regime_engine_test PG_SSL=false pnpm exec vitest run src/adapters/postgres/__tests__/postgresCandleReadAdapter.test.ts
+  pnpm exec eslint src/application/ports/candlePorts.ts src/adapters/sqlite/sqliteCandleReadAdapter.ts src/adapters/postgres/postgresCandleReadAdapter.ts src/application/use-cases/__tests__/fakes/fakeCandleReadPort.ts src/adapters/sqlite/__tests__/sqliteCandleReadAdapter.test.ts src/adapters/postgres/__tests__/postgresCandleReadAdapter.test.ts
+  ```
 
-Scope:
+  Expected: all available focused tests pass and ESLint reports zero warnings.
 
-- Initialize Node + TypeScript service (Fastify recommended).
-- Add Vitest, ESLint, Prettier, strict TS settings.
-- Establish folder structure and path aliases.
+- [ ] **Step 8: Commit the atomic port-and-adapters change.**
 
-Key files/modules:
+  ```bash
+  git add src/application/ports/candlePorts.ts src/adapters/sqlite/sqliteCandleReadAdapter.ts src/adapters/postgres/postgresCandleReadAdapter.ts src/application/use-cases/__tests__/fakes/fakeCandleReadPort.ts src/adapters/sqlite/__tests__/sqliteCandleReadAdapter.test.ts src/adapters/postgres/__tests__/postgresCandleReadAdapter.test.ts package.json
+  git commit -m "m55: add canonical candle window reads"
+  ```
 
-- `package.json`
-- `tsconfig.json`
-- `src/server.ts`, `src/app.ts`
-- `src/__tests__/smoke.test.ts`
+## Task 2: Make baseline calculations accept only explicit canonical candles
 
-Acceptance criteria:
+**Files:**
 
-- `npm install` succeeds on Node 22.13.0+.
-- `npm run dev` starts service.
-- `GET /health` returns 200 JSON.
+- Modify: `src/report/baselines.ts`
+- Modify: `src/report/__tests__/baselines.test.ts`
+- Modify: `src/report/weekly.ts`
 
-Verification commands:
+**Exported API change:** Replace `BaselineInputs.fallbackCandles?` with required `candles`, and remove `market.candles` from the plan-request shape used by baseline computation. `computeBaselines` remains the exported function but its required input member shape changes. `weekly.ts` is updated in the same commit to keep its caller compiling; Task 3 will remove its temporary database ownership entirely.
 
-- `npm run dev`
-- `npm run lint && npm run typecheck && npm run test && npm run build`
+**Invariants to test first:**
 
-Validation run (2026-03-03):
+- `uses only explicit canonical candles when legacy inline candles conflict`
+- `filters canonical candles to the report window and sorts them by unixMs`
+- `keeps SOL baselines at initial NAV and still accrues USDC when canonical candles are empty`
+- `returns all-zero baselines when there are no plan requests`
 
-- `npm run dev` (validated `/health` response: `{"ok":true}`)
-- `npm run lint && npm run typecheck && npm run test && npm run build`
+- [ ] **Step 1: Rewrite the baseline tests around an explicit `candles` array.** Include unsorted in-window rows, rows outside both sides of the window, conflicting legacy inline candles represented through a cast for regression coverage, no-candle behavior, and no-plan behavior. Keep the existing USDC duration assertion.
 
----
+- [ ] **Step 2: Run the focused tests and verify the old fallback/inline merge causes the new authority test to fail.**
 
-### Milestone 02 — v1 Contract types + schema validation + error taxonomy
+  ```bash
+  pnpm exec vitest run src/report/__tests__/baselines.test.ts
+  ```
 
-Status: completed (2026-03-03)
+  Expected before implementation: the conflicting inline series changes SOL HODL/DCA or the new required input does not typecheck.
 
-Goal:
+- [ ] **Step 3: Replace the fallback merge with a single canonical series.** The central shape is:
 
-- Define explicit v1 request contracts with runtime validation and deterministic error taxonomy.
+  ```ts
+  export interface BaselineInputs {
+    window: { fromUnixMs: number; toUnixMs: number };
+    planRequests: Array<{
+      asOfUnixMs: number;
+      request: {
+        portfolio: { navUsd: number };
+        config: { baselines: PlanRequestConfig["baselines"] };
+      };
+    }>;
+    candles: Array<{ unixMs: number; close: number }>;
+  }
+  ```
 
-Scope:
+  Build the price series only from `input.candles`, defensively filter it to the report window, and sort ascending. Preserve the existing request ordering, first-request configuration, formulas, and six-decimal rounding.
 
-- Define the v1 contract as TypeScript types + runtime validation:
-  - POST `/v1/plan`
-  - POST `/v1/execution-result`
-- Define canonical error codes and stable error response shape.
+- [ ] **Step 4: Update the existing `generateWeeklyReport` call site to pass the currently queried rows through the new `candles` property and remove any cast that advertises inline candles to `computeBaselines`.** This is an intermediate compatibility edit only; do not broaden or otherwise improve the direct SQLite query because Task 3 deletes it.
 
-Key files/modules:
+- [ ] **Step 5: Run scoped acceptance checks.**
 
-- `src/contract/v1/types.ts`
-- `src/contract/v1/validation.ts`
-- `src/http/errors.ts`
-- `src/contract/v1/__tests__/validation.test.ts`
+  ```bash
+  pnpm exec vitest run src/report/__tests__/baselines.test.ts src/report/__tests__/weeklyReport.snapshot.test.ts
+  pnpm exec eslint src/report/baselines.ts src/report/weekly.ts src/report/__tests__/baselines.test.ts
+  ```
 
-Acceptance criteria:
+  Expected: baseline and existing report regressions pass with no snapshot churn unrelated to explicit candle authority.
 
-- Invalid bodies return deterministic validation errors with canonical codes.
-- Contract fixtures validate in tests.
+- [ ] **Step 6: Commit the baseline authority change.**
 
-Verification commands:
+  ```bash
+  git add src/report/baselines.ts src/report/weekly.ts src/report/__tests__/baselines.test.ts
+  git commit -m "m55: make report baselines use explicit candles"
+  ```
 
-- `npm run test -- validation`
-- `npm run lint && npm run typecheck && npm run test && npm run build`
+## Task 3: Coordinate report facts and canonical candles in the weekly use case
 
-Validation run (2026-03-03):
+**Files:**
 
-- `npm run test -- validation`
-- `npm run lint && npm run typecheck && npm run test && npm run build`
+- Modify: `src/application/ports/weeklyReportReadPort.ts`
+- Modify: `src/adapters/sqlite/sqliteWeeklyReportReadAdapter.ts`
+- Create: `src/adapters/sqlite/__tests__/sqliteWeeklyReportReadAdapter.test.ts`
+- Modify: `src/report/weekly.ts`
+- Modify: `src/report/__tests__/weeklyReport.snapshot.test.ts`
+- Modify: `src/report/__tests__/__snapshots__/weeklyReport.snapshot.test.ts.snap`
+- Modify: `src/application/use-cases/getWeeklyReportUseCase.ts`
+- Modify: `src/application/use-cases/__tests__/fakes/fakeWeeklyReportReadPort.ts`
+- Modify: `src/application/use-cases/__tests__/getWeeklyReportUseCase.test.ts`
+- Modify: `src/composition/buildApplication.ts` (updated atomically with use-case API changes to maintain the typecheck gate)
 
----
+**Exported API changes:** Replace `WeeklyReportReadPort.getWeeklyReport` with `WeeklyReportLedgerReadPort.getWeeklyReportData`; export `WeeklyReportData` and its domain-shaped records. Change `generateWeeklyReport` to accept `{ data, candles }`. Change `GetWeeklyReportUseCaseDeps` from `{ port }` to `{ weeklyReportLedgerReadPort, candleReadPort }`. The port declaration, its sole SQLite adapter/fake implementations, report caller, and use-case consumer are intentionally migrated in one task to satisfy the workspace typecheck gate.
 
-### Milestone 03 — Canonical JSON + planHash
+**Invariants to test first:**
 
-Status: completed (2026-03-03)
+- `selects the first complete supported feed in chronological request order`
+- `reads a 15m request from the canonical 15m source window`
+- `reads a 1h request from the canonical 15m source window without aggregation`
+- `uses the shared source closed-candle cutoff at the report end`
+- `skips candle reads when no request has a complete supported feed`
+- `does not retry or fall back when the canonical read returns no rows`
+- `propagates canonical candle read failures`
+- `preserves report range application errors`
+- `returns ledger facts ordered by timestamp then insertion id`
+- `keeps malformed persisted JSON as an unexpected error`
+- `renders byte-identical output for identical explicit facts and candles`
 
-Goal:
+- [ ] **Step 1: Replace pass-through use-case tests with orchestration tests.** Configure the fake ledger port with ordered facts and parsed windows, and assert the exact window call:
 
-- Produce deterministic canonical JSON serialization and stable SHA-256 plan hashes.
+  ```ts
+  expect(candleReadPort.windowCalls).toEqual([
+    {
+      symbol: "SOL/USDC",
+      source: "geckoterminal",
+      network: "solana",
+      poolAddress: "PoolWeekly1",
+      timeframe: "15m",
+      fromUnixMs,
+      closedCandleCutoffUnixMs: expectedCutoff
+    }
+  ]);
+  ```
 
-Scope:
+  Give the `1h` case the same expected source timeframe and assert returned baseline values reflect the canonical closes. Add incomplete/unsupported feed, empty result, candle error, and range-error cases. Use the exact invariant names above as test names.
 
-- Implement canonical serialization (stable key order, stable numeric formatting).
-- Implement `planHash = sha256(canonicalPlanJson)`.
+- [ ] **Step 2: Add focused SQLite weekly-ledger adapter tests.** Insert same-timestamp rows in reverse semantic order to prove `ORDER BY as_of_unix_ms ASC, id ASC`, assert parsed domain-shaped objects and window timestamps, assert invalid/reversed dates map to `ReportRangeApplicationError`, and assert malformed JSON rejects without conversion.
 
-Key files/modules:
+- [ ] **Step 3: Refactor the deterministic report snapshot test.** Build `WeeklyReportData` explicitly, call `generateWeeklyReport({ data, candles })`, and keep the existing summary/Markdown snapshots. Move endpoint-only invalid-date and malformed-row checks to use the composed path without reintroducing store access in the renderer.
 
-- `src/contract/v1/canonical.ts`
-- `src/contract/v1/hash.ts`
-- `src/contract/v1/__tests__/canonicalHash.snapshot.test.ts`
+- [ ] **Step 4: Run the focused suites and confirm failures describe the old APIs.**
 
-Acceptance criteria:
+  ```bash
+  pnpm exec vitest run src/application/use-cases/__tests__/getWeeklyReportUseCase.test.ts src/adapters/sqlite/__tests__/sqliteWeeklyReportReadAdapter.test.ts src/report/__tests__/weeklyReport.snapshot.test.ts
+  ```
 
-- Same plan => byte-identical canonical JSON.
-- Same canonical JSON => same hash.
-- Snapshot test proves determinism.
+  Expected before implementation: failures reference the pass-through port, store-based renderer, or missing ledger-data method.
 
-Verification commands:
+- [ ] **Step 5: Define the ledger-facts port.** Keep the existing file path to minimize import churn, but export shapes equivalent to:
 
-- `npm run test -- canonicalHash`
-- `npm run lint && npm run typecheck && npm run test && npm run build`
+  ```ts
+  export interface WeeklyReportData {
+    window: { from: string; to: string; fromUnixMs: number; toUnixMs: number };
+    plans: Array<{ asOfUnixMs: number; plan: PlanResponse }>;
+    planRequests: Array<{ asOfUnixMs: number; request: PlanRequest }>;
+    executionResults: Array<{ asOfUnixMs: number; result: ExecutionResultRequest }>;
+  }
 
-Validation run (2026-03-03):
+  export interface WeeklyReportLedgerReadPort {
+    getWeeklyReportData(input: { from: string; to: string }): Promise<WeeklyReportData>;
+  }
+  ```
 
-- `npm run test -- canonicalHash`
-- `npm run lint && npm run typecheck && npm run test && npm run build`
+  Use the repository's actual execution-result contract name. Do not expose SQLite column names, JSON strings, or `LedgerStore`.
 
----
+- [ ] **Step 6: Convert the SQLite adapter to facts-only reads.** Parse and validate the date window, execute only the existing `plans`, `plan_requests`, and `execution_results` queries with stable ordering, parse JSON into the port shapes, and translate only `ReportRangeError` to `ReportRangeApplicationError`. Delete every `candle_revisions` query and baseline-feed key construction from this adapter path.
 
-### Milestone 04 — HTTP API skeleton + OpenAPI
+- [ ] **Step 7: Make `generateWeeklyReport` pure over explicit data.** Export/reuse the date-window parser where the adapter needs it, but make rendering accept already parsed `WeeklyReportData` plus canonical `CandleRow[]`. Preserve calculations, Markdown labels, public summary fields, ordering, and rounding. Pass `{ unixMs, close }` projections to `computeBaselines`.
 
-Status: completed (2026-03-03)
+- [ ] **Step 8: Implement use-case orchestration.** After `getWeeklyReportData`, scan `data.planRequests` in adapter order. Treat a request as selectable only when symbol/source/network/pool address are non-empty strings and timeframe is `15m` or `1h`. Call `buildRegimeCandleReadPlan({ requestedTimeframe, nowUnixMs: data.window.toUnixMs })`, then `getCandlesForFeedWindow` with `data.window.fromUnixMs`, `readPlan.sourceTimeframe`, and `readPlan.sourceCutoffUnixMs`. If no feed qualifies, pass `[]` directly to the renderer. Do not catch candle errors or perform a second read.
 
-Goal:
+- [ ] **Step 9: Update both fakes.** `FakeWeeklyReportReadPort` becomes a `WeeklyReportLedgerReadPort` fake with call capture and configurable `WeeklyReportData`/error. Keep candle window call/error tracking in `FakeCandleReadPort` deterministic and independent of latest-N calls.
 
-- Expose the initial v1 HTTP contract surface and OpenAPI document with deterministic stub responses.
+- [ ] **Step 10: Update the composition root.** Update `buildApplication.ts` to construct `getWeeklyReport` with `weeklyReportLedgerReadPort` and `candleReadPort` to satisfy the new `GetWeeklyReportUseCaseDeps` signature. Do not branch on `DATABASE_URL` in reporting code.
 
-Scope:
+- [ ] **Step 11: Run scoped acceptance checks and inspect snapshot changes.**
 
-- Implement endpoints:
-  - `GET /health`
-  - `GET /version`
-  - `GET /v1/openapi.json`
-  - `POST /v1/plan` (stub plan)
-  - `POST /v1/execution-result` (stub accept)
-- Serve OpenAPI JSON (static or generated).
+  ```bash
+  pnpm exec vitest run src/application/use-cases/__tests__/getWeeklyReportUseCase.test.ts src/adapters/sqlite/__tests__/sqliteWeeklyReportReadAdapter.test.ts src/report/__tests__/baselines.test.ts src/report/__tests__/weeklyReport.snapshot.test.ts
+  pnpm exec eslint src/application/ports/weeklyReportReadPort.ts src/adapters/sqlite/sqliteWeeklyReportReadAdapter.ts src/adapters/sqlite/__tests__/sqliteWeeklyReportReadAdapter.test.ts src/report/weekly.ts src/report/__tests__/weeklyReport.snapshot.test.ts src/application/use-cases/getWeeklyReportUseCase.ts src/application/use-cases/__tests__/fakes/fakeWeeklyReportReadPort.ts src/application/use-cases/__tests__/getWeeklyReportUseCase.test.ts
+  ```
 
-Key files/modules:
+  Expected: every named invariant passes; snapshots retain the same response shape and deterministic values for the explicit fixture.
 
-- `src/http/routes.ts`
-- `src/http/openapi.ts`
-- `src/http/handlers/plan.stub.ts`
-- `src/http/handlers/executionResult.stub.ts`
-- `src/http/__tests__/routes.contract.test.ts`
+- [ ] **Step 12: Commit the coordinated weekly-report refactor.**
 
-Acceptance criteria:
+  ```bash
+  git add src/application/ports/weeklyReportReadPort.ts src/adapters/sqlite/sqliteWeeklyReportReadAdapter.ts src/adapters/sqlite/__tests__/sqliteWeeklyReportReadAdapter.test.ts src/report/weekly.ts src/report/__tests__/weeklyReport.snapshot.test.ts src/report/__tests__/__snapshots__/weeklyReport.snapshot.test.ts.snap src/application/use-cases/getWeeklyReportUseCase.ts src/application/use-cases/__tests__/fakes/fakeWeeklyReportReadPort.ts src/application/use-cases/__tests__/getWeeklyReportUseCase.test.ts src/composition/buildApplication.ts
+  git commit -m "m55: route weekly reports through canonical candles"
+  ```
 
-- Endpoints exist and return correct shapes.
-- OpenAPI is reachable and valid JSON.
+## Task 4: Wire and prove active-store selection without fallback
 
-Verification commands:
+**Files:**
 
-- `npm run test -- routes.contract`
-- `npm run lint && npm run typecheck && npm run test && npm run build`
+- Create: `src/composition/__tests__/weeklyReportCandleStore.e2e.test.ts`
+- Create: `src/composition/__tests__/weeklyReportCandleStore.e2e.pg.test.ts`
+- Modify: `package.json`
 
-Validation run (2026-03-03):
+**Exported API change:** (none — composition root wiring was updated in Task 3)
 
-- `npm run test -- routes.contract`
-- `npm run lint && npm run typecheck && npm run test && npm run build`
+**Invariants to test first:**
 
----
+- `uses SQLite canonical candles when DATABASE_URL is absent`
+- `uses PostgreSQL canonical candles when DATABASE_URL is configured`
+- `ignores conflicting SQLite candles when PostgreSQL is the active candle store`
+- `does not fall back to SQLite when the active PostgreSQL feed is empty`
 
-### Milestone 05 — Ledger v1 (append-only truth store)
+- [ ] **Step 1: Write the SQLite composition regression.** Create an isolated SQLite ledger, write a plan request/plan plus canonical revisions through the SQLite candle writer, build `RuntimeStoreContext` with `pg: null`, and call the composed weekly use case. Assert non-flat HODL/DCA values derived from those revisions and unchanged report envelope fields.
 
-Status: completed (2026-03-03)
+- [ ] **Step 2: Write the conditional PostgreSQL composition regressions.** Use `describe.skipIf(!process.env.DATABASE_URL)`, a unique feed key, SQLite plan facts, and PostgreSQL candle revisions. Seed conflicting SQLite closes that would yield visibly different baselines; assert only PostgreSQL prices win. In a separate test leave the PostgreSQL feed empty while SQLite has rows and assert flat SOL baselines, proving no fallback. Clean up only the unique PostgreSQL rows and close both stores in `finally`/hooks.
 
-Goal:
+- [ ] **Step 3: Run the focused tests against the composed application.** The composition root was updated in Task 3, so these tests validate the new wiring:
 
-- Add an append-only SQLite ledger with transactional writes and wire API stubs to persist truth records.
+  ```bash
+  pnpm exec vitest run src/composition/__tests__/weeklyReportCandleStore.e2e.test.ts
+  DATABASE_URL=postgres://test:test@localhost:5432/regime_engine_test PG_SSL=false pnpm exec vitest run src/composition/__tests__/weeklyReportCandleStore.e2e.pg.test.ts
+  ```
 
-Scope:
+  Expected before implementation: dependency-shape/type failures or PostgreSQL authority assertions fail.
 
-- Implement append-only ledger (SQLite preferred).
-- Persist:
-  - `plan_requests`
-  - `plans`
-  - `execution_results`
-- Add schema migrations (v1) and safe transaction wrapper.
+- [ ] **Step 4: Add the PostgreSQL composition suite to `test:pg` and run scoped acceptance checks.**
 
-Key files/modules:
+  ```bash
+  pnpm exec vitest run src/composition/__tests__/weeklyReportCandleStore.e2e.test.ts
+  DATABASE_URL=postgres://test:test@localhost:5432/regime_engine_test PG_SSL=false pnpm exec vitest run src/composition/__tests__/weeklyReportCandleStore.e2e.pg.test.ts
+  pnpm exec eslint src/composition/__tests__/weeklyReportCandleStore.e2e.test.ts src/composition/__tests__/weeklyReportCandleStore.e2e.pg.test.ts
+  ```
 
-- `src/ledger/schema.sql`
-- `src/ledger/store.ts`
-- `src/ledger/writer.ts`
-- `src/ledger/__tests__/ledger.test.ts`
+  Expected: SQLite-only, PostgreSQL authority, conflicting-SQLite, and empty-active-store cases pass.
 
-Acceptance criteria:
+- [ ] **Step 5: Commit the composition proof.**
 
-- Every `/v1/plan` writes request + plan rows.
-- Every `/v1/execution-result` writes a linked result row.
+  ```bash
+  git add src/composition/__tests__/weeklyReportCandleStore.e2e.test.ts src/composition/__tests__/weeklyReportCandleStore.e2e.pg.test.ts package.json
+  git commit -m "m55: wire weekly reports to the active candle store"
+  ```
 
-Verification commands:
+## Task 5: Correct current architecture and API documentation
 
-- `npm run test -- ledger`
-- `npm run lint && npm run typecheck && npm run test && npm run build`
+**Files:**
 
-Validation run (2026-03-03):
+- Modify: `README.md`
+- Modify: `architecture.md`
+- Modify: `documentation.md`
+- Modify: `src/adapters/http/openapi.ts`
+- Modify: `src/composition/__tests__/buildApp.e2e.test.ts`
+- Modify: `docs/solutions/best-practices/composition-root-pattern-2026-05-08.md`
 
-- `npm run test -- ledger`
-- `npm run lint && npm run typecheck && npm run test && npm run build`
+- [ ] **Step 1: Add an OpenAPI regression assertion.** Extend only the existing `serves /v1/openapi.json` case to assert the weekly endpoint summary states that report facts come from the ledger and baseline prices come from the active canonical candle store.
 
----
+- [ ] **Step 2: Run the focused OpenAPI test and confirm the old “ledger data” summary fails the new assertion.**
 
-### Milestone 06 — Feature extraction from candles (pure)
+  ```bash
+  pnpm exec vitest run src/composition/__tests__/buildApp.e2e.test.ts -t "serves /v1/openapi.json"
+  ```
 
-Status: completed (2026-03-03)
+- [ ] **Step 3: Update current documentation.** In README and architecture descriptions, replace “ledger-only” with the precise split: append-only SQLite provides plan/execution facts; the active SQLite/PostgreSQL `CandleReadPort` provides SOL baseline closes. Update the weekly-report flow to include complete feed selection, canonical 15-minute source timeframe, and closed cutoff. In `documentation.md`, correct current endpoint/module descriptions while leaving dated Milestone 15 claims explicitly framed as historical implementation history.
 
-Goal:
+- [ ] **Step 4: Update the durable composition-root solution.** Show `WeeklyReportLedgerReadPort` plus the selected `CandleReadPort` entering `createGetWeeklyReportUseCase`; remove the obsolete high-level SQLite weekly adapter example. Do not rewrite unrelated historical guidance.
 
-- Implement deterministic candle-derived indicators (vol short/long/ratio, trend proxy, compression proxy).
+- [ ] **Step 5: Update the OpenAPI summary and run scoped acceptance checks.**
 
-Scope:
+  ```bash
+  pnpm exec vitest run src/composition/__tests__/buildApp.e2e.test.ts -t "serves /v1/openapi.json"
+  pnpm exec prettier --check README.md architecture.md documentation.md src/adapters/http/openapi.ts src/composition/__tests__/buildApp.e2e.test.ts docs/solutions/best-practices/composition-root-pattern-2026-05-08.md
+  pnpm exec eslint src/adapters/http/openapi.ts src/composition/__tests__/buildApp.e2e.test.ts
+  ```
 
-- Implement deterministic indicators:
-  - realized vol short/long + ratio
-  - trend proxy (e.g., MA slope or regression slope)
-  - compression proxy (BB width normalized)
-- No external price feeds; only candles from request.
+  Expected: the focused contract assertion passes and all changed documentation/code is formatted.
 
-Key files/modules:
+- [ ] **Step 6: Commit the documentation correction.**
 
-- `src/engine/features/candles.ts`
-- `src/engine/features/indicators.ts`
-- `src/engine/features/__tests__/indicators.test.ts`
+  ```bash
+  git add README.md architecture.md documentation.md src/adapters/http/openapi.ts src/composition/__tests__/buildApp.e2e.test.ts docs/solutions/best-practices/composition-root-pattern-2026-05-08.md
+  git commit -m "m55: document canonical report candle authority"
+  ```
 
-Acceptance criteria:
+**Tests to add or update**
 
-- Indicator outputs are deterministic and fixture-tested.
+- Add mirrored SQLite/PostgreSQL candle-window adapter contracts for complete feed isolation, inclusive bounds, revision tie-breaking, deterministic order, and empty results.
+- Expand baseline tests to prove canonical-only authority, defensive window filtering, deterministic sorting, empty candles, and no requests.
+- Add SQLite weekly-ledger adapter tests for parsed windows, stable row ordering, malformed persisted JSON, and range-error translation.
+- Replace pass-through weekly use-case tests with feed-selection, `15m`/`1h`, cutoff, missing-feed, empty-store, and error-propagation cases.
+- Update deterministic weekly report snapshots to use explicit report facts and candles.
+- Add SQLite-only and PostgreSQL-backed composition tests, including conflicting SQLite data and empty-active-store no-fallback cases.
+- Extend the existing OpenAPI composition test only within its weekly endpoint assertion.
 
-Verification commands:
+**Validation commands**
 
-- `npm run test -- indicators`
-- `npm run lint && npm run typecheck && npm run test && npm run build`
+Run after all implementation tasks complete; this is the validate phase, not a standalone implementation task:
 
-Validation run (2026-03-03):
+```bash
+pnpm -r typecheck
+pnpm run test
+pnpm run lint
+pnpm run build
+pnpm run boundaries
+pnpm run format
+DATABASE_URL=postgres://test:test@localhost:5432/regime_engine_test PG_SSL=false pnpm run test:pg
+```
 
-- `npm run test -- indicators`
-- `npm run lint && npm run typecheck && npm run test && npm run build`
+Expected: every command exits zero. The PostgreSQL command requires the repository's test database; inability to connect is an environment blocker, not permission to mark PostgreSQL coverage complete.
 
----
+**Risk areas**
 
-### Milestone 07 — Regime classifier (UP/DOWN/CHOP) + hysteresis
+- The shared closed-candle delay can intentionally exclude the last nominal bar; boundary fixtures must calculate expectations through `buildRegimeCandleReadPlan`, not hard-code a looser report cutoff.
+- PostgreSQL numeric values may arrive as strings; the existing null guard and `Number(...)` conversion must remain common to both read methods.
+- Reports spanning several market feeds still select one baseline feed. Preserving the first complete chronological request avoids an unrequested multi-feed redesign.
+- Existing snapshots may change because old SQLite/inline prices were wrong. Accept only differences explained by the new explicit canonical fixtures; public fields and Markdown structure must not drift.
+- Malformed legacy requests may lack the modern market shape. They remain in totals/config ordering but cannot select a feed unless all required fields and a supported timeframe are present.
+- Large report ranges can return many candles. The bounded indexed query is intentional; adding a guessed limit would silently truncate results.
+- PostgreSQL tests share a database. Unique feed keys and scoped cleanup are required to avoid deleting another suite's rows.
 
-Status: completed (2026-03-03)
+**Stop conditions**
 
-Goal:
-
-- Build a hysteresis-aware regime classifier with confirmation and hold constraints to suppress whipsaw flips.
-
-Scope:
-
-- Implement regime logic with hysteresis:
-  - `confirmBars`
-  - separate enter/exit thresholds
-  - `minHoldBars` after switching
-- Emit reason codes and telemetry.
-
-Key files/modules:
-
-- `src/engine/regime/types.ts`
-- `src/engine/regime/classifier.ts`
-- `src/engine/regime/__tests__/regime.fixtures.test.ts`
-
-Acceptance criteria:
-
-- Whipsaw fixtures do not flip regimes repeatedly.
-- Reasons explain why regime selected.
-
-Verification commands:
-
-- `npm run test -- regime.fixtures`
-- `npm run lint && npm run typecheck && npm run test && npm run build`
-
-Validation run (2026-03-03):
-
-- `npm run test -- regime.fixtures`
-- `npm run lint && npm run typecheck && npm run test && npm run build`
-
----
-
-### Milestone 08 — Churn governor (budgets + cooldowns + stand-down)
-
-Status: completed (2026-03-03)
-
-Goal:
-
-- Enforce churn budgets/cooldowns/two-strike stand-down with deterministic constraints output and stand-down signaling.
-
-Scope:
-
-- Use `autopilotState` from request:
-  - stopouts24h, redeploys24h, cooldown timers
-- Enforce:
-  - max stopouts / redeploys per window
-  - cooldown after stopout
-  - two-strike stand-down
-- Output: constraints + `STAND_DOWN` action when exceeded.
-
-Key files/modules:
-
-- `src/engine/churn/governor.ts`
-- `src/engine/churn/__tests__/churn.test.ts`
-
-Acceptance criteria:
-
-- Fakeout sequences halt rather than churn.
-
-Verification commands:
-
-- `npm run test -- churn`
-- `npm run lint && npm run typecheck && npm run test && npm run build`
-
-Validation run (2026-03-03):
-
-- `npm run test -- churn`
-- `npm run lint && npm run typecheck && npm run test && npm run build`
-
----
-
-### Milestone 09 — Allocation policy (partial shifts + caps)
-
-Status: completed (2026-03-03)
-
-Goal:
-
-- Produce regime-based deterministic allocation targets with bounded exposure-change caps.
-
-Scope:
-
-- Deterministic target exposure outputs:
-  - UP: SOL heavy (not 100% by default)
-  - DOWN: USDC heavy (optionally some SOL)
-  - CHOP: neutral-ish
-- Enforce caps:
-  - maxDeltaExposureBpsPerDay
-  - maxTurnoverPerDayBps
-
-Key files/modules:
-
-- `src/engine/allocation/policy.ts`
-- `src/engine/allocation/caps.ts`
-- `src/engine/allocation/__tests__/allocation.test.ts`
-
-Acceptance criteria:
-
-- Exposure changes are bounded and smooth.
-
-Verification commands:
-
-- `npm run test -- allocation`
-- `npm run lint && npm run typecheck && npm run test && npm run build`
-
-Validation run (2026-03-03):
-
-- `npm run test -- allocation`
-- `npm run lint && npm run typecheck && npm run test && npm run build`
-
----
-
-### Milestone 10 — Volatility targeting (overlay scaling)
-
-Status: completed (2026-03-03)
-
-Goal:
-
-- Add a deterministic volatility overlay that de-risks on high vol and increases UP tilt on low vol, while preserving cap constraints.
-
-Scope:
-
-- Scale aggressiveness using realized vol:
-  - vol high => de-risk (lower SOL target)
-  - vol low => allow more SOL tilt in UP
-- Ensure explicit caps remain in effect.
-
-Key files/modules:
-
-- `src/engine/allocation/volTarget.ts`
-- `src/engine/allocation/__tests__/volTarget.test.ts`
-
-Acceptance criteria:
-
-- Vol spikes reduce exposure deterministically.
-
-Verification commands:
-
-- `npm run test -- volTarget`
-- `npm run lint && npm run typecheck && npm run test && npm run build`
-
-Validation run (2026-03-03):
-
-- `npm run test -- volTarget`
-- `npm run lint && npm run typecheck && npm run test && npm run build`
-
----
-
-### Milestone 11 — CHOP gate output (allowClmm only in CHOP)
-
-Status: completed (2026-03-03)
-
-Goal:
-
-- Emit deterministic CHOP gate output where `allowClmm` is only true in CHOP and never during stand-down.
-
-Scope:
-
-- Regime Engine must output:
-  - `targets.allowClmm = true` only if regime == CHOP AND not stand-down.
-- In UP/DOWN: allowClmm must be false.
-
-Key files/modules:
-
-- `src/engine/chopGate.ts`
-- `src/engine/__tests__/chopGate.test.ts`
-
-Acceptance criteria:
-
-- Fixtures prove allowClmm toggles only in CHOP.
-
-Verification commands:
-
-- `npm run test -- chopGate`
-- `npm run lint && npm run typecheck && npm run test && npm run build`
-
-Validation run (2026-03-03):
-
-- `npm run test -- chopGate`
-- `npm run lint && npm run typecheck && npm run test && npm run build`
-
----
-
-### Milestone 12 — Plan builder (pure, deterministic)
-
-Status: completed (2026-03-03)
-
-Goal:
-
-- Compose pure deterministic plan pipeline from validation inputs through features/regime/churn/allocation/chop gate into final plan object.
-
-Scope:
-
-- Compose pipeline:
-  - validate -> features -> regime -> churn -> allocation -> chop gate -> plan object
-- Produce:
-  - `planId` (UUIDv7 recommended)
-  - `planHash` (canonical)
-  - `reasons[]`, `telemetry{}` and `actions[]` (REQUEST\_\* only + HOLD/STAND_DOWN)
-
-Key files/modules:
-
-- `src/engine/plan/buildPlan.ts`
-- `src/engine/plan/__tests__/planDeterminism.snapshot.test.ts`
-
-Acceptance criteria:
-
-- Same request => byte-identical plan JSON + same planHash.
-- Snapshot tests confirm determinism on fixtures.
-
-Verification commands:
-
-- `npm run test -- planDeterminism`
-- `npm run lint && npm run typecheck && npm run test && npm run build`
-
-Validation run (2026-03-03):
-
-- `npm run test -- planDeterminism`
-- `npm run lint && npm run typecheck && npm run test && npm run build`
-
----
-
-### Milestone 13 — Wire /v1/plan to builder + ledger
-
-Status: completed (2026-03-03)
-
-Goal:
-
-- Connect `/v1/plan` to the real deterministic plan builder and ledger persistence path.
-
-Scope:
-
-- Implement `/v1/plan` handler:
-  - validate
-  - buildPlan
-  - persist request + plan
-  - return response
-- Add contract tests and one end-to-end test.
-
-Key files/modules:
-
-- `src/http/handlers/plan.ts`
-- `src/http/__tests__/plan.e2e.test.ts`
-
-Acceptance criteria:
-
-- POST /v1/plan writes ledger rows and returns plan.
-
-Verification commands:
-
-- `npm run test -- plan.e2e`
-- `npm run lint && npm run typecheck && npm run test && npm run build`
-
-Validation run (2026-03-03):
-
-- `npm run test -- plan.e2e`
-- `npm run lint && npm run typecheck && npm run test && npm run build`
-
----
-
-### Milestone 14 — Wire /v1/execution-result + idempotency checks
-
-Status: completed (2026-03-03)
-
-Goal:
-
-- Wire `/v1/execution-result` to linked ledger writes with canonical mismatch/missing handling and idempotent replay behavior.
-
-Scope:
-
-- Validate `(planId, planHash)` exists and matches.
-- Persist execution results + costs + portfolioAfter.
-- Return canonical errors for mismatch/missing.
-
-Key files/modules:
-
-- `src/http/handlers/executionResult.ts`
-- `src/http/__tests__/executionResult.e2e.test.ts`
-
-Acceptance criteria:
-
-- Reject mismatched hashes.
-- Accept valid results and store them.
-
-Verification commands:
-
-- `npm run test -- executionResult.e2e`
-- `npm run lint && npm run typecheck && npm run test && npm run build`
-
-Validation run (2026-03-03):
-
-- `npm run test -- executionResult.e2e`
-- `npm run lint && npm run typecheck && npm run test && npm run build`
-
----
-
-### Milestone 15 — Baselines + weekly report (ledger-only)
-
-Status: completed (2026-03-03)
-
-Goal:
-
-- Generate deterministic ledger-only weekly reports with baseline comparisons and expose them via HTTP.
-
-Scope:
-
-- Implement baseline comparators (using candle closes only):
-  - SOL HODL
-  - SOL DCA (schedule defined in config)
-  - USDC carry (APR defined in config)
-- Weekly report generator:
-  - regime distribution
-  - churn outcomes
-  - execution success + costs
-  - baseline comparisons
-- Add endpoint: `GET /v1/report/weekly?from=YYYY-MM-DD&to=YYYY-MM-DD`
-
-Key files/modules:
-
-- `src/report/baselines.ts`
-- `src/report/weekly.ts`
-- `src/http/handlers/report.ts`
-- `src/report/__tests__/weeklyReport.snapshot.test.ts`
-
-Acceptance criteria:
-
-- Same ledger fixtures => byte-identical report output (snapshot).
-- Endpoint returns report.
-
-Verification commands:
-
-- `npm run test -- weeklyReport`
-- `npm run lint && npm run typecheck && npm run test && npm run build`
-
-Validation run (2026-03-03):
-
-- `npm run test -- weeklyReport`
-- `npm run lint && npm run typecheck && npm run test && npm run build`
-
----
-
-### Milestone 16 — Local harness + fixtures + docs hardening
-
-Status: completed (2026-03-03)
-
-Goal:
-
-- Provide a runnable fixture harness and harden operator documentation/demo flow for end-to-end local execution.
-
-Scope:
-
-- CLI harness:
-  - loads fixtures
-  - calls /v1/plan repeatedly
-  - posts simulated /v1/execution-result
-  - generates weekly report
-- Provide fixtures:
-  - uptrend, downtrend, chop, whipsaw
-  - example autopilotState sequences (stopouts/redeploys/cooldowns)
-- Update docs:
-  - README quickstart
-  - contract notes
-  - demo script
-
-Key files/modules:
-
-- `scripts/harness.ts`
-- `fixtures/*`
-- `README.md`
-- `documentation.md`, `architecture.md`
-
-Acceptance criteria:
-
-- One command produces a weekly report from fixtures.
-- Final validation sweep passes.
-
-Verification commands:
-
-- `npm run harness -- --fixture ./fixtures/demo --from 2026-01-01 --to 2026-01-31`
-- Final validation sweep
-
-Validation run (2026-03-03):
-
-- `npm run harness -- --fixture ./fixtures/demo --from 2026-01-01 --to 2026-01-31`
-- Final validation sweep:
-  - `npm run dev` with `/health` check
-  - `npm run build`
-  - `npm run lint`
-  - `npm run typecheck`
-  - `npm run test`
-  - `npm run harness -- --fixture ./fixtures/demo --from 2026-01-01 --to 2026-01-31`
-  - `/v1/openapi.json` JSON validity check (used Node parser because `jq` is unavailable in environment)
-
----
-
-## Implementation Notes
-
-- 2026-03-03 (M01): interpreted “path aliases” as compile-time TypeScript aliasing only (`@/* -> src/*`) to keep runtime startup simple and deterministic.
-- 2026-03-03 (M02): canonical validation detail messages are generated in `src/http/errors.ts` rather than using raw Zod messages to guarantee stable error payloads across runs.
-- 2026-03-03 (M03): canonical serializer sorts object keys recursively, preserves array order, normalizes `-0` to `0`, and rejects non-finite numbers.
-- 2026-03-03 (M04): `/v1/plan` and `/v1/execution-result` are wired as validation-aware stubs first to preserve incremental delivery before ledger + engine integration milestones.
-- 2026-03-03 (M05): execution-result linkage integrity is enforced in `writer.ts` (planId/planHash checks) instead of a DB foreign key, keeping schema simple while preserving deterministic error behavior.
-- 2026-03-03 (M06): indicator outputs are rounded to fixed precision to avoid floating-point noise in snapshots and downstream regime decisions.
-- 2026-03-03 (M07): classifier state tracks pending target regime + confirmation bars separately from `barsInRegime`, allowing deterministic hysteresis without hidden mutable globals.
-- 2026-03-03 (M08): cooldown, budget exhaustion, and two-strike triggers all funnel into explicit `STAND_DOWN` action output to halt fakeout churn deterministically.
-- 2026-03-03 (M09): exposure shift per cycle is capped by `min(maxDeltaExposureBpsPerDay, maxTurnoverPerDayBps)` for deterministic bounded transitions.
-- 2026-03-03 (M10): volatility overlay scales SOL tilt around neutral `5000` bps, then reapplies exposure caps to guarantee policy limits remain authoritative.
-- 2026-03-03 (M11): CHOP gate is isolated in `src/engine/chopGate.ts` so `allowClmm` logic remains explicit, testable, and independent from allocation math.
-- 2026-03-03 (M12): `planId` is derived from request canonical hash (`plan-<16 hex>`) to keep plan outputs byte-identical for identical inputs.
-- 2026-03-03 (M13): `/v1/plan` now uses `buildPlan` end-to-end; prior stub handler is retained only as legacy scaffolding and is no longer routed.
-- 2026-03-03 (M14): `/v1/execution-result` treats exact replays as idempotent success and conflicting replays as `EXECUTION_RESULT_CONFLICT` to preserve append-only truth.
-- 2026-03-03 (M15): weekly report reads only persisted ledger rows (`plan_requests`, `plans`, `execution_results`) and does not depend on live engine recomputation.
-- 2026-03-03 (M16): harness executes in-process HTTP calls (`app.inject`) against fixture steps to keep local demos reproducible without external infrastructure.
-
----
-
-## Risk register (top technical risks + mitigations)
-
-1. Regime flip-flop (whipsaw) causing churn
-
-- Mitigation: hysteresis + confirmBars + minHoldBars + churn governor stand-down.
-
-2. Hidden non-determinism (key order, float formatting)
-
-- Mitigation: canonical serializer + snapshot tests + explicit sorts for arrays/maps.
-
-3. Contract drift between microservices
-
-- Mitigation: schemaVersion + OpenAPI + fixture-based contract tests.
-
-4. Ledger integrity under concurrent requests
-
-- Mitigation: SQLite transactions, deterministic writes, indexed uniqueness where appropriate.
-
-5. Misleading reporting due to external execution authority
-
-- Mitigation: Autopilot is authoritative for portfolioAfter and costs; report separates PLAN vs EXECUTION outcomes.
-
----
-
-## Demo script (2–3 minutes)
-
-1. Start: `npm run dev`
-2. Health check: `GET /health`
-3. POST `/v1/plan` with CHOP fixture:
-   - expect `regime=CHOP`, `allowClmm=true`, targets near neutral
-4. POST `/v1/plan` with DOWN fixture:
-   - expect `regime=DOWN`, `allowClmm=false`, targets shift USDC-heavy
-5. POST simulated `/v1/execution-result` for both
-6. GET `/v1/report/weekly?from=...&to=...`
-   - show regime distribution, churn/stand-down, costs, baseline comparisons
-
----
-
-## Architecture overview (summary)
-
-- Pure engine: indicators -> regime -> churn -> allocation -> chop gate -> plan.
-- Deterministic contract: canonical JSON + planHash.
-- Append-only ledger: requests, plans, results; reporting reads ledger only.
-- Microservice boundary: Regime Engine emits REQUEST\_\*; Autopilot executes and posts results.
+- Stop if repository types show that plan requests cannot provide `symbol`, `source`, `network`, `poolAddress`, and supported `timeframe` without changing the public request contract; revise the design rather than inventing feed defaults.
+- Stop if implementing the window read requires a schema migration or index change not described by the design; document the query-plan evidence and obtain scope approval.
+- Stop if any existing `CandleReadPort` implementation or fake is discovered beyond the SQLite adapter, PostgreSQL adapter, and application fake; add it to Task 1 before changing the interface.
+- Stop if preserving the weekly response schema, formulas, deterministic ordering, or 400/500 error taxonomy proves incompatible with explicit report inputs.
+- Stop if a proposed fix catches candle-store failures, probes a second store, reuses inline request candles, or reads `candle_revisions` from the weekly SQLite ledger adapter.
+- Stop before claiming PostgreSQL acceptance if the configured test database cannot run the new adapter and composition suites.

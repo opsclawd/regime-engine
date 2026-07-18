@@ -1,8 +1,7 @@
-import type { WeeklyReportData } from "../../../ports/weeklyReportReadPort.js";
-
-export interface WeeklyReportLedgerReadPort {
-  getWeeklyReportData(input: { from: string; to: string }): Promise<WeeklyReportData>;
-}
+import type {
+  WeeklyReportData,
+  WeeklyReportLedgerReadPort
+} from "../../../ports/weeklyReportReadPort.js";
 
 export class FakeWeeklyReportLedgerReadPort implements WeeklyReportLedgerReadPort {
   public calls: Array<{ from: string; to: string }> = [];

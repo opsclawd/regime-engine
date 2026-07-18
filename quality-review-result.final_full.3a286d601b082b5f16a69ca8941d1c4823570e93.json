@@ -1,0 +1,17 @@
+{
+  "result": "fail",
+  "findings": [
+    {
+      "severity": "P2",
+      "summary": "The test 'ignores legacy inline candles when explicit canonical candles are provided' does not include legacy inline candles in the test payload, making it incapable of verifying the behavior described in its title.",
+      "file": "src/report/__tests__/baselines.test.ts",
+      "suggested_fix": "Modify the test payload's request object to include `market: { candles: [...] }` using a type assertion (e.g. `as any`) to prove that runtime legacy data is correctly ignored by computeBaselines."
+    },
+    {
+      "severity": "P2",
+      "summary": "The test 'rejects legacy inline candles through type cast for regression coverage' claims to test regression coverage via a type cast, but does not contain any type cast or legacy inline candles.",
+      "file": "src/report/__tests__/baselines.test.ts",
+      "suggested_fix": "Provide a payload with `market: { candles: [...] }` and cast it to the expected type, or remove the test if it is redundant with the previous test once fixed."
+    }
+  ]
+}

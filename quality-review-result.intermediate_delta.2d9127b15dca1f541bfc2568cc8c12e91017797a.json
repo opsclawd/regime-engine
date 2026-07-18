@@ -1,0 +1,17 @@
+{
+  "result": "fail",
+  "findings": [
+    {
+      "severity": "P1",
+      "summary": "The SQLite e2e test bypasses the composition root and manually instantiates the use case, failing to prove the active-store selection logic for the SQLite case.",
+      "file": "src/composition/__tests__/weeklyReportCandleStore.e2e.test.ts",
+      "suggested_fix": "Import and use `buildApplication(ctx)` to resolve the `getWeeklyReport` use case instead of manually creating `createGetWeeklyReportUseCase` with `createSqliteCandleReadAdapter`."
+    },
+    {
+      "severity": "P2",
+      "summary": "The SQLite e2e test manually deletes `process.env.LEDGER_DB_PATH` and `DATABASE_URL` in `afterEach`, which pollutes global state and is inconsistent with the PG test.",
+      "file": "src/composition/__tests__/weeklyReportCandleStore.e2e.test.ts",
+      "suggested_fix": "Use `beforeEach(() => { vi.stubEnv('DATABASE_URL', ''); })` and `vi.unstubAllEnvs()` in `afterEach` as done in the PG test."
+    }
+  ]
+}

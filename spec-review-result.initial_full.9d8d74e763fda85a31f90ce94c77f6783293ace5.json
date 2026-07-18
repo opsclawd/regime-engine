@@ -1,0 +1,11 @@
+{
+  "result": "fail",
+  "findings": [
+    {
+      "severity": "P1",
+      "summary": "The tests bypass the composition root by manually wiring the adapters to the use-case instead of calling buildApplication(ctx), failing to prove that the system correctly selects the active store based on configuration.",
+      "file": "src/composition/__tests__/weeklyReportCandleStore.e2e.pg.test.ts",
+      "suggested_fix": "Use the actual composition root to resolve the use-case: `const app = buildApplication(ctx); const report = await app.getWeeklyReport(...)` instead of manually instantiating `createGetWeeklyReportUseCase` with `createPostgresCandleReadAdapter`."
+    }
+  ]
+}
