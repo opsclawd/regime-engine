@@ -1,5 +1,12 @@
 import { createHash, randomUUID } from "node:crypto";
-import { readFileSync, readdirSync, statSync, writeFileSync, unlinkSync } from "node:fs";
+import {
+  existsSync,
+  readFileSync,
+  readdirSync,
+  statSync,
+  writeFileSync,
+  unlinkSync
+} from "node:fs";
 import { execFile } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { resolve, join } from "node:path";
@@ -81,10 +88,10 @@ describe("EvidenceBundle v1 generation", () => {
     const vectorsPath = resolve(distEvidenceRoot, "hash-vectors.json");
     const fixturesDir = resolve(distEvidenceRoot, "fixtures");
 
-    expect(statSync(schemaPath).isFile(), "schema.json must exist in dist").toBe(true);
-    expect(statSync(sha256Path).isFile(), "schema.sha256 must exist in dist").toBe(true);
-    expect(statSync(vectorsPath).isFile(), "hash-vectors.json must exist in dist").toBe(true);
-    expect(statSync(fixturesDir).isDirectory(), "fixtures directory must exist in dist").toBe(true);
+    expect(existsSync(schemaPath), "schema.json must exist in dist").toBe(true);
+    expect(existsSync(sha256Path), "schema.sha256 must exist in dist").toBe(true);
+    expect(existsSync(vectorsPath), "hash-vectors.json must exist in dist").toBe(true);
+    expect(existsSync(fixturesDir), "fixtures directory must exist in dist").toBe(true);
 
     expect(areDirectoryContentsIdentical(sourceEvidenceRoot, distEvidenceRoot)).toBe(true);
   });
@@ -94,10 +101,15 @@ describe("EvidenceBundle v1 generation", () => {
     const realDocPath = resolve(__repoRoot, "docs/contracts/evidence-bundle.v1.md");
 
     const realDocContent = readFileSync(realDocPath, "utf-8");
-    const staleContent = realDocContent.replace(
-      /<!-- schema-sha256:[a-f0-9]{64} -->/,
-      "<!-- schema-sha256:0000000000000000000000000000000000000000000000000000000000000000 -->"
-    );
+    const staleContent = realDocContent
+      .replace(
+        /<!-- schema-sha256:[a-f0-9]{64} -->/,
+        "<!-- schema-sha256:0000000000000000000000000000000000000000000000000000000000000000 -->"
+      )
+      .replace(
+        /\*\*Schema SHA-256\*\*:\s*`[a-f0-9]{64}`/,
+        "**Schema SHA-256**: `0000000000000000000000000000000000000000000000000000000000000000`"
+      );
     writeFileSync(staleDocPath, staleContent);
 
     try {
@@ -105,7 +117,7 @@ describe("EvidenceBundle v1 generation", () => {
         execFile(
           "pnpm",
           ["run", "contract:evidence:check"],
-          { cwd: __repoRoot },
+          { cwd: __repoRoot, env: { ...process.env, DOCS_PATH: staleDocPath } },
           (error, _stdout, stderr) => {
             resolve({ code: (error?.code as number) ?? 0, stderr });
           }
@@ -113,7 +125,7 @@ describe("EvidenceBundle v1 generation", () => {
       });
 
       expect(checkResult.code).not.toBe(0);
-      expect(checkResult.stderr).toContain(realDocPath);
+      expect(checkResult.stderr).toContain(staleDocPath);
     } finally {
       unlinkSync(staleDocPath);
     }

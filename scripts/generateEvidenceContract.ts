@@ -13,8 +13,10 @@ const SHA256_PATH = resolve(__repoRoot, "contracts/evidence-bundle/v1/schema.sha
 const VECTORS_PATH = resolve(__repoRoot, "contracts/evidence-bundle/v1/hash-vectors.json");
 const SCHEMA_RELATIVE = "contracts/evidence-bundle/v1/evidence-bundle.schema.json";
 const FIXTURES_DIR = resolve(__repoRoot, "contracts/evidence-bundle/v1/fixtures");
-const DOCS_PATH = resolve(__repoRoot, "docs/contracts/evidence-bundle.v1.md");
+const DOCS_PATH =
+  process.env.DOCS_PATH ?? resolve(__repoRoot, "docs/contracts/evidence-bundle.v1.md");
 const DOCS_SCHEMA_MARKER = /<!-- schema-sha256:([a-f0-9]{64}) -->/;
+const DOCS_VISIBLE_SCHEMA_DIGEST = /\*\*Schema SHA-256\*\*:\s*`([a-f0-9]{64})`/;
 
 interface CliArgs {
   mode: "--write" | "--check";
@@ -323,10 +325,22 @@ async function main() {
         console.error(`STALE: ${DOCS_PATH} schema marker ${match[1]} does not match ${digest}`);
         hasStale = true;
       }
+      const visibleMatch = existingDocsContent.match(DOCS_VISIBLE_SCHEMA_DIGEST);
+      if (!visibleMatch) {
+        console.error(`MISSING: ${DOCS_PATH} visible schema SHA-256 digest`);
+        hasStale = true;
+      } else if (visibleMatch[1] !== digest) {
+        console.error(
+          `STALE: ${DOCS_PATH} visible digest ${visibleMatch[1]} does not match ${digest}`
+        );
+        hasStale = true;
+      }
       const requiredArtifacts = [
         "evidence-bundle.schema.json",
         "schema.sha256",
-        "hash-vectors.json"
+        "hash-vectors.json",
+        "fixtures/valid",
+        "fixtures/invalid"
       ];
       for (const artifact of requiredArtifacts) {
         if (!existingDocsContent.includes(artifact)) {
@@ -380,9 +394,11 @@ async function main() {
     }
 
     const markerReplacement = `<!-- schema-sha256:${digest} -->`;
+    const visibleReplacement = `**Schema SHA-256**: \`${digest}\``;
     try {
       const existingDocsContent = readFileSync(DOCS_PATH, "utf-8");
-      const newDocsContent = existingDocsContent.replace(DOCS_SCHEMA_MARKER, markerReplacement);
+      let newDocsContent = existingDocsContent.replace(DOCS_SCHEMA_MARKER, markerReplacement);
+      newDocsContent = newDocsContent.replace(DOCS_VISIBLE_SCHEMA_DIGEST, visibleReplacement);
       if (newDocsContent !== existingDocsContent) {
         writeFileSync(DOCS_PATH, newDocsContent);
         console.log(`WROTE: ${DOCS_PATH}`);
