@@ -220,6 +220,7 @@ export const createPostgresEvidenceBundleRepository = (db: Db): EvidenceBundleRe
           FROM regime_engine.evidence_bundles
           WHERE pair = ${pair}
             AND scope_key = ${scopeKeyVal}
+            ${source?.publisher ? sql`AND source_publisher = ${source.publisher}` : sql``}
         ) ranked
         WHERE rn = 1
         ORDER BY source_publisher, source_id
