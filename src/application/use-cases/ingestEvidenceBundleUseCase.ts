@@ -1,8 +1,8 @@
 import type {
   EvidenceBundleRepositoryPort,
   EvidenceBundleReceipt
-} from "../../ports/evidenceBundleRepositoryPort.js";
-import type { ClockPort } from "../../ports/clock.js";
+} from "../ports/evidenceBundleRepositoryPort.js";
+import type { ClockPort } from "../ports/clock.js";
 import { parseEvidenceBundleV1 } from "../../contract/evidence/v1/validate.js";
 import { toCanonicalJson } from "../../contract/v1/canonical.js";
 import { sha256Hex } from "../../contract/v1/hash.js";
