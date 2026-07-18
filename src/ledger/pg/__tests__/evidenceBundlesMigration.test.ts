@@ -55,10 +55,10 @@ describe.skipIf(!process.env.DATABASE_URL)("evidence_bundles migration (PG)", ()
               (schema_version, source_publisher, source_id, run_id, pair, scope_key,
                correlation_id, as_of_unix_ms, created_at_unix_ms, received_at_unix_ms,
                fresh_until_unix_ms, expires_at_unix_ms, evidence_json, evidence_canonical,
-               evidence_hash)
+               evidence_hash, ingested_at_unix_ms, processed_at_unix_ms)
               VALUES
               ('evidence-bundle.v2', 'publisher', 'source', 'run', 'SOL/USDC', 'scope',
-               'corr', 1000, 2000, 3000, 4000, 5000, '{}', 'canonical', 'abcd1234567890abcd1234567890abcd1234567890abcd1234567890abcd1234')`
+               'corr', 1000, 2000, 3000, 4000, 5000, '{}', 'canonical', 'abcd1234567890abcd1234567890abcd1234567890abcd1234567890abcd1234', 6000, 7000)`
       )
     ).rejects.toThrow();
 
@@ -68,10 +68,10 @@ describe.skipIf(!process.env.DATABASE_URL)("evidence_bundles migration (PG)", ()
               (schema_version, source_publisher, source_id, run_id, pair, scope_key,
                correlation_id, as_of_unix_ms, created_at_unix_ms, received_at_unix_ms,
                fresh_until_unix_ms, expires_at_unix_ms, evidence_json, evidence_canonical,
-               evidence_hash)
+               evidence_hash, ingested_at_unix_ms, processed_at_unix_ms)
               VALUES
               ('evidence-bundle.v1', 'publisher', 'source', 'run', 'SOL/ETH', 'scope',
-               'corr', 1000, 2000, 3000, 4000, 5000, '{}', 'canonical', 'abcd1234567890abcd1234567890abcd1234567890abcd1234567890abcd1234')`
+               'corr', 1000, 2000, 3000, 4000, 5000, '{}', 'canonical', 'abcd1234567890abcd1234567890abcd1234567890abcd1234567890abcd1234', 6000, 7000)`
       )
     ).rejects.toThrow();
 
@@ -81,10 +81,10 @@ describe.skipIf(!process.env.DATABASE_URL)("evidence_bundles migration (PG)", ()
               (schema_version, source_publisher, source_id, run_id, pair, scope_key,
                correlation_id, as_of_unix_ms, created_at_unix_ms, received_at_unix_ms,
                fresh_until_unix_ms, expires_at_unix_ms, evidence_json, evidence_canonical,
-               evidence_hash)
+               evidence_hash, ingested_at_unix_ms, processed_at_unix_ms)
               VALUES
               ('evidence-bundle.v1', 'publisher', 'source', 'run', 'SOL/USDC', 'scope',
-               'corr', 3000, 2000, 1000, 4000, 5000, '{}', 'canonical', 'abcd1234567890abcd1234567890abcd1234567890abcd1234567890abcd1234')`
+               'corr', 3000, 2000, 1000, 4000, 5000, '{}', 'canonical', 'abcd1234567890abcd1234567890abcd1234567890abcd1234567890abcd1234', 6000, 7000)`
       )
     ).rejects.toThrow();
 
@@ -94,10 +94,10 @@ describe.skipIf(!process.env.DATABASE_URL)("evidence_bundles migration (PG)", ()
               (schema_version, source_publisher, source_id, run_id, pair, scope_key,
                correlation_id, as_of_unix_ms, created_at_unix_ms, received_at_unix_ms,
                fresh_until_unix_ms, expires_at_unix_ms, evidence_json, evidence_canonical,
-               evidence_hash)
+               evidence_hash, ingested_at_unix_ms, processed_at_unix_ms)
               VALUES
               ('evidence-bundle.v1', 'publisher', 'source', 'run', 'SOL/USDC', 'scope',
-               'corr', 1000, 2000, 3000, 5000, 4000, '{}', 'canonical', 'abcd1234567890abcd1234567890abcd1234567890abcd1234567890abcd1234')`
+               'corr', 1000, 2000, 3000, 5000, 4000, '{}', 'canonical', 'abcd1234567890abcd1234567890abcd1234567890abcd1234567890abcd1234', 6000, 7000)`
       )
     ).rejects.toThrow();
 
@@ -107,10 +107,10 @@ describe.skipIf(!process.env.DATABASE_URL)("evidence_bundles migration (PG)", ()
               (schema_version, source_publisher, source_id, run_id, pair, scope_key,
                correlation_id, as_of_unix_ms, created_at_unix_ms, received_at_unix_ms,
                fresh_until_unix_ms, expires_at_unix_ms, evidence_json, evidence_canonical,
-               evidence_hash)
+               evidence_hash, ingested_at_unix_ms, processed_at_unix_ms)
               VALUES
               ('evidence-bundle.v1', 'publisher', 'source', 'run', 'SOL/USDC', 'scope',
-               'corr', 1000, 2000, 3000, 4000, 5000, '{}', 'canonical', 'ABCD1234567890ABCD1234567890ABCD1234567890ABCD1234567890ABCD1234')`
+               'corr', 1000, 2000, 3000, 4000, 5000, '{}', 'canonical', 'ABCD1234567890ABCD1234567890ABCD1234567890ABCD1234567890ABCD1234', 6000, 7000)`
       )
     ).rejects.toThrow();
 
