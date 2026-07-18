@@ -90,7 +90,7 @@ describe("Evidence OpenAPI contract", () => {
 
     it("GET /v1/evidence/current has all strict query parameters", () => {
       const getOp = doc.paths["/v1/evidence/current"]?.get;
-      const params = (getOp?.parameters ?? []) as OpenApiParameter[];
+      const params = (getOp?.parameters ?? []) as unknown as OpenApiParameter[];
       const paramNames = params.map((p) => p.name);
       expect(paramNames).toContain("scope");
       expect(paramNames).toContain("whirlpoolAddress");
@@ -102,7 +102,7 @@ describe("Evidence OpenAPI contract", () => {
 
     it("GET /v1/evidence/history has cursor and limit query parameters", () => {
       const getOp = doc.paths["/v1/evidence/history"]?.get;
-      const params = (getOp?.parameters ?? []) as OpenApiParameter[];
+      const params = (getOp?.parameters ?? []) as unknown as OpenApiParameter[];
       const paramNames = params.map((p) => p.name);
       expect(paramNames).toContain("cursor");
       expect(paramNames).toContain("limit");
@@ -110,7 +110,7 @@ describe("Evidence OpenAPI contract", () => {
 
     it("history limit has default 30 and max 100", () => {
       const getOp = doc.paths["/v1/evidence/history"]?.get;
-      const params = (getOp?.parameters ?? []) as OpenApiParameter[];
+      const params = (getOp?.parameters ?? []) as unknown as OpenApiParameter[];
       const limitParam = params.find((p) => p.name === "limit");
       const schema = limitParam?.schema as { default?: number; maximum?: number } | undefined;
       expect(schema?.default).toBe(30);
@@ -185,7 +185,7 @@ describe("Evidence OpenAPI contract", () => {
 
     it("documents opaque cursor continuation", () => {
       const getOp = doc.paths["/v1/evidence/history"]?.get;
-      const params = (getOp?.parameters ?? []) as OpenApiParameter[];
+      const params = (getOp?.parameters ?? []) as unknown as OpenApiParameter[];
       const cursorParam = params.find((p) => p.name === "cursor");
       expect(cursorParam?.description?.toLowerCase()).toContain("cursor");
     });
