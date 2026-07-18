@@ -1,9 +1,128 @@
+import evidenceBundleSchema from "../../../contracts/evidence-bundle/v1/evidence-bundle.schema.json" with { type: "json" };
+
 export const buildOpenApiDocument = () => {
   return {
     openapi: "3.1.0",
     info: {
       title: "Regime Engine API",
       version: "1.0.0"
+    },
+    components: {
+      securitySchemes: {
+        EvidenceIngestToken: {
+          type: "apiKey",
+          in: "header",
+          name: "X-Evidence-Ingest-Token"
+        }
+      },
+      schemas: {
+        EvidenceBundleV1: evidenceBundleSchema,
+        EvidenceRecord: {
+          type: "object",
+          additionalProperties: false,
+          required: ["bundle", "evidenceHash", "receiptId", "receivedAt", "freshness"],
+          properties: {
+            bundle: { $ref: "#/components/schemas/EvidenceBundleV1" },
+            evidenceHash: { type: "string" },
+            receiptId: { type: "integer" },
+            receivedAt: { type: "string", format: "date-time" },
+            freshness: { $ref: "#/components/schemas/EvidenceFreshness" }
+          }
+        },
+        EvidenceFreshness: {
+          type: "object",
+          additionalProperties: false,
+          required: ["status", "asOf", "freshUntil", "expiresAt"],
+          properties: {
+            status: { type: "string", enum: ["FRESH", "STALE", "EXPIRED"] },
+            asOf: { type: "string", format: "date-time" },
+            freshUntil: { type: "string", format: "date-time" },
+            expiresAt: { type: "string", format: "date-time" }
+          }
+        },
+        EvidenceReceipt: {
+          type: "object",
+          additionalProperties: false,
+          required: ["receiptId", "receivedAt"],
+          properties: {
+            receiptId: { type: "integer" },
+            receivedAt: { type: "string", format: "date-time" }
+          }
+        },
+        EvidenceCurrentResponse: {
+          type: "object",
+          additionalProperties: false,
+          required: [
+            "receiptId",
+            "receivedAt",
+            "queriedAt",
+            "bundle",
+            "evidenceHash",
+            "freshness",
+            "nextCursor"
+          ],
+          properties: {
+            receiptId: { type: "integer" },
+            receivedAt: { type: "string", format: "date-time" },
+            queriedAt: { type: "string", format: "date-time" },
+            bundle: { $ref: "#/components/schemas/EvidenceBundleV1" },
+            evidenceHash: { type: "string" },
+            freshness: { $ref: "#/components/schemas/EvidenceFreshness" },
+            nextCursor: { type: "string", nullable: true }
+          }
+        },
+        EvidenceHistoryResponse: {
+          type: "object",
+          additionalProperties: false,
+          required: ["items", "nextCursor"],
+          properties: {
+            items: {
+              type: "array",
+              items: { $ref: "#/components/schemas/EvidenceRecord" }
+            },
+            nextCursor: { type: "string", nullable: true }
+          }
+        },
+        EvidenceError: {
+          type: "object",
+          additionalProperties: false,
+          required: ["schemaVersion", "error"],
+          properties: {
+            schemaVersion: { type: "string" },
+            error: {
+              type: "object",
+              additionalProperties: false,
+              required: ["code", "message"],
+              properties: {
+                code: { type: "string" },
+                message: { type: "string" },
+                details: {
+                  type: "array",
+                  items: {
+                    type: "object",
+                    additionalProperties: false,
+                    properties: {
+                      path: { type: "string" },
+                      code: { type: "string" },
+                      message: { type: "string" }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        EvidenceCursor: {
+          type: "object",
+          additionalProperties: false,
+          required: ["v", "receivedAtUnixMs", "id"],
+          properties: {
+            v: { const: 1 },
+            receivedAtUnixMs: { type: "integer" },
+            id: { type: "integer", minimum: 1 }
+          }
+        }
+      }
     },
     paths: {
       "/health": {
@@ -637,6 +756,258 @@ export const buildOpenApiDocument = () => {
             },
             "503": {
               description: "S/R thesis v2 store not available (no DATABASE_URL configured)"
+            }
+          }
+        }
+      },
+      "/v1/evidence": {
+        post: {
+          summary: "Ingest an evidence bundle",
+          description:
+            "Fixed pair SOL/USDC. Accepts pair scope (default, no selection) or non-pair scopes (whirlpool/wallet/position) on solana-mainnet. Identifier bounds: 1-128 characters.",
+          security: [{ EvidenceIngestToken: [] }],
+          requestBody: {
+            required: true,
+            content: {
+              "application/json": {
+                schema: { $ref: "#/components/schemas/EvidenceBundleV1" }
+              }
+            }
+          },
+          responses: {
+            "200": {
+              description: "Evidence bundle already exists (idempotent)",
+              content: {
+                "application/json": {
+                  schema: { $ref: "#/components/schemas/EvidenceReceipt" },
+                  example: {
+                    receiptId: 42,
+                    receivedAt: "2026-07-18T12:00:00.000Z"
+                  }
+                }
+              }
+            },
+            "201": {
+              description: "Evidence bundle created",
+              content: {
+                "application/json": {
+                  schema: { $ref: "#/components/schemas/EvidenceReceipt" },
+                  example: {
+                    receiptId: 42,
+                    receivedAt: "2026-07-18T12:00:00.000Z"
+                  }
+                }
+              }
+            },
+            "400": {
+              description: "Validation error",
+              content: {
+                "application/json": {
+                  schema: { $ref: "#/components/schemas/EvidenceError" }
+                }
+              }
+            },
+            "401": {
+              description: "Invalid or missing X-Evidence-Ingest-Token"
+            },
+            "409": {
+              description: "Conflict: same runId/correlationId with different payload"
+            },
+            "413": {
+              description: "Payload too large (max 4MB)"
+            },
+            "500": {
+              description: "Internal server error"
+            },
+            "503": {
+              description: "Evidence store unavailable"
+            }
+          }
+        }
+      },
+      "/v1/evidence/current": {
+        get: {
+          summary: "Get most recent evidence bundle with no selection",
+          description:
+            "Returns the most recent evidence bundle matching scope and source filters. Pair scope is default (no selection). Non-pair scopes require solana-mainnet network with whirlpoolAddress, walletAddress, or positionId.",
+          security: [],
+          parameters: [
+            {
+              name: "scope",
+              in: "query",
+              required: false,
+              schema: { type: "string", enum: ["pair", "whirlpool", "wallet", "position"] }
+            },
+            {
+              name: "whirlpoolAddress",
+              in: "query",
+              required: false,
+              schema: { type: "string", minLength: 1, maxLength: 128 }
+            },
+            {
+              name: "walletAddress",
+              in: "query",
+              required: false,
+              schema: { type: "string", minLength: 1, maxLength: 128 }
+            },
+            {
+              name: "positionId",
+              in: "query",
+              required: false,
+              schema: { type: "string", minLength: 1, maxLength: 128 }
+            },
+            {
+              name: "source.publisher",
+              in: "query",
+              required: false,
+              schema: { type: "string", minLength: 1, maxLength: 128 }
+            },
+            {
+              name: "source.sourceId",
+              in: "query",
+              required: false,
+              schema: { type: "string", minLength: 1, maxLength: 128 }
+            }
+          ],
+          responses: {
+            "200": {
+              description: "Current evidence bundle",
+              content: {
+                "application/json": {
+                  schema: { $ref: "#/components/schemas/EvidenceCurrentResponse" },
+                  example: {
+                    receiptId: 42,
+                    receivedAt: "2026-07-18T12:00:00.000Z",
+                    queriedAt: "2026-07-18T12:30:00.000Z",
+                    bundle: {},
+                    evidenceHash: "abc123",
+                    freshness: {
+                      status: "FRESH",
+                      asOf: "2026-07-18T12:00:00.000Z",
+                      freshUntil: "2026-07-18T18:00:00.000Z",
+                      expiresAt: "2026-07-19T12:00:00.000Z"
+                    },
+                    nextCursor: null
+                  }
+                }
+              }
+            },
+            "400": {
+              description: "Validation error",
+              content: {
+                "application/json": {
+                  schema: { $ref: "#/components/schemas/EvidenceError" }
+                }
+              }
+            },
+            "404": {
+              description: "No evidence found matching criteria"
+            },
+            "500": {
+              description: "Internal server error"
+            },
+            "503": {
+              description: "Evidence store unavailable"
+            }
+          }
+        }
+      },
+      "/v1/evidence/history": {
+        get: {
+          summary: "Get historical evidence bundles",
+          description:
+            "Returns paginated historical evidence bundles with opaque cursor continuation. Scope and source filters must remain unchanged between requests for consistent pagination.",
+          security: [],
+          parameters: [
+            {
+              name: "cursor",
+              in: "query",
+              required: false,
+              schema: { type: "string" },
+              description: "Opaque cursor for continuation. Must use exactly as received."
+            },
+            {
+              name: "limit",
+              in: "query",
+              required: false,
+              schema: { type: "integer", minimum: 1, maximum: 100, default: 30 }
+            },
+            {
+              name: "scope",
+              in: "query",
+              required: false,
+              schema: { type: "string", enum: ["pair", "whirlpool", "wallet", "position"] }
+            },
+            {
+              name: "whirlpoolAddress",
+              in: "query",
+              required: false,
+              schema: { type: "string", minLength: 1, maxLength: 128 }
+            },
+            {
+              name: "walletAddress",
+              in: "query",
+              required: false,
+              schema: { type: "string", minLength: 1, maxLength: 128 }
+            },
+            {
+              name: "positionId",
+              in: "query",
+              required: false,
+              schema: { type: "string", minLength: 1, maxLength: 128 }
+            },
+            {
+              name: "source.publisher",
+              in: "query",
+              required: false,
+              schema: { type: "string", minLength: 1, maxLength: 128 }
+            },
+            {
+              name: "source.sourceId",
+              in: "query",
+              required: false,
+              schema: { type: "string", minLength: 1, maxLength: 128 }
+            }
+          ],
+          responses: {
+            "200": {
+              description: "Historical evidence bundles",
+              content: {
+                "application/json": {
+                  schema: { $ref: "#/components/schemas/EvidenceHistoryResponse" },
+                  example: {
+                    items: [
+                      {
+                        bundle: {},
+                        evidenceHash: "abc123",
+                        receiptId: 42,
+                        receivedAt: "2026-07-18T12:00:00.000Z",
+                        freshness: {
+                          status: "FRESH",
+                          asOf: "2026-07-18T12:00:00.000Z",
+                          freshUntil: "2026-07-18T18:00:00.000Z",
+                          expiresAt: "2026-07-19T12:00:00.000Z"
+                        }
+                      }
+                    ],
+                    nextCursor: "eyJ2IjoxLCJyZWNlaXZlZEF0VW5peE1zIjoxNzUxMzgwODAwMDAwLCJpZCI6NDJ9"
+                  }
+                }
+              }
+            },
+            "400": {
+              description: "Validation error",
+              content: {
+                "application/json": {
+                  schema: { $ref: "#/components/schemas/EvidenceError" }
+                }
+              }
+            },
+            "500": {
+              description: "Internal server error"
+            },
+            "503": {
+              description: "Evidence store unavailable"
             }
           }
         }
