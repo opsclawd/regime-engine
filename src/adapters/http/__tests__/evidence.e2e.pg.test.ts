@@ -113,7 +113,7 @@ afterEach(async () => {
   delete process.env.EVIDENCE_INGEST_TOKEN;
   if (db) {
     await db.execute(
-      sql`DELETE FROM regime_engine.evidence_bundles WHERE source->>'publisher' = 'sol-usdc-clmm-intelligence'`
+      sql`DELETE FROM regime_engine.evidence_bundles WHERE source->>'publisher' IN ('sol-usdc-clmm-intelligence', 'alpha-publisher', 'zulu-publisher')`
     );
   }
 });
