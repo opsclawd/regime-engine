@@ -1,0 +1,17 @@
+{
+  "result": "fail",
+  "findings": [
+    {
+      "severity": "P1",
+      "summary": "The test 'fails when a losing append cannot load the winning row' fails in execution because deleting the row prior to the second append causes the database insert to succeed, bypassing the conflict branch entirely and never throwing the invariant violation.",
+      "file": "src/adapters/postgres/__tests__/postgresEvidenceBundleRepository.append.test.ts",
+      "suggested_fix": "Mock the database query to return an empty array for the select statement after an insert conflict occurs, instead of deleting the row before calling append()."
+    },
+    {
+      "severity": "P2",
+      "summary": "The test 'both succeed when concurrent identical replays return same result' is flaky because it assumes Promise.all() executes in array order, whereas the database execution order is non-deterministic.",
+      "file": "src/adapters/postgres/__tests__/postgresEvidenceBundleRepository.append.test.ts",
+      "suggested_fix": "Assert that the array of statuses contains both 'created' and 'already_ingested' regardless of their index, instead of hardcoding first.status and second.status."
+    }
+  ]
+}

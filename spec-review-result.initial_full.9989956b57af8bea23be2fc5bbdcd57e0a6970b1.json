@@ -1,0 +1,23 @@
+{
+  "result": "fail",
+  "findings": [
+    {
+      "severity": "P0",
+      "summary": "The required test file src/adapters/postgres/__tests__/postgresEvidenceBundleRepository.append.test.ts was not created, omitting all append state-machine invariant tests.",
+      "file": "src/adapters/postgres/__tests__/postgresEvidenceBundleRepository.append.test.ts",
+      "suggested_fix": "Create the test file and implement the named test cases: 'creates one immutable row for a new source run', 'returns already_ingested...', 'throws EVIDENCE_RUN_CONFLICT...', and 'fails when a losing append...'."
+    },
+    {
+      "severity": "P1",
+      "summary": "The onConflictDoNothing() call in the Postgres adapter is missing the explicit conflict target (schemaVersion, source.publisher, source.sourceId, runId) required by the plan.",
+      "file": "src/adapters/postgres/postgresEvidenceBundleRepository.ts",
+      "suggested_fix": "Update the query to specify the conflict target, e.g., onConflictDoNothing({ target: [...] }) or using the specific index constraint."
+    },
+    {
+      "severity": "P2",
+      "summary": "The append method in EvidenceBundleRepositoryPort types 'bundle' as 'unknown' rather than 'EvidenceBundleV1' as mandated by the plan.",
+      "file": "src/application/ports/evidenceBundleRepositoryPort.ts",
+      "suggested_fix": "Update the interface to use 'bundle: EvidenceBundleV1' and import the type."
+    }
+  ]
+}

@@ -187,28 +187,61 @@ describe.skipIf(!process.env.DATABASE_URL)("postgresEvidenceBundleRepository.app
         runId: "test-run-dup-001"
       });
 
+      const firstReceivedAt = Date.now();
+
       const first = await repository.append({
         bundle,
         payloadCanonical: CANONICAL_PAYLOAD,
         payloadHash: PAYLOAD_HASH,
-        receivedAtUnixMs: Date.now()
+        receivedAtUnixMs: firstReceivedAt
       });
 
       const second = await repository.append({
         bundle,
         payloadCanonical: CANONICAL_PAYLOAD,
         payloadHash: PAYLOAD_HASH,
-        receivedAtUnixMs: Date.now() + 1
+        receivedAtUnixMs: firstReceivedAt + 1
       });
 
       expect(first.status).toBe("created");
       expect(second.status).toBe("already_ingested");
       expect(second.receipt.id).toBe(first.receipt.id);
       expect(second.receipt.evidenceHash).toBe(first.receipt.evidenceHash);
+
+      const rows = await db.execute(sql`
+        SELECT
+          payload_canonical,
+          payload_hash,
+          received_at_unix_ms,
+          scope_key,
+          evidence_json
+        FROM regime_engine.evidence_bundles
+        WHERE source_publisher = ${TEST_PUBLISHER}
+          AND source_id = 'test-source-dup-001'
+          AND run_id = 'test-run-dup-001'
+      `);
+
+      expect(rows).toHaveLength(1);
+      const row = rows[0] as {
+        payload_canonical: string;
+        payload_hash: string;
+        received_at_unix_ms: number;
+        scope_key: string;
+        evidence_json: string;
+      };
+      expect(row.payload_canonical).toBe(CANONICAL_PAYLOAD);
+      expect(row.payload_hash).toBe(PAYLOAD_HASH);
+      expect(row.received_at_unix_ms).toBe(firstReceivedAt);
+      expect(row.scope_key).toBe(testScopeKey);
+      expect(JSON.parse(row.evidence_json)).toMatchObject({
+        schemaVersion: "evidence-bundle.v1",
+        pair: TEST_PAIR,
+        runId: "test-run-dup-001"
+      });
     });
   });
 
-  describe("throws EVIDENCE_RUN_CONFLICT when same run has different payload", () => {
+  describe("throws EVIDENCE_RUN_CONFLICT for a changed source run replay", () => {
     it("throws EvidenceRunConflictError with existing and incoming hashes", async () => {
       const bundle = createTestBundle({
         source: {

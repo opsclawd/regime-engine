@@ -1,0 +1,17 @@
+{
+  "result": "fail",
+  "findings": [
+    {
+      "severity": "P0",
+      "summary": "checkTimestampOrdering still incorrectly enforces `createdAt <= asOf` instead of `asOf <= createdAt`. The check `if (createdAt > asOf)` remains, and its error message contradicts the condition by saying 'must not be before'.",
+      "file": "src/contract/evidence/v1/validate.ts",
+      "suggested_fix": "Change the condition to `if (createdAt && asOf && asOf > createdAt)` and update the error message to reflect that `createdAt` must not be before `asOf`."
+    },
+    {
+      "severity": "P0",
+      "summary": "checkAvailableFeatureValueKind still incorrectly rejects 0 for available number features, and lacks a check ensuring that unavailable features are not encoded as 0.",
+      "file": "src/contract/evidence/v1/validate.ts",
+      "suggested_fix": "Remove `if (feature.value === 0)` from the available features check. Add a separate loop (or change the existing one) to check features where `status !== 'available'` and ensure their `value` is `null` instead of `0`."
+    }
+  ]
+}

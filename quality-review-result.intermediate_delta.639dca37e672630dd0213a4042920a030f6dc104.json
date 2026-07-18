@@ -1,0 +1,23 @@
+{
+  "result": "fail",
+  "findings": [
+    {
+      "severity": "P1",
+      "summary": "The test 'does not overwrite existing row when conflict is detected' is broken because it reuses the same bundle with the same runId for a second append, which will throw EvidenceRunConflictError rather than returning status 'created'.",
+      "file": "src/adapters/postgres/__tests__/postgresEvidenceBundleRepository.append.test.ts",
+      "suggested_fix": "Fix the test by either using a different runId for the second append so it successfully creates a second row, or remove the test if it is a duplicate of the existing conflict tests."
+    },
+    {
+      "severity": "P1",
+      "summary": "The required TDD invariant test 'fails when a losing append cannot load the winning row' is completely missing, leaving the invariant error path untested.",
+      "file": "src/adapters/postgres/__tests__/postgresEvidenceBundleRepository.append.test.ts",
+      "suggested_fix": "Implement the missing test case 'fails when a losing append cannot load the winning row' by mocking or intercepting the database select query to return an empty array after a conflict, and assert that the 'Append-only invariant violated' error is thrown."
+    },
+    {
+      "severity": "P3",
+      "summary": "The evidenceScopeKey function for 'position' joins components with a colon, resulting in an output that deviates from the requested string format.",
+      "file": "src/application/ports/evidenceBundleRepositoryPort.ts",
+      "suggested_fix": "Remove the `.join(\":\")` and concatenate the length-prefixed strings directly, e.g. `return \"position:\" + LENGTH_PREFIX(...) + LENGTH_PREFIX(...) + LENGTH_PREFIX(...)` to match the 'position:<wallet-length>:<wallet><pool-length>:<pool><position-length>:<position>' spec."
+    }
+  ]
+}

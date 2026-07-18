@@ -1,0 +1,11 @@
+{
+  "result": "fail",
+  "findings": [
+    {
+      "severity": "P2",
+      "summary": "The fix for evidenceBundles.shape.test.ts added assertions for the indexes but still failed to assert the absence of update/delete helpers as explicitly requested in the previous spec review.",
+      "file": "src/ledger/pg/schema/__tests__/evidenceBundles.shape.test.ts",
+      "suggested_fix": "Add an assertion in the shape test to ensure no update/delete helpers are present (e.g. expect(schemaSrc).not.toContain('update') and expect(schemaSrc).not.toContain('delete'))."
+    }
+  ]
+}

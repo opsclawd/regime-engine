@@ -1,0 +1,22 @@
+{
+  "result": "fail",
+  "findings": [
+    {
+      "severity": "P2",
+      "summary": "The error message for the timestamp ordering check when asOf > createdAt is logically backwards; it states that createdAt must not be after asOf, when in fact the condition catches when createdAt is before asOf.",
+      "file": "src/contract/evidence/v1/validate.ts",
+      "suggested_fix": "Update the error message string to `createdAt (${bundle.createdAt}) must not be before asOf (${bundle.asOf})`."
+    },
+    {
+      "severity": "P2",
+      "summary": "The schema is loaded synchronously via readFileSync using a hardcoded __repoRoot path resolution that couples runtime code to the dev directory structure. This will likely cause crashes in production if the app is bundled or deployed from a dist directory.",
+      "file": "src/contract/evidence/v1/validate.ts",
+      "suggested_fix": "Use a JSON import (e.g. import __schema from \"../../../../contracts/evidence-bundle/v1/evidence-bundle.schema.json\") so the bundler can inline the schema, or generate a TypeScript file containing the schema during the build step."
+    },
+    {
+      "severity": "P3",
+      "summary": "The test suite lacks explicit programmatic tests for canonical timestamp equality boundaries and invalid calendar dates, which were explicitly required in the task instructions.",
+      "file": "src/contract/evidence/v1/__tests__/validation.test.ts"
+    }
+  ]
+}

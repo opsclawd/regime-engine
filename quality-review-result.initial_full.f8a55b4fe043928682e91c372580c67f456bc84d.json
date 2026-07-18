@@ -1,0 +1,17 @@
+{
+  "result": "fail",
+  "findings": [
+    {
+      "severity": "P2",
+      "summary": "Check constraints in the migration file (e.g., chk_evidence_bundle_v1, chk_sol_usdc_pair, chk_timestamp_ordering, chk_evidence_hash_format) are missing from the Drizzle schema definition in src/ledger/pg/schema/evidenceBundles.ts, which may lead to them being dropped in future schema generation runs or out of sync schemas.",
+      "file": "src/ledger/pg/schema/evidenceBundles.ts",
+      "suggested_fix": "Add the check constraints to the schema definition using Drizzle's check() function in the table constraints block."
+    },
+    {
+      "severity": "P3",
+      "summary": "The test for 'no update helper' and 'no delete helper' in evidenceBundles.shape.test.ts is meaningless because Drizzle table objects do not have these methods natively; update and delete operations are performed via the database instance (e.g. db.update()).",
+      "file": "src/ledger/pg/schema/__tests__/evidenceBundles.shape.test.ts",
+      "suggested_fix": "Remove or rewrite the test to correctly verify that there are no application-level update/delete functions or logic for this table, rather than testing the Drizzle table object."
+    }
+  ]
+}

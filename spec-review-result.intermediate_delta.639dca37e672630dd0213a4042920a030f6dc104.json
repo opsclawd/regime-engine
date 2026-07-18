@@ -1,0 +1,29 @@
+{
+  "result": "fail",
+  "findings": [
+    {
+      "severity": "P1",
+      "summary": "The test describe blocks do not use the exact named cases requested in the plan (e.g., 'returns already_ingested when same payload is appended again' instead of 'returns already_ingested for an identical source run replay').",
+      "file": "src/adapters/postgres/__tests__/postgresEvidenceBundleRepository.append.test.ts",
+      "suggested_fix": "Rename the describe blocks to exactly match the 4 named cases specified in the plan."
+    },
+    {
+      "severity": "P1",
+      "summary": "The test 'does not overwrite existing row when conflict is detected' incorrectly asserts that a conflicting append returns 'created' and inserts a duplicate row, which contradicts the unique constraint on (schemaVersion, sourcePublisher, sourceId, runId).",
+      "file": "src/adapters/postgres/__tests__/postgresEvidenceBundleRepository.append.test.ts",
+      "suggested_fix": "Remove or rewrite this test to properly expect an EvidenceRunConflictError when a different payload is appended for the same source run."
+    },
+    {
+      "severity": "P1",
+      "summary": "The required test scenario for 'fails when a losing append cannot load the winning row' is missing; the test block with a similar name does not simulate a missing winning row or expect the invariant failure error.",
+      "file": "src/adapters/postgres/__tests__/postgresEvidenceBundleRepository.append.test.ts",
+      "suggested_fix": "Implement a test that correctly simulates a losing append where the initial insert returns no rows and the subsequent select also returns no rows, expecting an append-only invariant violation error."
+    },
+    {
+      "severity": "P2",
+      "summary": "The required tests for concurrent identical and different replay cases (using Promise.all) are missing.",
+      "file": "src/adapters/postgres/__tests__/postgresEvidenceBundleRepository.append.test.ts",
+      "suggested_fix": "Add test cases that execute Promise.all() for identical and different payloads to verify concurrent idempotency and conflict resolution."
+    }
+  ]
+}

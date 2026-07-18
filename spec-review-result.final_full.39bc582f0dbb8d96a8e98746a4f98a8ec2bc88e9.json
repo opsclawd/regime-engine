@@ -1,0 +1,17 @@
+{
+  "result": "fail",
+  "findings": [
+    {
+      "severity": "P1",
+      "summary": "The generator script and generated hash vectors omit the required 'empty-context' and 'null-brief' vectors explicitly specified in the plan.",
+      "file": "scripts/generateEvidenceContract.ts",
+      "suggested_fix": "Add 'empty-context' and 'null-brief' payloads to the generateVectors function and include them in the generated output."
+    },
+    {
+      "severity": "P1",
+      "summary": "The canonicalHash test suite does not validate non-primitive payloads before hashing, failing the requirement to 'Validate each payload first, except focused primitive canonicalizer vectors.'",
+      "file": "src/contract/evidence/v1/__tests__/canonicalHash.test.ts",
+      "suggested_fix": "Import the schema validator and assert that non-primitive payload vectors (like valid fixtures) pass validation before asserting their canonical forms."
+    }
+  ]
+}

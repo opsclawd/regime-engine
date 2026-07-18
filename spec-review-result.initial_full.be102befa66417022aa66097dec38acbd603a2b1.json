@@ -1,0 +1,23 @@
+{
+  "result": "fail",
+  "findings": [
+    {
+      "severity": "P0",
+      "summary": "checkTimestampOrdering incorrectly enforces `createdAt <= asOf` instead of `asOf <= createdAt` and misses `createdAt < freshUntil` check.",
+      "file": "src/contract/evidence/v1/validate.ts",
+      "suggested_fix": "Change the condition to `if (createdAt && asOf && asOf > createdAt)` and add a check for `createdAt >= freshUntil`."
+    },
+    {
+      "severity": "P0",
+      "summary": "checkTimestampOrdering fails to verify `observedAt <= asOf <= freshUntil` for available features, missing the `asOf` boundary checks.",
+      "file": "src/contract/evidence/v1/validate.ts",
+      "suggested_fix": "Add checks for `observedAt > asOf` and `asOf > featureFreshUntil` for available features."
+    },
+    {
+      "severity": "P0",
+      "summary": "checkAvailableFeatureValueKind incorrectly rejects 0 for available number features instead of ensuring unavailable features are not encoded as 0.",
+      "file": "src/contract/evidence/v1/validate.ts",
+      "suggested_fix": "Remove the check that rejects 0 for available features and add logic to ensure unavailable features have `value: null` instead of 0."
+    }
+  ]
+}

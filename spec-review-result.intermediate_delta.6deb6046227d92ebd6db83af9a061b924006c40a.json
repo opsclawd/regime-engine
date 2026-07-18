@@ -1,0 +1,23 @@
+{
+  "result": "fail",
+  "findings": [
+    {
+      "severity": "P1",
+      "summary": "ID uniqueness is only enforced within isolated arrays (features, claims, references), failing to ensure globally unique IDs across all evidence types as required.",
+      "file": "src/contract/evidence/v1/validate.ts",
+      "suggested_fix": "Merge featureIds, evidenceIds, and referenceIds into a single set and check for overlaps to enforce global ID uniqueness."
+    },
+    {
+      "severity": "P2",
+      "summary": "Lineage cycle detection only prevents direct self-reference (node referencing itself) but does not traverse the graph to detect multi-node cycles.",
+      "file": "src/contract/evidence/v1/validate.ts",
+      "suggested_fix": "Implement a graph traversal (e.g., topological sort or DFS cycle detection) to detect cycles of any length in the lineage graph."
+    },
+    {
+      "severity": "P3",
+      "summary": "Tests for invalid fixtures are not table-driven, deviating from the 'Add table-driven cases for every invalid fixture' plan instruction.",
+      "file": "src/contract/evidence/v1/__tests__/validation.test.ts",
+      "suggested_fix": "Use vitest's it.each to table-drive the invalid fixture assertions instead of writing individual test blocks."
+    }
+  ]
+}
