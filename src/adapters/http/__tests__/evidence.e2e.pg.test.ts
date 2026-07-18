@@ -112,7 +112,9 @@ afterEach(async () => {
   delete process.env.DATABASE_URL;
   delete process.env.EVIDENCE_INGEST_TOKEN;
   if (db) {
-    await db.execute(sql`DELETE FROM regime_engine.evidence_bundles`);
+    await db.execute(
+      sql`DELETE FROM regime_engine.evidence_bundles WHERE source->>'publisher' = 'sol-usdc-clmm-intelligence'`
+    );
   }
 });
 
@@ -823,6 +825,14 @@ setupPg("preserves durable replay and cursor semantics through HTTP", () => {
     });
     await delay(15);
 
+    await app.inject({
+      method: "POST",
+      url: "/v1/evidence/sol-usdc",
+      headers: { "x-evidence-ingest-token": EVIDENCE_TOKEN },
+      payload: makePayload({ runId: runId2 })
+    });
+    await delay(15);
+
     const page1Res = await app.inject({
       method: "GET",
       url: "/v1/evidence/sol-usdc/history?limit=1"
@@ -830,18 +840,9 @@ setupPg("preserves durable replay and cursor semantics through HTTP", () => {
     expect(page1Res.statusCode).toBe(200);
     const page1Body = page1Res.json() as { items: { runId: string }[]; nextCursor: string | null };
     expect(page1Body.items).toHaveLength(1);
-    expect(page1Body.items[0].runId).toBe(runId1);
+    expect(page1Body.items[0].runId).toBe(runId2);
     const cursor = page1Body.nextCursor;
     expect(cursor).not.toBeNull();
-
-    await delay(15);
-
-    await app.inject({
-      method: "POST",
-      url: "/v1/evidence/sol-usdc",
-      headers: { "x-evidence-ingest-token": EVIDENCE_TOKEN },
-      payload: makePayload({ runId: runId2 })
-    });
 
     await delay(15);
 
