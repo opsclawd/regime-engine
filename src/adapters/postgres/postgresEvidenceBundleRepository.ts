@@ -4,7 +4,8 @@ import { evidenceBundles } from "../../ledger/pg/schema/evidenceBundles.js";
 import type {
   EvidenceBundleRecord,
   EvidenceBundleRepositoryPort,
-  EvidenceLifecycle
+  EvidenceLifecycle,
+  EvidenceHistoryCursor
 } from "../../application/ports/evidenceBundleRepositoryPort.js";
 import {
   EvidenceRunConflictError,
@@ -258,6 +259,100 @@ export const createPostgresEvidenceBundleRepository = (db: Db): EvidenceBundleRe
       }
 
       return records;
+    },
+
+    getHistory: async ({ pair, scope, source, limit, cursor, nowUnixMs }) => {
+      const DEFAULT_LIMIT = 30;
+      const MIN_LIMIT = 1;
+      const MAX_LIMIT = 100;
+
+      const effectiveLimit = limit === undefined ? DEFAULT_LIMIT : limit;
+
+      if (effectiveLimit < MIN_LIMIT || effectiveLimit > MAX_LIMIT) {
+        throw new Error(`History limit must be between ${MIN_LIMIT} and ${MAX_LIMIT}`);
+      }
+
+      const scopeKeyVal = evidenceScopeKey(scope);
+      const queryLimit = effectiveLimit + 1;
+
+      let cursorPredicate = sql``;
+      if (cursor !== null) {
+        cursorPredicate = sql`
+          AND (
+            received_at_unix_ms < ${cursor.receivedAtUnixMs}
+            OR (received_at_unix_ms = ${cursor.receivedAtUnixMs} AND id < ${cursor.id})
+          )
+        `;
+      }
+
+      let sourcePredicate = sql``;
+      if (source !== null) {
+        if (source.publisher !== undefined) {
+          sourcePredicate = sql`${sourcePredicate} AND source_publisher = ${source.publisher}`;
+        }
+        if (source.sourceId !== undefined) {
+          sourcePredicate = sql`${sourcePredicate} AND source_id = ${source.sourceId}`;
+        }
+      }
+
+      const rows = await db.execute(sql`
+        SELECT
+          id,
+          evidence_json,
+          evidence_hash,
+          received_at_unix_ms,
+          fresh_until_unix_ms,
+          expires_at_unix_ms
+        FROM regime_engine.evidence_bundles
+        WHERE pair = ${pair}
+          AND scope_key = ${scopeKeyVal}
+          ${cursorPredicate}
+          ${sourcePredicate}
+        ORDER BY received_at_unix_ms DESC, id DESC
+        LIMIT ${queryLimit}
+      `);
+
+      type RawRow = {
+        id: number;
+        evidence_json: unknown;
+        evidence_hash: string;
+        received_at_unix_ms: number;
+        fresh_until_unix_ms: number;
+        expires_at_unix_ms: number;
+      };
+
+      const rawRows = rows as unknown as RawRow[];
+      const hasMore = rawRows.length > effectiveLimit;
+      const records: EvidenceBundleRecord[] = [];
+
+      for (let i = 0; i < effectiveLimit && i < rawRows.length; i++) {
+        const raw = rawRows[i];
+        const bundle = parseEvidenceBundleV1(raw.evidence_json) as EvidenceBundleV1;
+        const lifecycle = deriveLifecycle(
+          nowUnixMs,
+          raw.fresh_until_unix_ms,
+          raw.expires_at_unix_ms
+        );
+
+        records.push({
+          id: raw.id,
+          bundle,
+          evidenceHash: raw.evidence_hash,
+          receivedAtUnixMs: raw.received_at_unix_ms,
+          lifecycle
+        });
+      }
+
+      let nextCursor: EvidenceHistoryCursor | null = null;
+      if (hasMore && records.length > 0) {
+        const lastRecord = records[records.length - 1];
+        nextCursor = {
+          receivedAtUnixMs: lastRecord.receivedAtUnixMs,
+          id: lastRecord.id
+        };
+      }
+
+      return { records, nextCursor };
     }
   };
 };

@@ -43,6 +43,11 @@ export interface EvidenceBundleRecord {
   readonly lifecycle: EvidenceLifecycle;
 }
 
+export interface EvidenceHistoryCursor {
+  receivedAtUnixMs: number;
+  id: number;
+}
+
 export interface EvidenceBundleRepositoryPort {
   append(input: {
     bundle: EvidenceBundleV1;
@@ -60,6 +65,18 @@ export interface EvidenceBundleRepositoryPort {
     source: EvidenceSourceFilter | null;
     nowUnixMs: number;
   }): Promise<EvidenceBundleRecord[]>;
+
+  getHistory(input: {
+    pair: "SOL/USDC";
+    scope: Scope;
+    source: EvidenceSourceFilter | null;
+    limit?: number;
+    cursor: EvidenceHistoryCursor | null;
+    nowUnixMs: number;
+  }): Promise<{
+    records: EvidenceBundleRecord[];
+    nextCursor: EvidenceHistoryCursor | null;
+  }>;
 }
 
 const LENGTH_PREFIX = (s: string): string => `${s.length}:${s}`;
