@@ -383,6 +383,7 @@ export interface EvidenceHistoryQueryResult {
   scope: Scope;
   sourceFilter?: { publisher?: string; sourceId?: string };
   limit: number;
+  cursor?: { receivedAtUnixMs: number; id: number };
 }
 
 export function parseEvidenceHistoryQuery(
@@ -405,7 +406,22 @@ export function parseEvidenceHistoryQuery(
   const sourceFilter = validateSourceFilter(query);
   const limit = parseLimit(query["limit"]);
 
-  return { scope, sourceFilter, limit };
+  const rawCursor = query["cursor"];
+  let cursor: { receivedAtUnixMs: number; id: number } | undefined;
+  if (rawCursor !== undefined) {
+    if (typeof rawCursor !== "string") {
+      throw new EvidenceHttpValidationError("cursor must be a string", [
+        {
+          path: "$.cursor",
+          code: "INVALID_TYPE",
+          message: `Expected string, received ${typeof rawCursor}`
+        }
+      ]);
+    }
+    cursor = decodeEvidenceCursor(rawCursor);
+  }
+
+  return { scope, sourceFilter, limit, cursor };
 }
 
 export function encodeEvidenceCursor(cursor: { receivedAtUnixMs: number; id: number }): string {

@@ -1,6 +1,6 @@
 # Task Context: Task 5
 
-Title: Implement append, replay, and conflict through the repository port
+Title: Implement bounded evidence history use case
 ## Workspace & Scope Constraints
 
 ## WORKSPACE CONSTRAINTS
@@ -9,88 +9,66 @@ Your working directory is a dedicated git worktree with the repository's complet
 
 .ai-orchestrator.local.json, if one exists, lives only in the main checkout and is intentionally not copied into your worktree — it is operator-machine-specific and not part of your task. Do not search for it or read it outside this directory. Reason about configuration using only .ai-orchestrator.json in your own working directory; treat it as the effective config for your task.
 
-Working Directory: /home/gary/.openclaw/workspace/regime-engine/.ai-worktrees/issue-58
+Working Directory: /home/gary/.openclaw/workspace/regime-engine/.ai-worktrees/issue-59
 Repository: opsclawd/regime-engine
-Branch: ai/issue-58
-Start Commit: 7bd5b19db3afbf66e95e06ac273453030f5381fe
+Branch: ai/issue-59
+Start Commit: 90e95da66c50bf9c462dfa0d552e3b13bce9a965
 
 ## Task Requirements
 
 **Files:**
 
-- Create: `src/application/ports/evidenceBundleRepositoryPort.ts`
-- Create: `src/adapters/postgres/postgresEvidenceBundleRepository.ts`
-- Create: `src/adapters/postgres/__tests__/postgresEvidenceBundleRepository.append.test.ts`
+- Create: `src/application/use-cases/getEvidenceHistoryUseCase.ts`
+- Create: `src/application/use-cases/__tests__/getEvidenceHistoryUseCase.test.ts`
 
-- [ ] **Step 1: Write the append state-machine tests first**
+- [ ] **Step 1: Write failing page pass-through tests**
 
-Write exact named cases `creates one immutable row for a new source run`, `returns already_ingested for an identical source run replay`, `throws EVIDENCE_RUN_CONFLICT for a changed source run replay`, and `fails when a losing append cannot load the winning row`. Add sequential and concurrent identical/different replay cases, different run/source acceptance, full JSON/canonical/scalar persistence, and original `receivedAt` retention.
+Assert default/explicit limits, null/non-null cursors, all exact scopes, source filters, one clock call, record order, and `nextCursor` pass through unchanged. Use the exact case `queries one bounded history page at one injected instant`.
 
-Run: `pnpm vitest run src/adapters/postgres/__tests__/postgresEvidenceBundleRepository.append.test.ts`
+Run: `pnpm vitest run src/application/use-cases/__tests__/getEvidenceHistoryUseCase.test.ts`
 
-Expected: FAIL because the port and adapter do not exist.
+Expected: FAIL because the use case does not exist.
 
-- [ ] **Step 2: Define the append contract and exact scope-key derivation**
-
-In the application port, export `EvidenceScopeQuery`, `EvidenceSourceFilter`, receipt/result types, `EvidenceRunConflictError` with `errorCode = "EVIDENCE_RUN_CONFLICT"`, and:
+- [ ] **Step 2: Implement the exported use-case shape**
 
 ```ts
-export interface EvidenceBundleRepositoryPort {
-  append(input: {
-    bundle: EvidenceBundleV1;
-    payloadCanonical: string;
-    payloadHash: string;
-    receivedAtUnixMs: number;
-  }): Promise<
-    | { status: "created"; receipt: EvidenceBundleReceipt }
-    | { status: "already_ingested"; receipt: EvidenceBundleReceipt }
-  >;
-}
+export type GetEvidenceHistoryUseCase = (input: {
+  scope: Scope;
+  source: EvidenceSourceFilter | null;
+  limit: number;
+  cursor: EvidenceHistoryCursor | null;
+}) => Promise<{
+  queriedAtUnixMs: number;
+  records: EvidenceBundleRecord[];
+  nextCursor: EvidenceHistoryCursor | null;
+}>;
 ```
 
-Export a pure `evidenceScopeKey(scope)` helper using unambiguous tagged length-prefixed components, for example `pair`, `whirlpool:<address>`, `wallet:<address>`, and `position:<wallet-length>:<wallet><pool-length>:<pool><position-length>:<position>`. Scope values remain case-sensitive and are never inferred from features.
+The factory accepts `{ repository, clock }`, captures one `queriedAtUnixMs`, and delegates. HTTP validates `1..100`; the repository remains the defensive limit backstop.
 
-- [ ] **Step 3: Implement append in the Postgres adapter in the same task**
+- [ ] **Step 3: Verify and commit**
 
-Create `createPostgresEvidenceBundleRepository(db): EvidenceBundleRepositoryPort`. Derive every scalar column from the already-validated bundle. Insert with conflict-do-nothing on `(schemaVersion, source.publisher, source.sourceId, runId)`, returning the row. When no row is returned, read the winning identity: equal hash (and defensively equal canonical text) returns `already_ingested`; different bytes throw `EvidenceRunConflictError`; missing winner throws the append-only invariant error. Return row ID, stored hash, and stored original receipt time. Expose no update or delete operation.
+Run: `pnpm vitest run src/application/use-cases/__tests__/getEvidenceHistoryUseCase.test.ts`
 
-- [ ] **Step 4: Run focused append verification**
+Expected: PASS.
 
-Run: `pnpm vitest run src/adapters/postgres/__tests__/postgresEvidenceBundleRepository.append.test.ts`
-
-Expected: PASS when Postgres is configured and SKIP otherwise.
-
-Run: `pnpm exec eslint src/application/ports/evidenceBundleRepositoryPort.ts src/adapters/postgres/postgresEvidenceBundleRepository.ts src/adapters/postgres/__tests__/postgresEvidenceBundleRepository.append.test.ts`
-
-Expected: PASS with zero warnings.
-
-- [ ] **Step 5: Commit the append port and its only adapter atomically**
-
-```bash
-git add src/application/ports/evidenceBundleRepositoryPort.ts src/adapters/postgres/postgresEvidenceBundleRepository.ts src/adapters/postgres/__tests__/postgresEvidenceBundleRepository.append.test.ts
-git commit -m "m58: append immutable evidence bundles"
-```
+Commit: `git add src/application/use-cases/getEvidenceHistoryUseCase.ts src/application/use-cases/__tests__/getEvidenceHistoryUseCase.test.ts && git commit -m "m59: add evidence history use case"`
 
 ## Repository Targets
 
 ### Expected Files
-- src/application/ports/evidenceBundleRepositoryPort.ts
-- src/adapters/postgres/postgresEvidenceBundleRepository.ts
-- src/adapters/postgres/__tests__/postgresEvidenceBundleRepository.append.test.ts
+- src/application/use-cases/getEvidenceHistoryUseCase.ts
+- src/application/use-cases/__tests__/getEvidenceHistoryUseCase.test.ts
 
 ## Validation Commands
 
 ```bash
-pnpm vitest run src/adapters/postgres/__tests__/postgresEvidenceBundleRepository.append.test.ts
-pnpm exec eslint src/application/ports/evidenceBundleRepositoryPort.ts src/adapters/postgres/postgresEvidenceBundleRepository.ts src/adapters/postgres/__tests__/postgresEvidenceBundleRepository.append.test.ts
+pnpm vitest run src/application/use-cases/__tests__/getEvidenceHistoryUseCase.test.ts
 ```
 
 ## Behavioral Invariants
 
 You MUST implement the following behavioral invariants as named tests first (TDD):
 
-- **new source run creates once**: An unseen idempotency tuple creates one immutable row and returns its receipt. (Test: `creates one immutable row for a new source run`)
-- **identical replay is idempotent**: A matching identity and canonical payload returns already_ingested without replacing payload or receipt time. (Test: `returns already_ingested for an identical source run replay`)
-- **changed replay conflicts**: A matching identity with a different payload throws EVIDENCE_RUN_CONFLICT and preserves the first row. (Test: `throws EVIDENCE_RUN_CONFLICT for a changed source run replay`)
-- **missing conflict winner is an invariant failure**: A losing insert that cannot read the winning row fails visibly rather than claiming idempotency. (Test: `fails when a losing append cannot load the winning row`)
+- **queries one bounded history page at one injected instant**: Scope, source filters, validated limit, and decoded cursor pass through with one clock value; repository record order and nextCursor remain unchanged. (Test: `queries one bounded history page at one injected instant`)
 

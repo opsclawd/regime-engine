@@ -1,6 +1,6 @@
 # Task Context: Task 3
 
-Title: Publish cross-repository canonical JSON and hash vectors
+Title: Implement validated evidence ingestion use case
 ## Workspace & Scope Constraints
 
 ## WORKSPACE CONSTRAINTS
@@ -9,87 +9,81 @@ Your working directory is a dedicated git worktree with the repository's complet
 
 .ai-orchestrator.local.json, if one exists, lives only in the main checkout and is intentionally not copied into your worktree — it is operator-machine-specific and not part of your task. Do not search for it or read it outside this directory. Reason about configuration using only .ai-orchestrator.json in your own working directory; treat it as the effective config for your task.
 
-Working Directory: /home/gary/.openclaw/workspace/regime-engine/.ai-worktrees/issue-58
+Working Directory: /home/gary/.openclaw/workspace/regime-engine/.ai-worktrees/issue-59
 Repository: opsclawd/regime-engine
-Branch: ai/issue-58
-Start Commit: 7bd5b19db3afbf66e95e06ac273453030f5381fe
+Branch: ai/issue-59
+Start Commit: 90e95da66c50bf9c462dfa0d552e3b13bce9a965
 
 ## Task Requirements
 
 **Files:**
 
-- Create: `contracts/evidence-bundle/v1/hash-vectors.json`
-- Create: `src/contract/evidence/v1/__tests__/canonicalHash.test.ts`
-- Modify: `scripts/generateEvidenceContract.ts`
+- Create: `src/application/use-cases/ingestEvidenceBundleUseCase.ts`
+- Create: `src/application/use-cases/__tests__/ingestEvidenceBundleUseCase.test.ts`
 
-- [ ] **Step 1: Write failing published-vector tests**
+- [ ] **Step 1: Write failing use-case tests first**
 
-Use `canonicalJson` and `sha256Hex` from `src/contract/v1`. Define the vector file shape explicitly:
+Use an inline fake `EvidenceBundleRepositoryPort` and fixed `ClockPort`. Name cases exactly `validates and hashes before append`, `invalid evidence never reaches append`, `preserves the original receipt on exact replay`, and `propagates evidence run conflicts`. Load the published deterministic-only fixture and hash vector; assert the append input contains the parsed bundle, published canonical bytes/hash, and the one clock value.
+
+Run: `pnpm vitest run src/application/use-cases/__tests__/ingestEvidenceBundleUseCase.test.ts`
+
+Expected: FAIL because the use case does not exist.
+
+- [ ] **Step 2: Add the exported use-case contract and implementation**
+
+Implement this exact public shape:
 
 ```ts
-interface EvidenceHashVector {
-  name: string;
-  payload: unknown;
-  canonical: string;
-  utf8ByteLength: number;
-  sha256: string;
-  schemaSha256: string;
-}
+export type IngestEvidenceBundleUseCase = (input: unknown) => Promise<{
+  status: "created" | "already_ingested";
+  runId: string;
+  evidenceHash: string;
+  receipt: EvidenceBundleReceipt;
+}>;
+
+export const createIngestEvidenceBundleUseCase = (deps: {
+  repository: EvidenceBundleRepositoryPort;
+  clock: ClockPort;
+}): IngestEvidenceBundleUseCase => async (input) => {
+  const bundle = parseEvidenceBundleV1(input);
+  const payloadCanonical = toCanonicalJson(bundle);
+  const payloadHash = sha256Hex(payloadCanonical);
+  const result = await deps.repository.append({
+    bundle,
+    payloadCanonical,
+    payloadHash,
+    receivedAtUnixMs: deps.clock.nowUnixMs()
+  });
+  return { status: result.status, runId: bundle.runId, evidenceHash: result.receipt.evidenceHash, receipt: result.receipt };
+};
 ```
 
-Name tests `reproduces every published EvidenceBundle hash vector`, `ignores object insertion order but preserves array order`, `normalizes negative zero and preserves ECMAScript exponent formatting`, and `detects a deliberately mismatched published hash`. Validate each payload first, except focused primitive canonicalizer vectors. Assert the schema digest on every vector.
+Do not accept caller-supplied hash or receipt time and do not catch validation/conflict/store errors here.
 
-Run: `pnpm vitest run src/contract/evidence/v1/__tests__/canonicalHash.test.ts`
+- [ ] **Step 3: Verify and commit**
 
-Expected: FAIL because `hash-vectors.json` is absent.
+Run: `pnpm vitest run src/application/use-cases/__tests__/ingestEvidenceBundleUseCase.test.ts`
 
-- [ ] **Step 2: Generate deterministic vectors**
+Expected: PASS, including exact vector equality and zero repository calls for invalid input.
 
-Extend the generator to derive vectors from the two valid fixtures plus focused non-ASCII, negative-zero, exponent, empty-context, null-brief, and array-reorder inputs. For every vector, compute canonical text, UTF-8 byte length, SHA-256, and current schema SHA-256. `--write` writes stable pretty JSON with a final newline; `--check` compares bytes and reports the vector path as stale. Do not accept a publisher-supplied `payloadHash` field.
-
-- [ ] **Step 3: Prove vectors and regeneration are stable**
-
-Run: `pnpm run contract:evidence:generate`
-
-Run: `pnpm run contract:evidence:check`
-
-Expected: PASS without rewriting published vectors.
-
-Run: `pnpm vitest run src/contract/evidence/v1/__tests__/canonicalHash.test.ts src/contract/evidence/v1/__tests__/generation.test.ts`
-
-Expected: PASS.
-
-Run: `pnpm exec prettier --check scripts/generateEvidenceContract.ts contracts/evidence-bundle/v1/hash-vectors.json src/contract/evidence/v1/__tests__/canonicalHash.test.ts`
-
-Expected: PASS.
-
-- [ ] **Step 4: Commit portable hash vectors**
-
-```bash
-git add scripts/generateEvidenceContract.ts contracts/evidence-bundle/v1/hash-vectors.json src/contract/evidence/v1/__tests__/canonicalHash.test.ts
-git commit -m "m58: publish EvidenceBundle hash vectors"
-```
+Commit: `git add src/application/use-cases/ingestEvidenceBundleUseCase.ts src/application/use-cases/__tests__/ingestEvidenceBundleUseCase.test.ts && git commit -m "m59: add evidence ingest use case"`
 
 ## Repository Targets
 
 ### Expected Files
-- contracts/evidence-bundle/v1/hash-vectors.json
-- src/contract/evidence/v1/__tests__/canonicalHash.test.ts
-- scripts/generateEvidenceContract.ts
+- src/application/use-cases/ingestEvidenceBundleUseCase.ts
+- src/application/use-cases/__tests__/ingestEvidenceBundleUseCase.test.ts
 
 ## Validation Commands
 
 ```bash
-pnpm run contract:evidence:check
-pnpm vitest run src/contract/evidence/v1/__tests__/canonicalHash.test.ts src/contract/evidence/v1/__tests__/generation.test.ts
-pnpm exec prettier --check scripts/generateEvidenceContract.ts contracts/evidence-bundle/v1/hash-vectors.json src/contract/evidence/v1/__tests__/canonicalHash.test.ts
+pnpm vitest run src/application/use-cases/__tests__/ingestEvidenceBundleUseCase.test.ts
 ```
 
 ## Behavioral Invariants
 
 You MUST implement the following behavioral invariants as named tests first (TDD):
 
-- **published hashes reproduce**: Every vector's canonical bytes, UTF-8 length, SHA-256, and schema SHA-256 reproduce independently. (Test: `reproduces every published EvidenceBundle hash vector`)
-- **objects sort but arrays do not**: Object insertion order does not affect canonical output, while an array reorder changes canonical bytes and hash. (Test: `ignores object insertion order but preserves array order`)
-- **ECMAScript number semantics**: Negative zero normalizes to zero and exponent formatting follows ECMAScript JSON serialization. (Test: `normalizes negative zero and preserves ECMAScript exponent formatting`)
+- **validates and hashes before append**: Invalid unknown input never reaches persistence; valid evidence is parsed, canonicalized, SHA-256 hashed, timestamped once, and appended with those exact values. (Test: `validates and hashes before append`)
+- **preserves repository replay outcomes**: Created and already_ingested receipts pass through unchanged, and EvidenceRunConflictError propagates without rewriting. (Test: `preserves the original receipt on exact replay`)
 

@@ -1,6 +1,6 @@
 # Task Context: Task 6
 
-Title: Add exact-scope latest reads and lifecycle derivation
+Title: Define strict evidence HTTP query and cursor contracts
 ## Workspace & Scope Constraints
 
 ## WORKSPACE CONSTRAINTS
@@ -9,81 +9,63 @@ Your working directory is a dedicated git worktree with the repository's complet
 
 .ai-orchestrator.local.json, if one exists, lives only in the main checkout and is intentionally not copied into your worktree — it is operator-machine-specific and not part of your task. Do not search for it or read it outside this directory. Reason about configuration using only .ai-orchestrator.json in your own working directory; treat it as the effective config for your task.
 
-Working Directory: /home/gary/.openclaw/workspace/regime-engine/.ai-worktrees/issue-58
+Working Directory: /home/gary/.openclaw/workspace/regime-engine/.ai-worktrees/issue-59
 Repository: opsclawd/regime-engine
-Branch: ai/issue-58
-Start Commit: 7bd5b19db3afbf66e95e06ac273453030f5381fe
+Branch: ai/issue-59
+Start Commit: 90e95da66c50bf9c462dfa0d552e3b13bce9a965
 
 ## Task Requirements
 
 **Files:**
 
-- Modify: `src/application/ports/evidenceBundleRepositoryPort.ts`
-- Modify: `src/adapters/postgres/postgresEvidenceBundleRepository.ts`
-- Create: `src/adapters/postgres/__tests__/postgresEvidenceBundleRepository.latest.test.ts`
+- Create: `src/adapters/http/evidenceHttp.ts`
+- Create: `src/adapters/http/__tests__/evidenceHttp.test.ts`
 
-- [ ] **Step 1: Write latest-read invariants first**
+- [ ] **Step 1: Write the parser/codec invariant matrix first**
 
-Add exact named cases `derives lifecycle at inclusive freshness and expiry boundaries`, `returns latest evidence independently for each source`, `never mixes exact evidence scopes`, and `fails visibly when stored payload JSON is corrupt`. Cover all four scope kinds, source-filtered and unfiltered reads, ties on as-of/receipt/id, expired rows remaining observable, and no row returning an empty list rather than falling back to another scope.
+Name cases `constructs exactly one evidence scope`, `rejects unknown repeated empty and inapplicable parameters`, `defaults history limit to thirty and bounds it at one hundred`, and `round trips only versioned opaque history cursors`. Cover every scope kind, independent source filters, current rejecting `limit/cursor`, history integer syntax (reject decimals, signs, whitespace, NaN), identifier length 1..128, cursor safe integers, positive ID, exact keys, and base64url alphabet.
 
-Run: `pnpm vitest run src/adapters/postgres/__tests__/postgresEvidenceBundleRepository.latest.test.ts`
+Run: `pnpm vitest run src/adapters/http/__tests__/evidenceHttp.test.ts`
 
-Expected: FAIL because `getLatest` is absent.
+Expected: FAIL because the module does not exist.
 
-- [ ] **Step 2: Add the method to the port and adapter together**
+- [ ] **Step 2: Implement constants, strict parser, error, wire mapping, and codec**
 
-Extend the same exported interface and implementation with:
+Export `EVIDENCE_SCHEMA_VERSION`, `EVIDENCE_BODY_LIMIT_BYTES = 4 * 1024 * 1024`, `EvidenceHttpValidationError`, `parseEvidenceCurrentQuery`, `parseEvidenceHistoryQuery`, `encodeEvidenceCursor`, `toEvidenceWireItem`, and `evidenceErrorResponse`. Query parsers must enumerate allowed keys and read values as `unknown` so arrays/repeated parameters are rejected. Construct scopes exactly as follows:
 
 ```ts
-getLatest(input: {
-  pair: "SOL/USDC";
-  scope: EvidenceScope;
-  source: EvidenceSourceFilter | null;
-  nowUnixMs: number;
-}): Promise<EvidenceBundleRecord[]>;
+pair      -> { kind: "pair" }
+whirlpool -> { kind: "whirlpool", network: "solana-mainnet", whirlpoolAddress }
+wallet    -> { kind: "wallet", network: "solana-mainnet", walletAddress }
+position  -> { kind: "position", network: "solana-mainnet", walletAddress, whirlpoolAddress, positionId }
 ```
 
-Define `EvidenceBundleRecord` as validated `bundle`, row ID, payload hash, received time, and `lifecycle: "FRESH" | "STALE" | "EXPIRED"`. Use `row_number() over (partition by source_publisher, source_id order by as_of_unix_ms desc, received_at_unix_ms desc, id desc)` for unfiltered reads and the same ordering with `limit 1` for a filter. Match pair and derived exact `scopeKey` in every query.
+Encode cursor JSON with keys `v`, `receivedAtUnixMs`, `id` and `Buffer.from(json, "utf8").toString("base64url")`; decode strictly and reject non-canonical encodings by re-encoding and comparing. Wire items contain `bundle`, `evidenceHash`, `receiptId`, ISO `receivedAt`, and freshness `{ status, asOf, freshUntil, expiresAt }` sourced from the bundle/record.
 
-Map rows by calling `parseEvidenceBundleV1(row.payloadJson)` before returning. Derive lifecycle with the inclusive transition table from the invariant; do not update the row and do not decide selection eligibility.
+- [ ] **Step 3: Verify and commit**
 
-- [ ] **Step 3: Run focused latest verification**
+Run: `pnpm vitest run src/adapters/http/__tests__/evidenceHttp.test.ts`
 
-Run: `pnpm vitest run src/adapters/postgres/__tests__/postgresEvidenceBundleRepository.latest.test.ts src/adapters/postgres/__tests__/postgresEvidenceBundleRepository.append.test.ts`
+Expected: PASS across the full matrix.
 
-Expected: PASS when Postgres is configured and SKIP otherwise.
-
-Run: `pnpm exec eslint src/application/ports/evidenceBundleRepositoryPort.ts src/adapters/postgres/postgresEvidenceBundleRepository.ts src/adapters/postgres/__tests__/postgresEvidenceBundleRepository.latest.test.ts`
-
-Expected: PASS.
-
-- [ ] **Step 4: Commit the method with all implementation changes**
-
-```bash
-git add src/application/ports/evidenceBundleRepositoryPort.ts src/adapters/postgres/postgresEvidenceBundleRepository.ts src/adapters/postgres/__tests__/postgresEvidenceBundleRepository.latest.test.ts
-git commit -m "m58: query latest evidence by exact scope"
-```
+Commit: `git add src/adapters/http/evidenceHttp.ts src/adapters/http/__tests__/evidenceHttp.test.ts && git commit -m "m59: define evidence HTTP contract"`
 
 ## Repository Targets
 
 ### Expected Files
-- src/application/ports/evidenceBundleRepositoryPort.ts
-- src/adapters/postgres/postgresEvidenceBundleRepository.ts
-- src/adapters/postgres/__tests__/postgresEvidenceBundleRepository.latest.test.ts
+- src/adapters/http/evidenceHttp.ts
+- src/adapters/http/__tests__/evidenceHttp.test.ts
 
 ## Validation Commands
 
 ```bash
-pnpm vitest run src/adapters/postgres/__tests__/postgresEvidenceBundleRepository.latest.test.ts src/adapters/postgres/__tests__/postgresEvidenceBundleRepository.append.test.ts
-pnpm exec eslint src/application/ports/evidenceBundleRepositoryPort.ts src/adapters/postgres/postgresEvidenceBundleRepository.ts src/adapters/postgres/__tests__/postgresEvidenceBundleRepository.latest.test.ts
+pnpm vitest run src/adapters/http/__tests__/evidenceHttp.test.ts
 ```
 
 ## Behavioral Invariants
 
 You MUST implement the following behavioral invariants as named tests first (TDD):
 
-- **inclusive lifecycle transitions**: Now through freshUntil is FRESH, then through expiresAt is STALE, and only later is EXPIRED. (Test: `derives lifecycle at inclusive freshness and expiry boundaries`)
-- **latest partitions by source**: Unfiltered reads return one deterministically latest record per publisher/source ID; a source filter returns at most one. (Test: `returns latest evidence independently for each source`)
-- **latest uses exact scope**: Pair, Whirlpool, wallet, and position records never satisfy one another's exact-scope query. (Test: `never mixes exact evidence scopes`)
-- **stored payloads revalidate**: Malformed persisted JSONB fails during row mapping and never escapes as typed evidence. (Test: `fails visibly when stored payload JSON is corrupt`)
+- **constructs exactly one evidence scope**: Pair is the default; each non-pair scope requires only its applicable bounded identifiers and receives fixed solana-mainnet network metadata. (Test: `constructs exactly one evidence scope`)
+- **round trips only versioned opaque history cursors**: Only canonical base64url for exact {v:1,receivedAtUnixMs,id} safe-integer objects decodes; malformed, extended, unsupported, or noncanonical cursors fail. (Test: `round trips only versioned opaque history cursors`)
 
