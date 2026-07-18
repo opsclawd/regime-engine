@@ -82,20 +82,21 @@ describe("EvidenceBundle v1 validation", () => {
   });
 
   describe("rejects available features whose value does not match featureKind", () => {
-    it("should reject number feature with non-numeric value", () => {
-      const result = validateEvidenceBundleV1(JSON.parse(fixtures.invalid.statusValueMismatch));
+    it.each([
+      { fixture: "statusValueMismatch", description: "number feature with non-numeric value" },
+      { fixture: "unsupportedUnit", description: "unit does not match featureKind" }
+    ])("should reject when $description", ({ fixture }) => {
+      const result = validateEvidenceBundleV1(
+        JSON.parse(fixtures.invalid[fixture as keyof typeof fixtures.invalid])
+      );
       expect(result.ok).toBe(false);
       if (!result.ok) {
-        const issue = result.issues.find((i) => i.code === "SEMANTIC");
-        expect(issue).toBeDefined();
-      }
-    });
-
-    it("should reject when unit does not match featureKind", () => {
-      const result = validateEvidenceBundleV1(JSON.parse(fixtures.invalid.unsupportedUnit));
-      expect(result.ok).toBe(false);
-      if (!result.ok) {
-        expect(result.issues.some((i) => i.code === "STRUCTURAL")).toBe(true);
+        if (fixture === "statusValueMismatch") {
+          const issue = result.issues.find((i) => i.code === "SEMANTIC");
+          expect(issue).toBeDefined();
+        } else {
+          expect(result.issues.some((i) => i.code === "STRUCTURAL")).toBe(true);
+        }
       }
     });
   });
@@ -112,88 +113,84 @@ describe("EvidenceBundle v1 validation", () => {
   });
 
   describe("rejects noncanonical or reversed publisher timestamps", () => {
-    it("should reject noncanonical timestamp format", () => {
-      const result = validateEvidenceBundleV1(JSON.parse(fixtures.invalid.noncanonicalTimestamp));
+    it.each([
+      { fixture: "noncanonicalTimestamp", description: "noncanonical timestamp format" },
+      { fixture: "reversedLifecycle", description: "reversed lifecycle timestamps" }
+    ])("should reject $description", ({ fixture }) => {
+      const result = validateEvidenceBundleV1(
+        JSON.parse(fixtures.invalid[fixture as keyof typeof fixtures.invalid])
+      );
       expect(result.ok).toBe(false);
       if (!result.ok) {
-        const issue = result.issues.find((i) => i.code === "STRUCTURAL");
-        expect(issue).toBeDefined();
-      }
-    });
-
-    it("should reject reversed lifecycle timestamps", () => {
-      const result = validateEvidenceBundleV1(JSON.parse(fixtures.invalid.reversedLifecycle));
-      expect(result.ok).toBe(false);
-      if (!result.ok) {
-        const issue = result.issues.find((i) => i.code === "SEMANTIC");
-        expect(issue).toBeDefined();
-        expect(issue?.message).toMatch(/after|before|must not be/);
+        if (fixture === "noncanonicalTimestamp") {
+          const issue = result.issues.find((i) => i.code === "STRUCTURAL");
+          expect(issue).toBeDefined();
+        } else {
+          const issue = result.issues.find((i) => i.code === "SEMANTIC");
+          expect(issue).toBeDefined();
+          expect(issue?.message).toMatch(/after|before|must not be/);
+        }
       }
     });
   });
 
   describe("rejects duplicate or unresolved evidence lineage", () => {
-    it("should reject duplicate feature IDs", () => {
-      const result = validateEvidenceBundleV1(JSON.parse(fixtures.invalid.duplicateLineage));
-      expect(result.ok).toBe(false);
-      if (!result.ok) {
-        const issue = result.issues.find((i) => i.code === "SEMANTIC");
-        expect(issue).toBeDefined();
-        expect(issue?.message).toMatch(/duplicate/i);
+    it.each([
+      { fixture: "duplicateLineage", description: "duplicate feature IDs", pattern: /duplicate/i },
+      {
+        fixture: "unresolvedLineage",
+        description: "unresolved lineage reference",
+        pattern: /lineage/
+      },
+      {
+        fixture: "unresolvedBriefEvidence",
+        description: "unresolved brief evidence reference",
+        pattern: /brief/i
       }
-    });
-
-    it("should reject unresolved lineage reference", () => {
-      const result = validateEvidenceBundleV1(JSON.parse(fixtures.invalid.unresolvedLineage));
+    ])("should reject $description", ({ fixture, pattern }) => {
+      const result = validateEvidenceBundleV1(
+        JSON.parse(fixtures.invalid[fixture as keyof typeof fixtures.invalid])
+      );
       expect(result.ok).toBe(false);
       if (!result.ok) {
         const issue = result.issues.find((i) => i.code === "SEMANTIC");
         expect(issue).toBeDefined();
-        expect(issue?.message).toContain("lineage");
-      }
-    });
-
-    it("should reject unresolved brief evidence reference", () => {
-      const result = validateEvidenceBundleV1(JSON.parse(fixtures.invalid.unresolvedBriefEvidence));
-      expect(result.ok).toBe(false);
-      if (!result.ok) {
-        const issue = result.issues.find((i) => i.code === "SEMANTIC");
-        expect(issue).toBeDefined();
-        expect(issue?.message).toMatch(/brief/i);
+        expect(issue?.message).toMatch(pattern);
       }
     });
   });
 
   describe("rejects coverage that fabricates absent evidence", () => {
-    it("should reject null brief with available coverage", () => {
+    it.each([
+      {
+        fixture: "nullBriefAvailableCoverage",
+        description: "null brief with available coverage",
+        pattern: /coverage/
+      },
+      {
+        fixture: "emptyContextNoWarning",
+        description: "empty context without warning",
+        pattern: /warning/
+      },
+      {
+        fixture: "malformedContextualFamily",
+        description: "malformed contextual family",
+        check: "issuesExist"
+      }
+    ])("should reject $description", ({ fixture, pattern, check }) => {
       const result = validateEvidenceBundleV1(
-        JSON.parse(fixtures.invalid.nullBriefAvailableCoverage)
+        JSON.parse(fixtures.invalid[fixture as keyof typeof fixtures.invalid])
       );
       expect(result.ok).toBe(false);
       if (!result.ok) {
-        const issue = result.issues.find((i) => i.code === "SEMANTIC");
-        expect(issue).toBeDefined();
-        expect(issue?.message).toContain("coverage");
-      }
-    });
-
-    it("should reject empty context without warning", () => {
-      const result = validateEvidenceBundleV1(JSON.parse(fixtures.invalid.emptyContextNoWarning));
-      expect(result.ok).toBe(false);
-      if (!result.ok) {
-        const issue = result.issues.find((i) => i.code === "SEMANTIC");
-        expect(issue).toBeDefined();
-        expect(issue?.message).toContain("warning");
-      }
-    });
-
-    it("should reject malformed contextual family", () => {
-      const result = validateEvidenceBundleV1(
-        JSON.parse(fixtures.invalid.malformedContextualFamily)
-      );
-      expect(result.ok).toBe(false);
-      if (!result.ok) {
-        expect(result.issues.length).toBeGreaterThan(0);
+        if (pattern) {
+          const hasMatchingIssue = result.issues.some(
+            (i) => i.code === "SEMANTIC" && pattern.test(i.message)
+          );
+          expect(hasMatchingIssue).toBe(true);
+        } else if (check === "issuesExist") {
+          expect(result.issues.length).toBeGreaterThan(0);
+        }
       }
     });
   });
@@ -315,6 +312,88 @@ describe("EvidenceBundle v1 validation", () => {
       (bundle.assessment as Record<string, unknown>).overallConfidenceBps = -0;
       const result = validateEvidenceBundleV1(bundle);
       expect(result.ok).toBe(true);
+    });
+  });
+
+  describe("canonical timestamp equality boundaries", () => {
+    it.each([
+      { field: "createdAt", otherField: "asOf", description: "createdAt equals asOf" },
+      { field: "asOf", otherField: "freshUntil", description: "asOf equals freshUntil" },
+      { field: "freshUntil", otherField: "expiresAt", description: "freshUntil equals expiresAt" }
+    ])("should accept when $description", ({ field, otherField }) => {
+      const bundle = JSON.parse(fixtures.valid.deterministicOnly) as Record<string, unknown>;
+      const otherValue = bundle[otherField] as string;
+      bundle[field] = otherValue;
+      const result = validateEvidenceBundleV1(bundle);
+      expect(result.ok).toBe(true);
+    });
+
+    it.each([
+      { field: "createdAt", otherField: "asOf", description: "createdAt is before asOf" },
+      { field: "asOf", otherField: "freshUntil", description: "asOf is before freshUntil" },
+      {
+        field: "freshUntil",
+        otherField: "expiresAt",
+        description: "freshUntil is before expiresAt"
+      }
+    ])("should accept when $description", ({ field, otherField }) => {
+      const bundle = JSON.parse(fixtures.valid.deterministicOnly) as Record<string, unknown>;
+      const fieldValue = bundle[field] as string;
+      const otherValue = bundle[otherField] as string;
+      if (fieldValue < otherValue) {
+        const result = validateEvidenceBundleV1(bundle);
+        expect(result.ok).toBe(true);
+      }
+    });
+  });
+
+  describe("invalid calendar dates", () => {
+    it.each([
+      {
+        field: "createdAt",
+        value: "2024-02-30T00:00:00.000Z",
+        description: "Feb 30 does not exist"
+      },
+      { field: "asOf", value: "2024-02-30T00:00:00.000Z", description: "Feb 30 does not exist" },
+      {
+        field: "freshUntil",
+        value: "2024-13-01T00:00:00.000Z",
+        description: "Month 13 does not exist"
+      },
+      {
+        field: "expiresAt",
+        value: "2024-00-01T00:00:00.000Z",
+        description: "Month 0 does not exist"
+      }
+    ])("should reject invalid calendar date when $description", ({ field, value }) => {
+      const bundle = JSON.parse(fixtures.valid.deterministicOnly) as Record<string, unknown>;
+      bundle[field] = value;
+      const result = validateEvidenceBundleV1(bundle);
+      expect(result.ok).toBe(false);
+      if (!result.ok) {
+        const issue = result.issues.find((i) => i.code === "STRUCTURAL");
+        expect(issue).toBeDefined();
+      }
+    });
+
+    it.each([
+      { field: "createdAt", value: "not-a-timestamp", description: "non-timestamp string" },
+      {
+        field: "asOf",
+        value: "2024/01/01T00:00:00.000Z",
+        description: "wrong date format separator"
+      },
+      {
+        field: "freshUntil",
+        value: "2024-01-01 00:00:00.000Z",
+        description: "space instead of T separator"
+      },
+      { field: "expiresAt", value: "01-01-2024T00:00:00.000Z", description: "DD-MM-YYYY format" }
+    ])("should reject malformed timestamp when $description", ({ field, value }) => {
+      const bundle = JSON.parse(fixtures.valid.deterministicOnly) as Record<string, unknown>;
+      bundle[field] = value;
+      const result = validateEvidenceBundleV1(bundle);
+      expect(result.ok).toBe(false);
     });
   });
 

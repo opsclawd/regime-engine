@@ -3,17 +3,8 @@ import addFormatsModule from "ajv-formats";
 import type { ErrorObject } from "ajv/dist/2020.js";
 const Ajv2020 = AjvModule.Ajv2020;
 const addFormats = addFormatsModule.default || addFormatsModule;
-import { readFileSync } from "node:fs";
-import { resolve } from "node:path";
-import { fileURLToPath } from "node:url";
+import __schema from "../../../../contracts/evidence-bundle/v1/evidence-bundle.schema.json" with { type: "json" };
 import type { EvidenceBundleV1 } from "./types.generated.js";
-
-const __repoRoot = resolve(fileURLToPath(import.meta.url), "../../../../..");
-const __schemaPath = resolve(
-  __repoRoot,
-  "contracts/evidence-bundle/v1/evidence-bundle.schema.json"
-);
-const __schema = JSON.parse(readFileSync(__schemaPath, "utf-8"));
 
 export type EvidenceValidationIssue = {
   path: string;
@@ -163,6 +154,33 @@ function checkUniqueIds(bundle: EvidenceBundleV1, issues: EvidenceValidationIssu
       message: `Duplicate reference IDs: ${[...new Set(duplicates)].join(", ")}`
     });
   }
+
+  const appearsIn = new Map<string, Set<string>>();
+  for (const id of featureIds) {
+    if (!appearsIn.has(id)) appearsIn.set(id, new Set());
+    appearsIn.get(id)!.add("feature");
+  }
+  for (const id of allEvidenceIds) {
+    if (!appearsIn.has(id)) appearsIn.set(id, new Set());
+    appearsIn.get(id)!.add("evidence");
+  }
+  for (const id of refIds) {
+    if (!appearsIn.has(id)) appearsIn.set(id, new Set());
+    appearsIn.get(id)!.add("reference");
+  }
+  const globalDuplicates: string[] = [];
+  for (const [id, types] of appearsIn) {
+    if (types.size > 1) {
+      globalDuplicates.push(id);
+    }
+  }
+  if (globalDuplicates.length > 0) {
+    issues.push({
+      path: "/",
+      code: "SEMANTIC",
+      message: `Globally duplicate IDs across evidence types: ${[...new Set(globalDuplicates)].join(", ")}`
+    });
+  }
 }
 
 function checkLineageResolution(
@@ -172,16 +190,55 @@ function checkLineageResolution(
   referenceIds: Set<string>,
   issues: EvidenceValidationIssue[]
 ): void {
+  const lineageGraph = new Map<string, string[]>();
+  for (const feature of bundle.deterministicFeatures) {
+    lineageGraph.set(feature.featureId, feature.inputLineage);
+  }
+
+  function detectCycle(
+    nodeId: string,
+    visited: Set<string>,
+    recursionStack: Set<string>,
+    path: string[]
+  ): string[] | null {
+    if (recursionStack.has(nodeId)) {
+      const cycleStart = path.indexOf(nodeId);
+      return path.slice(cycleStart);
+    }
+    if (visited.has(nodeId)) {
+      return null;
+    }
+
+    visited.add(nodeId);
+    recursionStack.add(nodeId);
+    path.push(nodeId);
+
+    const dependencies = lineageGraph.get(nodeId) || [];
+    for (const dep of dependencies) {
+      if (!featureIds.has(dep) && !referenceIds.has(dep)) continue;
+      const cycle = detectCycle(dep, visited, recursionStack, path);
+      if (cycle) return cycle;
+    }
+
+    recursionStack.delete(nodeId);
+    return null;
+  }
+
+  for (const feature of bundle.deterministicFeatures) {
+    const visited = new Set<string>();
+    const recursionStack = new Set<string>();
+    const cycle = detectCycle(feature.featureId, visited, recursionStack, []);
+    if (cycle) {
+      issues.push({
+        path: `/deterministicFeatures/${feature.featureId}/inputLineage`,
+        code: "SEMANTIC",
+        message: `Cycle detected in lineage: ${cycle.join(" -> ")} -> ${cycle[0]}`
+      });
+    }
+  }
+
   for (const feature of bundle.deterministicFeatures) {
     for (const lineageId of feature.inputLineage) {
-      if (lineageId === feature.featureId) {
-        issues.push({
-          path: `/deterministicFeatures/${feature.featureId}/inputLineage`,
-          code: "SEMANTIC",
-          message: `Feature ${feature.featureId} references itself in inputLineage`
-        });
-        continue;
-      }
       if (!featureIds.has(lineageId) && !referenceIds.has(lineageId)) {
         issues.push({
           path: `/deterministicFeatures/${feature.featureId}/inputLineage`,
@@ -232,11 +289,11 @@ function checkTimestampOrdering(bundle: EvidenceBundleV1, issues: EvidenceValida
   const freshUntil = parseCanonicalTimestamp(bundle.freshUntil);
   const expiresAt = parseCanonicalTimestamp(bundle.expiresAt);
 
-  if (createdAt && asOf && asOf > createdAt) {
+  if (createdAt && asOf && createdAt > asOf) {
     issues.push({
       path: "/createdAt",
       code: "SEMANTIC",
-      message: `createdAt (${bundle.createdAt}) must not be after asOf (${bundle.asOf})`
+      message: `createdAt (${bundle.createdAt}) must not be before asOf (${bundle.asOf})`
     });
   }
 
