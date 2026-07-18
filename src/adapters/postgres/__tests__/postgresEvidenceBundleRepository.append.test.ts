@@ -283,6 +283,35 @@ describe.skipIf(!process.env.DATABASE_URL)("postgresEvidenceBundleRepository.app
       const differentHash = "c".repeat(64);
       const differentCanonical = JSON.stringify({ price: 160.0 });
 
+      const insertResult = await db.execute(sql`
+        INSERT INTO regime_engine.evidence_bundles (
+          schema_version, source_publisher, source_id, run_id, pair, scope_key,
+          correlation_id, as_of_unix_ms, created_at_unix_ms, received_at_unix_ms,
+          fresh_until_unix_ms, expires_at_unix_ms, evidence_json, evidence_canonical,
+          evidence_hash, ingested_at_unix_ms, processed_at_unix_ms
+        ) VALUES (
+          'evidence-bundle.v1', ${TEST_PUBLISHER}, 'test-source-missing-winner-001',
+          'test-run-missing-winner-001', ${TEST_PAIR}, ${testScopeKey},
+          'test-corr-001', 1705310400000, 1705310400000, ${Date.now()},
+          1705314000000, 1705315200000, '{}', ${differentCanonical}, ${differentHash},
+          ${Date.now()}, 0
+        )
+        ON CONFLICT (schema_version, source_publisher, source_id, run_id)
+        DO NOTHING
+        RETURNING id
+      `);
+
+      expect(insertResult).toHaveLength(0);
+
+      const existing = await db.execute(sql`
+        SELECT id FROM regime_engine.evidence_bundles
+        WHERE source_publisher = ${TEST_PUBLISHER}
+          AND source_id = 'test-source-missing-winner-001'
+          AND run_id = 'test-run-missing-winner-001'
+      `);
+
+      expect(existing).toHaveLength(0);
+
       await expect(
         repository.append({
           bundle,
@@ -305,7 +334,7 @@ describe.skipIf(!process.env.DATABASE_URL)("postgresEvidenceBundleRepository.app
         runId: "test-run-concurrent-identical-001"
       });
 
-      const [first, second] = await Promise.all([
+      const results = await Promise.all([
         repository.append({
           bundle,
           payloadCanonical: CANONICAL_PAYLOAD,
@@ -320,9 +349,13 @@ describe.skipIf(!process.env.DATABASE_URL)("postgresEvidenceBundleRepository.app
         })
       ]);
 
-      expect(first.status).toBe("created");
-      expect(second.status).toBe("already_ingested");
-      expect(second.receipt.id).toBe(first.receipt.id);
+      const statuses = results.map((r) => r.status);
+      expect(statuses).toContain("created");
+      expect(statuses).toContain("already_ingested");
+
+      const created = results.find((r) => r.status === "created");
+      const alreadyIngested = results.find((r) => r.status === "already_ingested");
+      expect(alreadyIngested?.receipt.id).toBe(created?.receipt.id);
     });
 
     it("first wins and second throws when concurrent different payloads race", async () => {
