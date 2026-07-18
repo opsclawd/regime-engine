@@ -89,7 +89,7 @@ const makeFakeRecord = (id: number, lifecycle: EvidenceLifecycle): EvidenceBundl
         environment: "test",
         upstreamRunIds: []
       }
-    } as EvidenceBundleV1,
+    } as unknown as EvidenceBundleV1,
     evidenceHash: `hash-${id}`,
     receivedAtUnixMs: 1_700_000_000_000 + id * 1000,
     lifecycle
