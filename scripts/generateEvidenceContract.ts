@@ -149,6 +149,53 @@ const loadFixture = (path: string): unknown => {
   return JSON.parse(readFileSync(path, "utf-8"));
 };
 
+function buildEmptyContextPayload(contextualPayload: unknown): Record<string, unknown> {
+  const source = contextualPayload as Record<string, unknown>;
+  const assessment = source.assessment as Record<string, unknown>;
+  const coverage = assessment.coverage as Record<string, unknown>;
+  const researchBrief = source.researchBrief as Record<string, unknown>;
+
+  return {
+    ...source,
+    contextualEvidence: {
+      supportResistance: [],
+      flows: [],
+      derivatives: [],
+      events: [],
+      newsRegulatory: []
+    },
+    researchBrief: {
+      ...researchBrief,
+      sourceEvidenceIds: ["feat-price-001", "feat-vol-001"]
+    },
+    assessment: {
+      ...assessment,
+      quality: "degraded",
+      coverage: {
+        ...coverage,
+        supportResistance: "unavailable",
+        flows: "unavailable",
+        derivatives: "unavailable",
+        events: "unavailable",
+        newsRegulatory: "unavailable"
+      },
+      warnings: [
+        {
+          code: "CONTEXTUAL_EVIDENCE_UNAVAILABLE",
+          message: "All contextual evidence families are unavailable",
+          affectedFamilies: [
+            "supportResistance",
+            "flows",
+            "derivatives",
+            "events",
+            "newsRegulatory"
+          ]
+        }
+      ]
+    }
+  };
+}
+
 function generateVectors(schemaDigest: string): HashVectorsDocument {
   const deterministicOnlyPayload = loadFixture(
     resolve(FIXTURES_DIR, "valid/deterministic-only.json")
@@ -159,7 +206,7 @@ function generateVectors(schemaDigest: string): HashVectorsDocument {
     createVector("valid/deterministic-only", deterministicOnlyPayload, schemaDigest),
     createVector("valid/contextual", contextualPayload, schemaDigest),
 
-    createVector("empty-context", contextualPayload, schemaDigest),
+    createVector("empty-context", buildEmptyContextPayload(contextualPayload), schemaDigest),
     createVector("null-brief", deterministicOnlyPayload, schemaDigest),
 
     createVector("object-key-order-independence", { a: 1, b: 2, c: 3 }, schemaDigest),

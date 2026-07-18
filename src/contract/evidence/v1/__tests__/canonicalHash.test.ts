@@ -22,7 +22,6 @@ interface EvidenceHashVector {
 
 interface HashVectorsDocument {
   schemaSha256: string;
-  generatedAt: string;
   vectors: EvidenceHashVector[];
 }
 

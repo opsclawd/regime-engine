@@ -373,71 +373,11 @@
           }
         ],
         "contextualEvidence": {
-          "supportResistance": [
-            {
-              "evidenceId": "ctx-sr-001",
-              "kind": "support_zone",
-              "claim": "Strong support at 148.50",
-              "direction": "bullish",
-              "confidenceBps": 7500,
-              "observedAt": "2024-01-15T09:30:00.000Z",
-              "expiresAt": "2024-01-15T12:00:00.000Z",
-              "sourceReferenceIds": ["ref-ohlcv-001"],
-              "provenanceMethod": "derived"
-            }
-          ],
-          "flows": [
-            {
-              "evidenceId": "ctx-flow-001",
-              "kind": "spot_flow",
-              "claim": "Net buying pressure detected",
-              "direction": "bullish",
-              "confidenceBps": 6800,
-              "observedAt": "2024-01-15T09:45:00.000Z",
-              "expiresAt": "2024-01-15T12:00:00.000Z",
-              "sourceReferenceIds": ["ref-tx-001"],
-              "provenanceMethod": "collected"
-            }
-          ],
-          "derivatives": [
-            {
-              "evidenceId": "ctx-deriv-001",
-              "kind": "funding",
-              "claim": "Funding rate slightly positive",
-              "direction": "bullish",
-              "confidenceBps": 6200,
-              "observedAt": "2024-01-15T09:50:00.000Z",
-              "expiresAt": "2024-01-15T12:00:00.000Z",
-              "sourceReferenceIds": ["ref-funding-001"],
-              "provenanceMethod": "collected"
-            }
-          ],
-          "events": [
-            {
-              "evidenceId": "ctx-event-001",
-              "kind": "scheduled_event",
-              "claim": "Protocol upgrade scheduled",
-              "direction": "neutral",
-              "confidenceBps": 9000,
-              "observedAt": "2024-01-15T08:00:00.000Z",
-              "expiresAt": null,
-              "sourceReferenceIds": ["ref-doc-001"],
-              "provenanceMethod": "human_authored"
-            }
-          ],
-          "newsRegulatory": [
-            {
-              "evidenceId": "ctx-news-001",
-              "kind": "ecosystem_news",
-              "claim": "New DeFi protocol launched",
-              "direction": "neutral",
-              "confidenceBps": 5000,
-              "observedAt": "2024-01-15T07:30:00.000Z",
-              "expiresAt": null,
-              "sourceReferenceIds": ["ref-news-001"],
-              "provenanceMethod": "collected"
-            }
-          ]
+          "supportResistance": [],
+          "flows": [],
+          "derivatives": [],
+          "events": [],
+          "newsRegulatory": []
         },
         "researchBrief": {
           "briefId": "brief-001",
@@ -455,14 +395,7 @@
             "modelVersion": "1.0.0"
           },
           "promptVersion": "prompt-v1",
-          "sourceEvidenceIds": [
-            "feat-price-001",
-            "ctx-sr-001",
-            "ctx-flow-001",
-            "ctx-deriv-001",
-            "ctx-event-001",
-            "ctx-news-001"
-          ]
+          "sourceEvidenceIds": ["feat-price-001", "feat-vol-001"]
         },
         "sourceReferences": [
           {
@@ -504,17 +437,29 @@
         ],
         "assessment": {
           "overallConfidenceBps": 7500,
-          "quality": "complete",
+          "quality": "degraded",
           "coverage": {
             "deterministic": "available",
-            "supportResistance": "available",
-            "flows": "available",
-            "derivatives": "available",
-            "events": "available",
-            "newsRegulatory": "available",
+            "supportResistance": "unavailable",
+            "flows": "unavailable",
+            "derivatives": "unavailable",
+            "events": "unavailable",
+            "newsRegulatory": "unavailable",
             "researchBrief": "available"
           },
-          "warnings": []
+          "warnings": [
+            {
+              "code": "CONTEXTUAL_EVIDENCE_UNAVAILABLE",
+              "message": "All contextual evidence families are unavailable",
+              "affectedFamilies": [
+                "supportResistance",
+                "flows",
+                "derivatives",
+                "events",
+                "newsRegulatory"
+              ]
+            }
+          ]
         },
         "provenance": {
           "pipelineVersion": "1.0.0",
@@ -523,9 +468,9 @@
           "upstreamRunIds": ["upstream-run-001"]
         }
       },
-      "canonical": "{\"asOf\":\"2024-01-15T10:00:00.000Z\",\"assessment\":{\"coverage\":{\"derivatives\":\"available\",\"deterministic\":\"available\",\"events\":\"available\",\"flows\":\"available\",\"newsRegulatory\":\"available\",\"researchBrief\":\"available\",\"supportResistance\":\"available\"},\"overallConfidenceBps\":7500,\"quality\":\"complete\",\"warnings\":[]},\"contextualEvidence\":{\"derivatives\":[{\"claim\":\"Funding rate slightly positive\",\"confidenceBps\":6200,\"direction\":\"bullish\",\"evidenceId\":\"ctx-deriv-001\",\"expiresAt\":\"2024-01-15T12:00:00.000Z\",\"kind\":\"funding\",\"observedAt\":\"2024-01-15T09:50:00.000Z\",\"provenanceMethod\":\"collected\",\"sourceReferenceIds\":[\"ref-funding-001\"]}],\"events\":[{\"claim\":\"Protocol upgrade scheduled\",\"confidenceBps\":9000,\"direction\":\"neutral\",\"evidenceId\":\"ctx-event-001\",\"expiresAt\":null,\"kind\":\"scheduled_event\",\"observedAt\":\"2024-01-15T08:00:00.000Z\",\"provenanceMethod\":\"human_authored\",\"sourceReferenceIds\":[\"ref-doc-001\"]}],\"flows\":[{\"claim\":\"Net buying pressure detected\",\"confidenceBps\":6800,\"direction\":\"bullish\",\"evidenceId\":\"ctx-flow-001\",\"expiresAt\":\"2024-01-15T12:00:00.000Z\",\"kind\":\"spot_flow\",\"observedAt\":\"2024-01-15T09:45:00.000Z\",\"provenanceMethod\":\"collected\",\"sourceReferenceIds\":[\"ref-tx-001\"]}],\"newsRegulatory\":[{\"claim\":\"New DeFi protocol launched\",\"confidenceBps\":5000,\"direction\":\"neutral\",\"evidenceId\":\"ctx-news-001\",\"expiresAt\":null,\"kind\":\"ecosystem_news\",\"observedAt\":\"2024-01-15T07:30:00.000Z\",\"provenanceMethod\":\"collected\",\"sourceReferenceIds\":[\"ref-news-001\"]}],\"supportResistance\":[{\"claim\":\"Strong support at 148.50\",\"confidenceBps\":7500,\"direction\":\"bullish\",\"evidenceId\":\"ctx-sr-001\",\"expiresAt\":\"2024-01-15T12:00:00.000Z\",\"kind\":\"support_zone\",\"observedAt\":\"2024-01-15T09:30:00.000Z\",\"provenanceMethod\":\"derived\",\"sourceReferenceIds\":[\"ref-ohlcv-001\"]}]},\"correlationId\":\"corr-contextual-001\",\"createdAt\":\"2024-01-15T10:00:00.000Z\",\"deterministicFeatures\":[{\"calculator\":{\"name\":\"price-aggregator\",\"version\":\"1.0.0\"},\"confidenceBps\":9500,\"family\":\"market_state\",\"featureId\":\"feat-price-001\",\"featureKind\":\"number\",\"freshUntil\":\"2024-01-15T11:00:00.000Z\",\"inputLineage\":[\"raw-price-source\"],\"observedAt\":\"2024-01-15T10:00:00.000Z\",\"status\":\"available\",\"unit\":\"usd\",\"value\":150.25,\"warnings\":[]},{\"calculator\":{\"name\":\"liquidity-calculator\",\"version\":\"1.0.0\"},\"confidenceBps\":8500,\"family\":\"liquidity\",\"featureId\":\"feat-vol-001\",\"featureKind\":\"number\",\"freshUntil\":\"2024-01-15T11:00:00.000Z\",\"inputLineage\":[\"raw-price-source\"],\"observedAt\":\"2024-01-15T10:00:00.000Z\",\"status\":\"available\",\"unit\":\"usd\",\"value\":1000000,\"warnings\":[]}],\"expiresAt\":\"2024-01-15T12:00:00.000Z\",\"freshUntil\":\"2024-01-15T11:00:00.000Z\",\"pair\":\"SOL/USDC\",\"provenance\":{\"environment\":\"test\",\"gitCommit\":\"abcd1234abcd1234abcd1234abcd1234abcd1234abcd1234abcd1234abcd1234\",\"pipelineVersion\":\"1.0.0\",\"upstreamRunIds\":[\"upstream-run-001\"]},\"researchBrief\":{\"briefId\":\"brief-001\",\"generatedAt\":\"2024-01-15T10:00:00.000Z\",\"keyFindings\":[\"Support zone at 148.50 holding\",\"Net buying pressure detected\",\"Funding rate remains positive\"],\"model\":{\"modelId\":\"gpt-4\",\"modelVersion\":\"1.0.0\",\"provider\":\"openai\"},\"promptVersion\":\"prompt-v1\",\"sourceEvidenceIds\":[\"feat-price-001\",\"ctx-sr-001\",\"ctx-flow-001\",\"ctx-deriv-001\",\"ctx-event-001\",\"ctx-news-001\"],\"summary\":\"Analysis suggests bullish sentiment with strong support levels\",\"uncertainties\":[\"Potential resistance at 155.00\",\"Macroeconomic factors unclear\"]},\"runId\":\"run-contextual-001\",\"schemaVersion\":\"evidence-bundle.v1\",\"scope\":{\"kind\":\"position\",\"network\":\"solana-mainnet\",\"positionId\":\"position789\",\"walletAddress\":\"wallet123\",\"whirlpoolAddress\":\"whirlpool456\"},\"source\":{\"publisher\":\"sol-usdc-clmm-intelligence\",\"sourceId\":\"src-contextual-001\",\"sourceVersion\":\"1.0.0\"},\"sourceReferences\":[{\"locator\":\"https://api.example.com/ohlcv\",\"observedAt\":\"2024-01-15T09:30:00.000Z\",\"referenceId\":\"ref-ohlcv-001\",\"sourceType\":\"api\"},{\"locator\":\"https://api.example.com/txs\",\"observedAt\":\"2024-01-15T09:45:00.000Z\",\"referenceId\":\"ref-tx-001\",\"sourceType\":\"chain\"},{\"locator\":\"https://api.example.com/funding\",\"observedAt\":\"2024-01-15T09:50:00.000Z\",\"referenceId\":\"ref-funding-001\",\"sourceType\":\"api\"},{\"locator\":\"https://docs.example.com/upgrade\",\"observedAt\":\"2024-01-15T08:00:00.000Z\",\"referenceId\":\"ref-doc-001\",\"sourceType\":\"document\"},{\"locator\":\"https://news.example.com/123\",\"observedAt\":\"2024-01-15T07:30:00.000Z\",\"referenceId\":\"ref-news-001\",\"sourceType\":\"api\"},{\"locator\":\"https://api.example.com/price\",\"observedAt\":\"2024-01-15T09:59:00.000Z\",\"referenceId\":\"raw-price-source\",\"sourceType\":\"api\"}]}",
-      "utf8ByteLength": 4534,
-      "sha256": "83666fc4bbdcd435af3d85f177cf13aa2509eea124094fb5717868dbc14d575e",
+      "canonical": "{\"asOf\":\"2024-01-15T10:00:00.000Z\",\"assessment\":{\"coverage\":{\"derivatives\":\"unavailable\",\"deterministic\":\"available\",\"events\":\"unavailable\",\"flows\":\"unavailable\",\"newsRegulatory\":\"unavailable\",\"researchBrief\":\"available\",\"supportResistance\":\"unavailable\"},\"overallConfidenceBps\":7500,\"quality\":\"degraded\",\"warnings\":[{\"affectedFamilies\":[\"supportResistance\",\"flows\",\"derivatives\",\"events\",\"newsRegulatory\"],\"code\":\"CONTEXTUAL_EVIDENCE_UNAVAILABLE\",\"message\":\"All contextual evidence families are unavailable\"}]},\"contextualEvidence\":{\"derivatives\":[],\"events\":[],\"flows\":[],\"newsRegulatory\":[],\"supportResistance\":[]},\"correlationId\":\"corr-contextual-001\",\"createdAt\":\"2024-01-15T10:00:00.000Z\",\"deterministicFeatures\":[{\"calculator\":{\"name\":\"price-aggregator\",\"version\":\"1.0.0\"},\"confidenceBps\":9500,\"family\":\"market_state\",\"featureId\":\"feat-price-001\",\"featureKind\":\"number\",\"freshUntil\":\"2024-01-15T11:00:00.000Z\",\"inputLineage\":[\"raw-price-source\"],\"observedAt\":\"2024-01-15T10:00:00.000Z\",\"status\":\"available\",\"unit\":\"usd\",\"value\":150.25,\"warnings\":[]},{\"calculator\":{\"name\":\"liquidity-calculator\",\"version\":\"1.0.0\"},\"confidenceBps\":8500,\"family\":\"liquidity\",\"featureId\":\"feat-vol-001\",\"featureKind\":\"number\",\"freshUntil\":\"2024-01-15T11:00:00.000Z\",\"inputLineage\":[\"raw-price-source\"],\"observedAt\":\"2024-01-15T10:00:00.000Z\",\"status\":\"available\",\"unit\":\"usd\",\"value\":1000000,\"warnings\":[]}],\"expiresAt\":\"2024-01-15T12:00:00.000Z\",\"freshUntil\":\"2024-01-15T11:00:00.000Z\",\"pair\":\"SOL/USDC\",\"provenance\":{\"environment\":\"test\",\"gitCommit\":\"abcd1234abcd1234abcd1234abcd1234abcd1234abcd1234abcd1234abcd1234\",\"pipelineVersion\":\"1.0.0\",\"upstreamRunIds\":[\"upstream-run-001\"]},\"researchBrief\":{\"briefId\":\"brief-001\",\"generatedAt\":\"2024-01-15T10:00:00.000Z\",\"keyFindings\":[\"Support zone at 148.50 holding\",\"Net buying pressure detected\",\"Funding rate remains positive\"],\"model\":{\"modelId\":\"gpt-4\",\"modelVersion\":\"1.0.0\",\"provider\":\"openai\"},\"promptVersion\":\"prompt-v1\",\"sourceEvidenceIds\":[\"feat-price-001\",\"feat-vol-001\"],\"summary\":\"Analysis suggests bullish sentiment with strong support levels\",\"uncertainties\":[\"Potential resistance at 155.00\",\"Macroeconomic factors unclear\"]},\"runId\":\"run-contextual-001\",\"schemaVersion\":\"evidence-bundle.v1\",\"scope\":{\"kind\":\"position\",\"network\":\"solana-mainnet\",\"positionId\":\"position789\",\"walletAddress\":\"wallet123\",\"whirlpoolAddress\":\"whirlpool456\"},\"source\":{\"publisher\":\"sol-usdc-clmm-intelligence\",\"sourceId\":\"src-contextual-001\",\"sourceVersion\":\"1.0.0\"},\"sourceReferences\":[{\"locator\":\"https://api.example.com/ohlcv\",\"observedAt\":\"2024-01-15T09:30:00.000Z\",\"referenceId\":\"ref-ohlcv-001\",\"sourceType\":\"api\"},{\"locator\":\"https://api.example.com/txs\",\"observedAt\":\"2024-01-15T09:45:00.000Z\",\"referenceId\":\"ref-tx-001\",\"sourceType\":\"chain\"},{\"locator\":\"https://api.example.com/funding\",\"observedAt\":\"2024-01-15T09:50:00.000Z\",\"referenceId\":\"ref-funding-001\",\"sourceType\":\"api\"},{\"locator\":\"https://docs.example.com/upgrade\",\"observedAt\":\"2024-01-15T08:00:00.000Z\",\"referenceId\":\"ref-doc-001\",\"sourceType\":\"document\"},{\"locator\":\"https://news.example.com/123\",\"observedAt\":\"2024-01-15T07:30:00.000Z\",\"referenceId\":\"ref-news-001\",\"sourceType\":\"api\"},{\"locator\":\"https://api.example.com/price\",\"observedAt\":\"2024-01-15T09:59:00.000Z\",\"referenceId\":\"raw-price-source\",\"sourceType\":\"api\"}]}",
+      "utf8ByteLength": 3320,
+      "sha256": "69192d7c9b21e6951bb328298cf7fbf59657629baef28d2df15229d8b94aa095",
       "schemaSha256": "0146b073cc607b47e52c615f6299294b1fd8f133d8a4b128bd2a95dc20f77b17"
     },
     {
