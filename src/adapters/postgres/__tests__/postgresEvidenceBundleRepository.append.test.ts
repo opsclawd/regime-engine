@@ -298,7 +298,8 @@ describe.skipIf(!process.env.DATABASE_URL)("postgresEvidenceBundleRepository.app
       const stubDb = {
         insert: () => ({
           values: () => ({
-            onConflictDoNothing: () => ({
+            // eslint-disable-next-line @typescript-eslint/no-unused-vars
+            onConflictDoNothing: (_t: unknown) => ({
               returning: async () => []
             })
           })
