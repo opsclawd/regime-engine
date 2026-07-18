@@ -1,5 +1,15 @@
-import { bigint, index, jsonb, serial, text, uniqueIndex, varchar } from "drizzle-orm/pg-core";
+import {
+  bigint,
+  check,
+  index,
+  jsonb,
+  serial,
+  text,
+  uniqueIndex,
+  varchar
+} from "drizzle-orm/pg-core";
 import { regimeEngine } from "./candleRevisions.js";
+import { sql } from "drizzle-orm";
 
 export const evidenceBundles = regimeEngine.table(
   "evidence_bundles",
@@ -24,6 +34,13 @@ export const evidenceBundles = regimeEngine.table(
     processedAtUnixMs: bigint("processed_at_unix_ms", { mode: "number" }).notNull()
   },
   (t) => [
+    check("chk_evidence_bundle_v1", sql`${t.schemaVersion} = 'evidence-bundle.v1'`),
+    check("chk_sol_usdc_pair", sql`${t.pair} = 'SOL/USDC'`),
+    check(
+      "chk_timestamp_ordering",
+      sql`${t.asOfUnixMs} <= ${t.createdAtUnixMs} AND ${t.createdAtUnixMs} < ${t.freshUntilUnixMs} AND ${t.freshUntilUnixMs} <= ${t.expiresAtUnixMs}`
+    ),
+    check("chk_evidence_hash_format", sql`${t.evidenceHash} ~ '^[0-9a-f]{64}$'`),
     uniqueIndex("uniq_evidence_bundles_source_run").on(
       t.schemaVersion,
       t.sourcePublisher,

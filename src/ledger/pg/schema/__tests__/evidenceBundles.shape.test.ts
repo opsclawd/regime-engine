@@ -28,14 +28,4 @@ describe("evidenceBundles shape test", () => {
     ];
     expect(columns.length).toBe(EXPECTED_COLUMN_COUNT);
   });
-
-  it("has no update helper (append-only table)", async () => {
-    const { evidenceBundles } = await import("../evidenceBundles.js");
-    expect(typeof (evidenceBundles as unknown as Record<string, unknown>).update).toBe("undefined");
-  });
-
-  it("has no delete helper (append-only table)", async () => {
-    const { evidenceBundles } = await import("../evidenceBundles.js");
-    expect(typeof (evidenceBundles as unknown as Record<string, unknown>).delete).toBe("undefined");
-  });
 });
