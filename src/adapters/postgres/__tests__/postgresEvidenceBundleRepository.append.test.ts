@@ -174,6 +174,38 @@ describe.skipIf(!process.env.DATABASE_URL)("postgresEvidenceBundleRepository.app
 
       expect(rows).toHaveLength(1);
     });
+
+    it("assembly delay: accepts bundle with asOf before createdAt and creates one row", async () => {
+      const bundle = createTestBundle({
+        source: {
+          publisher: TEST_PUBLISHER,
+          sourceId: "test-source-delay-001",
+          sourceVersion: "1.0.0"
+        },
+        runId: "test-run-delay-001",
+        asOf: "2024-01-15T10:00:00.000Z",
+        createdAt: "2024-01-15T10:05:00.000Z"
+      });
+
+      const result = await repository.append({
+        bundle,
+        payloadCanonical: CANONICAL_PAYLOAD,
+        payloadHash: PAYLOAD_HASH,
+        receivedAtUnixMs: Date.now()
+      });
+
+      expect(result.status).toBe("created");
+      expect(result.receipt).toBeDefined();
+
+      const rows = await db.execute(sql`
+        SELECT id, run_id FROM regime_engine.evidence_bundles
+        WHERE source_publisher = ${TEST_PUBLISHER}
+          AND source_id = 'test-source-delay-001'
+          AND run_id = 'test-run-delay-001'
+      `);
+
+      expect(rows).toHaveLength(1);
+    });
   });
 
   describe("returns already_ingested for an identical source run replay", () => {

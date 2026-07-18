@@ -1,16 +1,14 @@
 {
-  "runUuid": "b6e76ae2-0226-403f-8684-1e554d44a299",
+  "runUuid": "e6ca582a-9b14-49f2-b7a9-d4c03a7fbd1a",
   "phase": "validate",
   "kind": "validation_failed",
-  "message": "2 validation command(s) failed: test (Did you mean \"pnpm test:watch\"?), test (Did you mean \"pnpm test:watch\"?). See validate/ logs.",
+  "message": "1 validation command(s) failed: test (⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯). See validate/ logs.",
   "canRetry": true,
   "suggestedAction": "Open the validate phase logs and rerun the failing command(s) locally.",
   "artifacts": [
-    "validate/4-test-bash.stdout.log",
-    "validate/4-test-bash.stderr.log",
-    "validate/10-test-bash.stdout.log",
-    "validate/10-test-bash.stderr.log",
+    "validate/3-test.stdout.log",
+    "validate/3-test.stderr.log",
     "validate/validation-result.json"
   ],
-  "detectedAt": "2026-07-16T22:20:37.841Z"
+  "detectedAt": "2026-07-18T18:29:56.610Z"
 }

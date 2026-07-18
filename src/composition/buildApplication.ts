@@ -12,12 +12,18 @@ import type { IngestCandlesUseCase } from "../application/use-cases/ingestCandle
 import type { RecordExecutionResultUseCase } from "../application/use-cases/recordExecutionResultUseCase.js";
 import type { RecordClmmExecutionResultUseCase } from "../application/use-cases/recordClmmExecutionResultUseCase.js";
 import type { GetWeeklyReportUseCase } from "../application/use-cases/getWeeklyReportUseCase.js";
+import type { IngestEvidenceBundleUseCase } from "../application/use-cases/ingestEvidenceBundleUseCase.js";
+import type { GetCurrentEvidenceUseCase } from "../application/use-cases/getCurrentEvidenceUseCase.js";
+import type { GetEvidenceHistoryUseCase } from "../application/use-cases/getEvidenceHistoryUseCase.js";
 import { createIngestCandlesUseCase } from "../application/use-cases/ingestCandlesUseCase.js";
 import { createGetCurrentRegimeUseCase } from "../application/use-cases/getCurrentRegimeUseCase.js";
 import { createGeneratePlanUseCase } from "../application/use-cases/generatePlanUseCase.js";
 import { createRecordExecutionResultUseCase } from "../application/use-cases/recordExecutionResultUseCase.js";
 import { createRecordClmmExecutionResultUseCase } from "../application/use-cases/recordClmmExecutionResultUseCase.js";
 import { createGetWeeklyReportUseCase } from "../application/use-cases/getWeeklyReportUseCase.js";
+import { createIngestEvidenceBundleUseCase } from "../application/use-cases/ingestEvidenceBundleUseCase.js";
+import { createGetCurrentEvidenceUseCase } from "../application/use-cases/getCurrentEvidenceUseCase.js";
+import { createGetEvidenceHistoryUseCase } from "../application/use-cases/getEvidenceHistoryUseCase.js";
 import { createSqliteCandleReadAdapter } from "../adapters/sqlite/sqliteCandleReadAdapter.js";
 import { createSqliteCandleRevisionUnitOfWork } from "../adapters/sqlite/sqliteCandleRevisionUnitOfWork.js";
 import { createPostgresCandleReadAdapter } from "../adapters/postgres/postgresCandleReadAdapter.js";
@@ -28,6 +34,7 @@ import {
   createSqliteExecutionResultLedgerWriteAdapter
 } from "../adapters/sqlite/sqliteExecutionLedgerAdapter.js";
 import { createSqliteWeeklyReportReadAdapter } from "../adapters/sqlite/sqliteWeeklyReportReadAdapter.js";
+import { createPostgresEvidenceBundleRepository } from "../adapters/postgres/postgresEvidenceBundleRepository.js";
 import { checkPgHealth, checkSqliteHealth } from "../ledger/health.js";
 import type { RuntimeStoreContext } from "./buildStoreContext.js";
 import type { LedgerStore } from "../ledger/store.js";
@@ -60,6 +67,9 @@ export interface ApplicationDependencies {
   recordExecutionResult: RecordExecutionResultUseCase;
   recordClmmExecutionResult: RecordClmmExecutionResultUseCase;
   getWeeklyReport: GetWeeklyReportUseCase;
+  ingestEvidenceBundle: IngestEvidenceBundleUseCase | null;
+  getCurrentEvidence: GetCurrentEvidenceUseCase | null;
+  getEvidenceHistory: GetEvidenceHistoryUseCase | null;
   ledgerStore: LedgerStore;
   insightsStore: InsightsStore | null;
   srThesesV2Store: SrThesesV2Store | null;
@@ -107,6 +117,17 @@ export const buildApplication = (ctx: RuntimeStoreContext): ApplicationDependenc
     candleReadPort
   });
 
+  const evidenceRepository = ctx.pg ? createPostgresEvidenceBundleRepository(ctx.pg) : null;
+  const ingestEvidenceBundle = evidenceRepository
+    ? createIngestEvidenceBundleUseCase({ repository: evidenceRepository, clock })
+    : null;
+  const getCurrentEvidence = evidenceRepository
+    ? createGetCurrentEvidenceUseCase({ repository: evidenceRepository, clock })
+    : null;
+  const getEvidenceHistory = evidenceRepository
+    ? createGetEvidenceHistoryUseCase({ repository: evidenceRepository, clock })
+    : null;
+
   const versionInfo: VersionInfo = {
     name: "regime-engine",
     version: process.env.npm_package_version ?? "0.1.0",
@@ -127,6 +148,9 @@ export const buildApplication = (ctx: RuntimeStoreContext): ApplicationDependenc
     recordExecutionResult,
     recordClmmExecutionResult,
     getWeeklyReport,
+    ingestEvidenceBundle,
+    getCurrentEvidence,
+    getEvidenceHistory,
     ledgerStore: ctx.ledger,
     insightsStore: ctx.insightsStore,
     srThesesV2Store: ctx.srThesesV2Store,

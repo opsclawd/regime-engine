@@ -324,6 +324,9 @@ describe("EvidenceBundle v1 validation", () => {
       const bundle = JSON.parse(fixtures.valid.deterministicOnly) as Record<string, unknown>;
       const otherValue = bundle[otherField] as string;
       bundle[field] = otherValue;
+      if (field === "asOf" && (bundle.createdAt as string) < otherValue) {
+        bundle.createdAt = otherValue;
+      }
       const result = validateEvidenceBundleV1(bundle);
       expect(result.ok).toBe(true);
     });
@@ -343,6 +346,31 @@ describe("EvidenceBundle v1 validation", () => {
       if (fieldValue < otherValue) {
         const result = validateEvidenceBundleV1(bundle);
         expect(result.ok).toBe(true);
+      }
+    });
+
+    it("accepts evidence assembled after its observation time", () => {
+      const bundle = JSON.parse(fixtures.valid.deterministicOnly) as Record<string, unknown>;
+      bundle.asOf = "2024-01-15T10:00:00.000Z";
+      bundle.createdAt = "2024-01-15T10:05:00.000Z";
+      bundle.freshUntil = "2024-01-15T11:00:00.000Z";
+      bundle.expiresAt = "2024-01-15T12:00:00.000Z";
+      const result = validateEvidenceBundleV1(bundle);
+      expect(result.ok).toBe(true);
+    });
+
+    it("rejects evidence whose createdAt precedes asOf", () => {
+      const bundle = JSON.parse(fixtures.valid.deterministicOnly) as Record<string, unknown>;
+      bundle.asOf = "2024-01-15T10:05:00.000Z";
+      bundle.createdAt = "2024-01-15T10:00:00.000Z";
+      bundle.freshUntil = "2024-01-15T11:00:00.000Z";
+      bundle.expiresAt = "2024-01-15T12:00:00.000Z";
+      const result = validateEvidenceBundleV1(bundle);
+      expect(result.ok).toBe(false);
+      if (!result.ok) {
+        const issue = result.issues.find((i) => i.path === "/createdAt" && i.code === "SEMANTIC");
+        expect(issue).toBeDefined();
+        expect(issue?.message).toMatch(/createdAt.*must not be before.*asOf/);
       }
     });
   });
