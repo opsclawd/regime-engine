@@ -10,7 +10,9 @@ const __repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const SCHEMA_PATH = resolve(__repoRoot, "contracts/evidence-bundle/v1/evidence-bundle.schema.json");
 const TYPES_PATH = resolve(__repoRoot, "src/contract/evidence/v1/types.generated.ts");
 const SHA256_PATH = resolve(__repoRoot, "contracts/evidence-bundle/v1/schema.sha256");
+const VECTORS_PATH = resolve(__repoRoot, "contracts/evidence-bundle/v1/hash-vectors.json");
 const SCHEMA_RELATIVE = "contracts/evidence-bundle/v1/evidence-bundle.schema.json";
+const FIXTURES_DIR = resolve(__repoRoot, "contracts/evidence-bundle/v1/fixtures");
 
 interface CliArgs {
   mode: "--write" | "--check";
@@ -59,6 +61,158 @@ function computeSchemaDigest(schemaBytes: Buffer): string {
   return createHash("sha256").update(schemaBytes).digest("hex");
 }
 
+interface EvidenceHashVector {
+  name: string;
+  payload: unknown;
+  canonical: string;
+  utf8ByteLength: number;
+  sha256: string;
+  schemaSha256: string;
+}
+
+interface HashVectorsDocument {
+  schemaSha256: string;
+  vectors: EvidenceHashVector[];
+}
+
+const formatNumber = (value: number): string => {
+  if (!Number.isFinite(value)) {
+    throw new TypeError("Canonical JSON does not support non-finite numbers.");
+  }
+
+  const normalized = Object.is(value, -0) ? 0 : value;
+  return JSON.stringify(normalized);
+};
+
+const isPlainObject = (value: unknown): value is Record<string, unknown> => {
+  if (value === null || typeof value !== "object" || Array.isArray(value)) {
+    return false;
+  }
+
+  const prototype = Object.getPrototypeOf(value);
+  return prototype === Object.prototype || prototype === null;
+};
+
+const canonicalize = (value: unknown): string => {
+  if (value === null) {
+    return "null";
+  }
+
+  if (typeof value === "number") {
+    return formatNumber(value);
+  }
+
+  if (typeof value === "string" || typeof value === "boolean") {
+    return JSON.stringify(value);
+  }
+
+  if (Array.isArray(value)) {
+    const items = value.map((item) => canonicalize(item));
+    return `[${items.join(",")}]`;
+  }
+
+  if (isPlainObject(value)) {
+    const keys = Object.keys(value).sort();
+    const entries = keys.map((key) => `${JSON.stringify(key)}:${canonicalize(value[key])}`);
+    return `{${entries.join(",")}}`;
+  }
+
+  throw new TypeError(
+    `Canonical JSON only supports plain objects, arrays, primitives, and null. Received ${typeof value}.`
+  );
+};
+
+const toCanonicalJson = (value: unknown): string => {
+  return canonicalize(value);
+};
+
+const sha256Hex = (input: string): string => {
+  return createHash("sha256").update(input, "utf8").digest("hex");
+};
+
+const createVector = (name: string, payload: unknown, schemaDigest: string): EvidenceHashVector => {
+  const canonical = toCanonicalJson(payload);
+  const utf8ByteLength = Buffer.byteLength(canonical, "utf8");
+  const sha256 = sha256Hex(canonical);
+
+  return {
+    name,
+    payload,
+    canonical,
+    utf8ByteLength,
+    sha256,
+    schemaSha256: schemaDigest
+  };
+};
+
+const loadFixture = (path: string): unknown => {
+  return JSON.parse(readFileSync(path, "utf-8"));
+};
+
+function generateVectors(schemaDigest: string): HashVectorsDocument {
+  const deterministicOnlyPayload = loadFixture(
+    resolve(FIXTURES_DIR, "valid/deterministic-only.json")
+  );
+  const contextualPayload = loadFixture(resolve(FIXTURES_DIR, "valid/contextual.json"));
+
+  const vectors: EvidenceHashVector[] = [
+    createVector("valid/deterministic-only", deterministicOnlyPayload, schemaDigest),
+    createVector("valid/contextual", contextualPayload, schemaDigest),
+
+    createVector("object-key-order-independence", { a: 1, b: 2, c: 3 }, schemaDigest),
+    createVector("array-order-matters", [1, 2, 3], schemaDigest),
+
+    createVector("negative-zero-normalization", { value: -0 }, schemaDigest),
+    createVector("exponent-formatting", { value: 1.23e4 }, schemaDigest),
+    createVector("large-integer", { value: 1234567890123456 }, schemaDigest),
+
+    createVector("non-ASCII-string", { text: "こんにちは世界" }, schemaDigest),
+    createVector("emoji-in-string", { text: "Hello 👋 World 🌍" }, schemaDigest),
+    createVector("mixed-unicode", { text: "café_résumé_₿" }, schemaDigest),
+
+    createVector("empty-object", {}, schemaDigest),
+    createVector("empty-array", [], schemaDigest),
+    createVector("nested-empty-structures", { a: {}, b: [], c: { d: {} } }, schemaDigest),
+
+    createVector("boolean-true", true, schemaDigest),
+    createVector("boolean-false", false, schemaDigest),
+    createVector("null-value", null, schemaDigest),
+    createVector("zero", 0, schemaDigest),
+    createVector("positive-integer", 42, schemaDigest),
+    createVector("negative-integer", -42, schemaDigest),
+    createVector("positive-float", 3.14159, schemaDigest),
+    createVector("negative-float", -3.14159, schemaDigest),
+
+    createVector("string-with-newline", { text: "line1\nline2" }, schemaDigest),
+    createVector("string-with-tab", { text: "col1\tcol2" }, schemaDigest),
+    createVector("string-with-backslash", { text: "path\\to\\file" }, schemaDigest),
+    createVector("string-with-quote", { text: 'say "hello"' }, schemaDigest),
+
+    createVector("array-with-mixed-types", [1, "two", true, null, { key: "value" }], schemaDigest),
+    createVector("deeply-nested-object", { a: { b: { c: { d: { e: 1 } } } } }, schemaDigest),
+    createVector("wide-object", { a: 1, b: 2, c: 3, d: 4, e: 5, f: 6, g: 7, h: 8 }, schemaDigest)
+  ];
+
+  return {
+    schemaSha256: schemaDigest,
+    vectors
+  };
+}
+
+async function generateVectorsFormatted(vectors: HashVectorsDocument): Promise<string> {
+  const content = JSON.stringify(vectors, null, 2) + "\n";
+  const formatted = await prettier.format(content, {
+    parser: "json",
+    printWidth: 100,
+    tabWidth: 2,
+    useTabs: false,
+    singleQuote: false,
+    semi: false,
+    trailingComma: "none"
+  });
+  return formatted;
+}
+
 async function main() {
   const { mode } = parseArgs();
 
@@ -68,6 +222,8 @@ async function main() {
 
   const expectedSha256Content = `${digest}  ${SCHEMA_RELATIVE}\n`;
   const expectedTypesContent = await generateTypes(schemaContent, digest);
+  const expectedVectors = generateVectors(digest);
+  const expectedVectorsContent = await generateVectorsFormatted(expectedVectors);
 
   if (mode === "--check") {
     let hasStale = false;
@@ -91,6 +247,17 @@ async function main() {
       }
     } catch {
       console.error(`MISSING: ${TYPES_PATH}`);
+      hasStale = true;
+    }
+
+    try {
+      const existingVectorsBytes = readFileSync(VECTORS_PATH);
+      if (existingVectorsBytes.toString("utf-8") !== expectedVectorsContent) {
+        console.error(`STALE: ${VECTORS_PATH}`);
+        hasStale = true;
+      }
+    } catch {
+      console.error(`MISSING: ${VECTORS_PATH}`);
       hasStale = true;
     }
 
@@ -121,6 +288,17 @@ async function main() {
     } catch {
       writeFileSync(TYPES_PATH, expectedTypesContent);
       console.log(`WROTE: ${TYPES_PATH}`);
+    }
+
+    try {
+      const existingVectorsBytes = readFileSync(VECTORS_PATH);
+      if (existingVectorsBytes.toString("utf-8") !== expectedVectorsContent) {
+        writeFileSync(VECTORS_PATH, expectedVectorsContent);
+        console.log(`WROTE: ${VECTORS_PATH}`);
+      }
+    } catch {
+      writeFileSync(VECTORS_PATH, expectedVectorsContent);
+      console.log(`WROTE: ${VECTORS_PATH}`);
     }
 
     return;
