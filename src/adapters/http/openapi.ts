@@ -43,8 +43,12 @@ export const buildOpenApiDocument = () => {
         EvidenceReceipt: {
           type: "object",
           additionalProperties: false,
-          required: ["receiptId", "receivedAt"],
+          required: ["schemaVersion", "status", "runId", "evidenceHash", "receiptId", "receivedAt"],
           properties: {
+            schemaVersion: { type: "string" },
+            status: { type: "string" },
+            runId: { type: "string" },
+            evidenceHash: { type: "string" },
             receiptId: { type: "integer" },
             receivedAt: { type: "string", format: "date-time" }
           }
@@ -52,30 +56,28 @@ export const buildOpenApiDocument = () => {
         EvidenceCurrentResponse: {
           type: "object",
           additionalProperties: false,
-          required: [
-            "receiptId",
-            "receivedAt",
-            "queriedAt",
-            "bundle",
-            "evidenceHash",
-            "freshness",
-            "nextCursor"
-          ],
+          required: ["schemaVersion", "pair", "scope", "queriedAt", "items"],
           properties: {
-            receiptId: { type: "integer" },
-            receivedAt: { type: "string", format: "date-time" },
+            schemaVersion: { type: "string" },
+            pair: { type: "string" },
+            scope: { type: "string" },
             queriedAt: { type: "string", format: "date-time" },
-            bundle: { $ref: "#/components/schemas/EvidenceBundleV1" },
-            evidenceHash: { type: "string" },
-            freshness: { $ref: "#/components/schemas/EvidenceFreshness" },
-            nextCursor: { type: "string", nullable: true }
+            items: {
+              type: "array",
+              items: { $ref: "#/components/schemas/EvidenceRecord" }
+            }
           }
         },
         EvidenceHistoryResponse: {
           type: "object",
           additionalProperties: false,
-          required: ["items", "nextCursor"],
+          required: ["schemaVersion", "pair", "scope", "queriedAt", "limit", "items", "nextCursor"],
           properties: {
+            schemaVersion: { type: "string" },
+            pair: { type: "string" },
+            scope: { type: "string" },
+            queriedAt: { type: "string", format: "date-time" },
+            limit: { type: "integer" },
             items: {
               type: "array",
               items: { $ref: "#/components/schemas/EvidenceRecord" }
@@ -101,6 +103,7 @@ export const buildOpenApiDocument = () => {
                   items: {
                     type: "object",
                     additionalProperties: false,
+                    required: ["path", "code", "message"],
                     properties: {
                       path: { type: "string" },
                       code: { type: "string" },
@@ -781,6 +784,10 @@ export const buildOpenApiDocument = () => {
                 "application/json": {
                   schema: { $ref: "#/components/schemas/EvidenceReceipt" },
                   example: {
+                    schemaVersion: "1.0",
+                    status: "duplicate",
+                    runId: "run-123",
+                    evidenceHash: "abc123",
                     receiptId: 42,
                     receivedAt: "2026-07-18T12:00:00.000Z"
                   }
@@ -793,6 +800,10 @@ export const buildOpenApiDocument = () => {
                 "application/json": {
                   schema: { $ref: "#/components/schemas/EvidenceReceipt" },
                   example: {
+                    schemaVersion: "1.0",
+                    status: "created",
+                    runId: "run-123",
+                    evidenceHash: "abc123",
                     receiptId: 42,
                     receivedAt: "2026-07-18T12:00:00.000Z"
                   }
@@ -811,7 +822,7 @@ export const buildOpenApiDocument = () => {
               description: "Invalid or missing X-Evidence-Ingest-Token"
             },
             "409": {
-              description: "Conflict: same runId/correlationId with different payload"
+              description: "Conflict: same source+runId, different payload"
             },
             "413": {
               description: "Payload too large (max 4MB)"
@@ -876,18 +887,24 @@ export const buildOpenApiDocument = () => {
                 "application/json": {
                   schema: { $ref: "#/components/schemas/EvidenceCurrentResponse" },
                   example: {
-                    receiptId: 42,
-                    receivedAt: "2026-07-18T12:00:00.000Z",
+                    schemaVersion: "1.0",
+                    pair: "SOL/USDC",
+                    scope: "pair",
                     queriedAt: "2026-07-18T12:30:00.000Z",
-                    bundle: {},
-                    evidenceHash: "abc123",
-                    freshness: {
-                      status: "FRESH",
-                      asOf: "2026-07-18T12:00:00.000Z",
-                      freshUntil: "2026-07-18T18:00:00.000Z",
-                      expiresAt: "2026-07-19T12:00:00.000Z"
-                    },
-                    nextCursor: null
+                    items: [
+                      {
+                        bundle: {},
+                        evidenceHash: "abc123",
+                        receiptId: 42,
+                        receivedAt: "2026-07-18T12:00:00.000Z",
+                        freshness: {
+                          status: "FRESH",
+                          asOf: "2026-07-18T12:00:00.000Z",
+                          freshUntil: "2026-07-18T18:00:00.000Z",
+                          expiresAt: "2026-07-19T12:00:00.000Z"
+                        }
+                      }
+                    ]
                   }
                 }
               }

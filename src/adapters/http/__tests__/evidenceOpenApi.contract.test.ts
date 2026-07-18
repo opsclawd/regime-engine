@@ -210,10 +210,12 @@ describe("Evidence OpenAPI contract", () => {
       const okResponse = getOp?.responses?.["200"];
       const example = okResponse?.content?.["application/json"]?.example;
       expect(example).toBeDefined();
-      expect(example).toHaveProperty("receiptId");
-      expect(example).toHaveProperty("receivedAt");
+      expect(example).toHaveProperty("schemaVersion");
+      expect(example).toHaveProperty("pair");
+      expect(example).toHaveProperty("scope");
       expect(example).toHaveProperty("queriedAt");
-      expect(example).toHaveProperty("nextCursor");
+      expect(example).toHaveProperty("items");
+      expect(example).not.toHaveProperty("nextCursor");
     });
 
     it("GET /v1/evidence/history response examples use handler field names", () => {
