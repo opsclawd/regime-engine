@@ -402,11 +402,20 @@ async function main() {
       if (newDocsContent !== existingDocsContent) {
         writeFileSync(DOCS_PATH, newDocsContent);
         console.log(`WROTE: ${DOCS_PATH}`);
+      } else if (
+        !DOCS_SCHEMA_MARKER.test(existingDocsContent) &&
+        !DOCS_VISIBLE_SCHEMA_DIGEST.test(existingDocsContent)
+      ) {
+        writeFileSync(
+          DOCS_PATH,
+          `# EvidenceBundle v1 Contract Specification\n\n${markerReplacement}\n\n${visibleReplacement}\n`
+        );
+        console.log(`WROTE: ${DOCS_PATH}`);
       }
     } catch {
       writeFileSync(
         DOCS_PATH,
-        `# EvidenceBundle v1 Contract Specification\n\n${markerReplacement}\n`
+        `# EvidenceBundle v1 Contract Specification\n\n${markerReplacement}\n\n${visibleReplacement}\n`
       );
       console.log(`WROTE: ${DOCS_PATH}`);
     }

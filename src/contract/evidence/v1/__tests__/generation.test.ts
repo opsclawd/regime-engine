@@ -1,12 +1,5 @@
 import { createHash, randomUUID } from "node:crypto";
-import {
-  existsSync,
-  readFileSync,
-  readdirSync,
-  statSync,
-  writeFileSync,
-  unlinkSync
-} from "node:fs";
+import { readFileSync, readdirSync, statSync, writeFileSync, unlinkSync } from "node:fs";
 import { execFile } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { resolve, join } from "node:path";
@@ -88,10 +81,15 @@ describe("EvidenceBundle v1 generation", () => {
     const vectorsPath = resolve(distEvidenceRoot, "hash-vectors.json");
     const fixturesDir = resolve(distEvidenceRoot, "fixtures");
 
-    expect(existsSync(schemaPath), "schema.json must exist in dist").toBe(true);
-    expect(existsSync(sha256Path), "schema.sha256 must exist in dist").toBe(true);
-    expect(existsSync(vectorsPath), "hash-vectors.json must exist in dist").toBe(true);
-    expect(existsSync(fixturesDir), "fixtures directory must exist in dist").toBe(true);
+    expect(() => statSync(schemaPath).isFile(), "schema.json must be a file in dist").toBe(true);
+    expect(() => statSync(sha256Path).isFile(), "schema.sha256 must be a file in dist").toBe(true);
+    expect(() => statSync(vectorsPath).isFile(), "hash-vectors.json must be a file in dist").toBe(
+      true
+    );
+    expect(
+      () => statSync(fixturesDir).isDirectory(),
+      "fixtures directory must be a directory in dist"
+    ).toBe(true);
 
     expect(areDirectoryContentsIdentical(sourceEvidenceRoot, distEvidenceRoot)).toBe(true);
   });
