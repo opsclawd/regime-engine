@@ -10,7 +10,7 @@ import {
 import type { GetEvidenceHistoryUseCase } from "../../../application/use-cases/getEvidenceHistoryUseCase.js";
 
 export const ERROR_CODES = {
-  SERVICE_UNAVAILABLE: "SERVICE_UNAVAILABLE",
+  EVIDENCE_STORE_UNAVAILABLE: "EVIDENCE_STORE_UNAVAILABLE",
   INTERNAL_ERROR: "INTERNAL_ERROR"
 } as const;
 
@@ -20,7 +20,7 @@ export const createEvidenceHistoryHandler = (useCase: GetEvidenceHistoryUseCase 
       return reply.code(503).send({
         schemaVersion: EVIDENCE_SCHEMA_VERSION,
         error: {
-          code: ERROR_CODES.SERVICE_UNAVAILABLE,
+          code: ERROR_CODES.EVIDENCE_STORE_UNAVAILABLE,
           message: "Evidence store is not available (no DATABASE_URL configured)",
           details: []
         }

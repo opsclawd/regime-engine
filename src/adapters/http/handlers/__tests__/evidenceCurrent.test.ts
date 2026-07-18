@@ -83,7 +83,7 @@ describe("createEvidenceCurrentHandler", () => {
       expect(response.statusCode).toBe(503);
       const body = JSON.parse(response.body);
       expect(body.schemaVersion).toBe(EVIDENCE_SCHEMA_VERSION);
-      expect(body.error.code).toBe("SERVICE_UNAVAILABLE");
+      expect(body.error.code).toBe("EVIDENCE_STORE_UNAVAILABLE");
       expect(body.error.details).toEqual([]);
     });
 

@@ -77,7 +77,7 @@ describe("evidenceRoutes e2e", () => {
       });
       expect(response.statusCode).toBe(503);
       const body = response.json() as { error?: { code?: string } };
-      expect(body.error?.code).toBe("SERVICE_UNAVAILABLE");
+      expect(body.error?.code).toBe("EVIDENCE_STORE_UNAVAILABLE");
       await app.close();
     });
 
@@ -89,7 +89,7 @@ describe("evidenceRoutes e2e", () => {
       });
       expect(response.statusCode).toBe(503);
       const body = response.json() as { error?: { code?: string } };
-      expect(body.error?.code).toBe("SERVICE_UNAVAILABLE");
+      expect(body.error?.code).toBe("EVIDENCE_STORE_UNAVAILABLE");
       await app.close();
     });
 
