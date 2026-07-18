@@ -56,11 +56,11 @@ export const evidenceScopeKey = (scope: Scope): string => {
     case "wallet":
       return `wallet:${scope.walletAddress}`;
     case "position":
-      return [
-        "position",
-        LENGTH_PREFIX(scope.walletAddress),
-        LENGTH_PREFIX(scope.whirlpoolAddress),
+      return (
+        "position:" +
+        LENGTH_PREFIX(scope.walletAddress) +
+        LENGTH_PREFIX(scope.whirlpoolAddress) +
         LENGTH_PREFIX(scope.positionId)
-      ].join(":");
+      );
   }
 };

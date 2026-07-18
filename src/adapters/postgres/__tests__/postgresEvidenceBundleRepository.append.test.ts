@@ -176,7 +176,7 @@ describe.skipIf(!process.env.DATABASE_URL)("postgresEvidenceBundleRepository.app
     });
   });
 
-  describe("returns already_ingested when same payload is appended again", () => {
+  describe("returns already_ingested for an identical source run replay", () => {
     it("returns already_ingested with same receipt when same hash and canonical", async () => {
       const bundle = createTestBundle({
         source: {
@@ -255,79 +255,108 @@ describe.skipIf(!process.env.DATABASE_URL)("postgresEvidenceBundleRepository.app
     });
   });
 
-  describe("fails when a losing append is attempted after winner", () => {
-    it("does not overwrite existing row when conflict is detected", async () => {
+  describe("fails when a losing append cannot load the winning row", () => {
+    it("throws AppendOnlyInvariantViolation when conflict detected but winning row not found", async () => {
       const bundle = createTestBundle({
         source: {
           publisher: TEST_PUBLISHER,
-          sourceId: "test-source-losing-001",
+          sourceId: "test-source-missing-winner-001",
           sourceVersion: "1.0.0"
         },
-        runId: "test-run-losing-001"
+        runId: "test-run-missing-winner-001"
       });
 
-      const first = await repository.append({
+      await repository.append({
         bundle,
         payloadCanonical: CANONICAL_PAYLOAD,
         payloadHash: PAYLOAD_HASH,
         receivedAtUnixMs: Date.now()
       });
 
-      const winningHash = "c".repeat(64);
-      const winningCanonical = JSON.stringify({ price: 170.0 });
-
-      const second = await repository.append({
-        bundle,
-        payloadCanonical: winningCanonical,
-        payloadHash: winningHash,
-        receivedAtUnixMs: Date.now() + 1000
-      });
-
-      expect(second.status).toBe("created");
-      expect(second.receipt.id).not.toBe(first.receipt.id);
-
-      const rows = await db.execute(sql`
-        SELECT id, evidence_hash FROM regime_engine.evidence_bundles
+      await db.execute(sql`
+        DELETE FROM regime_engine.evidence_bundles
         WHERE source_publisher = ${TEST_PUBLISHER}
-          AND source_id = 'test-source-losing-001'
-          AND run_id = 'test-run-losing-001'
-        ORDER BY id DESC
+          AND source_id = 'test-source-missing-winner-001'
+          AND run_id = 'test-run-missing-winner-001'
       `);
 
-      expect(rows).toHaveLength(2);
-    });
-
-    it("throws when appending a lower-priority run for same source after winner exists", async () => {
-      const bundle = createTestBundle({
-        source: {
-          publisher: TEST_PUBLISHER,
-          sourceId: "test-source-priority-001",
-          sourceVersion: "1.0.0"
-        },
-        runId: "test-run-priority-001"
-      });
-
-      const winnerHash = "d".repeat(64);
-      const winnerCanonical = JSON.stringify({ price: 180.0 });
-
-      await repository.append({
-        bundle,
-        payloadCanonical: winnerCanonical,
-        payloadHash: winnerHash,
-        receivedAtUnixMs: Date.now()
-      });
-
-      const loserHash = "e".repeat(64);
-      const loserCanonical = JSON.stringify({ price: 175.0 });
+      const differentHash = "c".repeat(64);
+      const differentCanonical = JSON.stringify({ price: 160.0 });
 
       await expect(
         repository.append({
           bundle,
-          payloadCanonical: loserCanonical,
-          payloadHash: loserHash,
-          receivedAtUnixMs: Date.now() + 500
+          payloadCanonical: differentCanonical,
+          payloadHash: differentHash,
+          receivedAtUnixMs: Date.now()
         })
-      ).rejects.toThrow(EvidenceRunConflictError);
+      ).rejects.toThrow("Append-only invariant violated");
+    });
+  });
+
+  describe("concurrent appends", () => {
+    it("both succeed when concurrent identical replays return same result", async () => {
+      const bundle = createTestBundle({
+        source: {
+          publisher: TEST_PUBLISHER,
+          sourceId: "test-source-concurrent-identical-001",
+          sourceVersion: "1.0.0"
+        },
+        runId: "test-run-concurrent-identical-001"
+      });
+
+      const [first, second] = await Promise.all([
+        repository.append({
+          bundle,
+          payloadCanonical: CANONICAL_PAYLOAD,
+          payloadHash: PAYLOAD_HASH,
+          receivedAtUnixMs: Date.now()
+        }),
+        repository.append({
+          bundle,
+          payloadCanonical: CANONICAL_PAYLOAD,
+          payloadHash: PAYLOAD_HASH,
+          receivedAtUnixMs: Date.now() + 1
+        })
+      ]);
+
+      expect(first.status).toBe("created");
+      expect(second.status).toBe("already_ingested");
+      expect(second.receipt.id).toBe(first.receipt.id);
+    });
+
+    it("first wins and second throws when concurrent different payloads race", async () => {
+      const bundle = createTestBundle({
+        source: {
+          publisher: TEST_PUBLISHER,
+          sourceId: "test-source-concurrent-diff-001",
+          sourceVersion: "1.0.0"
+        },
+        runId: "test-run-concurrent-diff-001"
+      });
+
+      const differentHash = "b".repeat(64);
+      const differentCanonical = JSON.stringify({ price: 160.0 });
+
+      const results = await Promise.allSettled([
+        repository.append({
+          bundle,
+          payloadCanonical: CANONICAL_PAYLOAD,
+          payloadHash: PAYLOAD_HASH,
+          receivedAtUnixMs: Date.now()
+        }),
+        repository.append({
+          bundle,
+          payloadCanonical: differentCanonical,
+          payloadHash: differentHash,
+          receivedAtUnixMs: Date.now() + 1
+        })
+      ]);
+
+      const statuses = results.map((r) => (r.status === "fulfilled" ? r.value.status : "rejected"));
+
+      expect(statuses).toContain("created");
+      expect(statuses).toContain("rejected");
     });
   });
 });
