@@ -6,7 +6,7 @@ import type { EvidenceBundleRecord } from "../../../../application/ports/evidenc
 import type { EvidenceBundleV1 } from "../../../../contract/evidence/v1/types.generated.js";
 import { encodeEvidenceCursor } from "../../../http/evidenceHttp.js";
 
-const EVIDENCE_SCHEMA_VERSION = "1.0";
+const EVIDENCE_SCHEMA_VERSION = "evidence-bundle.v1";
 
 const MOCK_BUNDLE_PAIR = {
   schemaVersion: "evidence-bundle.v1" as const,

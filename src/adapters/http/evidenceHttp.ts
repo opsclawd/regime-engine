@@ -1,7 +1,7 @@
 import type { Scope } from "../../contract/evidence/v1/types.generated.js";
 import type { EvidenceBundleRecord } from "../../application/ports/evidenceBundleRepositoryPort.js";
 
-export const EVIDENCE_SCHEMA_VERSION = "1.0" as const;
+export const EVIDENCE_SCHEMA_VERSION = "evidence-bundle.v1" as const;
 export const EVIDENCE_BODY_LIMIT_BYTES = 4 * 1024 * 1024;
 
 export interface EvidenceHttpErrorDetail {

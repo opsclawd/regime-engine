@@ -7,7 +7,7 @@ import type { EvidenceBundleV1 } from "../../../../contract/evidence/v1/types.ge
 import type { Scope } from "../../../../contract/evidence/v1/types.generated.js";
 import { EvidenceLifecycle } from "../../../../application/ports/evidenceBundleRepositoryPort.js";
 
-const EVIDENCE_SCHEMA_VERSION = "1.0";
+const EVIDENCE_SCHEMA_VERSION = "evidence-bundle.v1";
 
 const MOCK_BUNDLE_PAIR = {
   schemaVersion: "evidence-bundle.v1" as const,

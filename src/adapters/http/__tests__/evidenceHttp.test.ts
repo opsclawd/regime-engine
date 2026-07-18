@@ -73,7 +73,7 @@ const createMockRecord = (overrides: Partial<EvidenceBundleRecord> = {}): Eviden
 describe("evidenceHttp", () => {
   describe("constants", () => {
     it("exports EVIDENCE_SCHEMA_VERSION", () => {
-      expect(EVIDENCE_SCHEMA_VERSION).toBe("1.0");
+      expect(EVIDENCE_SCHEMA_VERSION).toBe("evidence-bundle.v1");
     });
 
     it("exports EVIDENCE_BODY_LIMIT_BYTES as 4MB", () => {
@@ -668,7 +668,7 @@ describe("evidenceHttp", () => {
 
       const response = evidenceErrorResponse(error);
 
-      expect(response.schemaVersion).toBe("1.0");
+      expect(response.schemaVersion).toBe("evidence-bundle.v1");
       expect(response.error.code).toBe("VALIDATION_ERROR");
       expect(response.error.message).toBe("Invalid query parameters");
       expect(response.error.details).toHaveLength(1);
