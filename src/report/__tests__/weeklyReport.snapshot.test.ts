@@ -8,6 +8,7 @@ import { createLedgerStore } from "../../ledger/store.js";
 import { writeExecutionResultLedgerEntry, writePlanLedgerEntry } from "../../ledger/writer.js";
 import { generateWeeklyReport } from "../weekly.js";
 import type { PlanRequest } from "../../contract/v1/types.js";
+import type { WeeklyReportData } from "../../application/ports/weeklyReportReadPort.js";
 
 const createdDbPaths: string[] = [];
 
@@ -125,83 +126,63 @@ const buildFixture = (asOfUnixMs: number): { input: PositionPlanInput; request: 
 
 describe("weekly report", () => {
   it("generates deterministic ledger-only markdown + JSON snapshots", () => {
-    const store = createLedgerStore(":memory:");
     const first = buildFixture(Date.parse("2026-01-05T00:00:00.000Z"));
     const second = buildFixture(Date.parse("2026-01-12T00:00:00.000Z"));
 
     const firstPlan = buildPositionPlan(first.input);
     const secondPlan = buildPositionPlan(second.input);
 
-    writePlanLedgerEntry(store, {
-      planRequest: first.request,
-      planResponse: firstPlan,
-      receivedAtUnixMs: first.request.asOfUnixMs
-    });
-    writePlanLedgerEntry(store, {
-      planRequest: second.request,
-      planResponse: secondPlan,
-      receivedAtUnixMs: second.request.asOfUnixMs
-    });
-
-    writeExecutionResultLedgerEntry(store, {
-      executionResult: {
-        schemaVersion: "1.0",
-        planId: firstPlan.planId,
-        planHash: firstPlan.planHash,
-        asOfUnixMs: first.request.asOfUnixMs,
-        actionResults: [
-          {
-            actionType: firstPlan.actions[0]?.type ?? "HOLD",
-            status: "SUCCESS"
+    const data: WeeklyReportData = {
+      window: {
+        from: "2026-01-01",
+        to: "2026-01-31",
+        fromUnixMs: 1767225600000,
+        toUnixMs: 1769903999999
+      },
+      plans: [
+        { asOfUnixMs: first.request.asOfUnixMs, plan: firstPlan },
+        { asOfUnixMs: second.request.asOfUnixMs, plan: secondPlan }
+      ],
+      planRequests: [
+        { asOfUnixMs: first.request.asOfUnixMs, request: first.request },
+        { asOfUnixMs: second.request.asOfUnixMs, request: second.request }
+      ],
+      executionResults: [
+        {
+          asOfUnixMs: first.request.asOfUnixMs,
+          result: {
+            schemaVersion: "1.0",
+            planId: firstPlan.planId,
+            planHash: firstPlan.planHash,
+            asOfUnixMs: first.request.asOfUnixMs,
+            actionResults: [
+              { actionType: firstPlan.actions[0]?.type ?? "HOLD", status: "SUCCESS" }
+            ],
+            costs: { txFeesUsd: 0.05, priorityFeesUsd: 0.01, slippageUsd: 0.1 },
+            portfolioAfter: { navUsd: 10_050, solUnits: 20.2, usdcUnits: 5_960 }
           }
-        ],
-        costs: {
-          txFeesUsd: 0.05,
-          priorityFeesUsd: 0.01,
-          slippageUsd: 0.1
         },
-        portfolioAfter: {
-          navUsd: 10_050,
-          solUnits: 20.2,
-          usdcUnits: 5_960
-        }
-      }
-    });
-
-    writeExecutionResultLedgerEntry(store, {
-      executionResult: {
-        schemaVersion: "1.0",
-        planId: secondPlan.planId,
-        planHash: secondPlan.planHash,
-        asOfUnixMs: second.request.asOfUnixMs,
-        actionResults: [
-          {
-            actionType: secondPlan.actions[0]?.type ?? "HOLD",
-            status: "FAILED"
+        {
+          asOfUnixMs: second.request.asOfUnixMs,
+          result: {
+            schemaVersion: "1.0",
+            planId: secondPlan.planId,
+            planHash: secondPlan.planHash,
+            asOfUnixMs: second.request.asOfUnixMs,
+            actionResults: [
+              { actionType: secondPlan.actions[0]?.type ?? "HOLD", status: "FAILED" }
+            ],
+            costs: { txFeesUsd: 0.07, priorityFeesUsd: 0.02, slippageUsd: 0.12 },
+            portfolioAfter: { navUsd: 9_920, solUnits: 19.7, usdcUnits: 6_050 }
           }
-        ],
-        costs: {
-          txFeesUsd: 0.07,
-          priorityFeesUsd: 0.02,
-          slippageUsd: 0.12
-        },
-        portfolioAfter: {
-          navUsd: 9_920,
-          solUnits: 19.7,
-          usdcUnits: 6_050
         }
-      }
-    });
+      ]
+    };
 
-    const report = generateWeeklyReport({
-      store,
-      from: "2026-01-01",
-      to: "2026-01-31"
-    });
+    const report = generateWeeklyReport({ data, candles: [] });
 
     expect(report.markdown).toMatchSnapshot();
     expect(report.summary).toMatchSnapshot();
-    store.close();
   });
 
   it("serves weekly report endpoint", async () => {

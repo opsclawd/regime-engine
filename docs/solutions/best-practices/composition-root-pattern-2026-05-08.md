@@ -43,12 +43,16 @@ export interface ApplicationDependencies {
 
 export const buildApplication = (storeContext: RuntimeStoreContext): ApplicationDependencies => {
   const executionResultWritePort = new SqliteExecutionLedgerAdapter(storeContext.store);
-  const weeklyReportReadPort = new SqliteWeeklyReportReadAdapter(storeContext.store);
+  const weeklyReportLedgerReadPort = new SqliteWeeklyReportLedgerAdapter(storeContext.store);
+  const candleReadPort = storeContext.candleReadPort;
 
   return {
     recordExecutionResult: createRecordExecutionResultUseCase({ executionResultWritePort }),
     recordClmmExecutionResult: createRecordClmmExecutionResultUseCase({ executionResultWritePort }),
-    getWeeklyReport: createGetWeeklyReportUseCase({ weeklyReportReadPort }),
+    getWeeklyReport: createGetWeeklyReportUseCase({
+      weeklyReportLedgerReadPort,
+      candleReadPort
+    }),
     checkHealth: () => storeContext.store.checkHealth(),
     versionInfo: () => ({ version: VERSION, commitSha: storeContext.commitSha })
   };

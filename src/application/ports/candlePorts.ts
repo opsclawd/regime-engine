@@ -44,4 +44,10 @@ export interface CandleWritePort {
 
 export interface CandleReadPort {
   getLatestCandlesForFeed(params: GetLatestCandlesParams): Promise<CandleRow[]>;
+  getCandlesForFeedWindow(params: GetCandlesForFeedWindowParams): Promise<CandleRow[]>;
+}
+
+export interface GetCandlesForFeedWindowParams extends CandleFeed {
+  fromUnixMs: number;
+  closedCandleCutoffUnixMs: number;
 }

@@ -6,7 +6,7 @@ This document is updated continuously as milestones land so it reflects reality.
 
 - A local-first **policy + analytics** microservice that produces deterministic trading plans.
 - It classifies market regime (**UP / DOWN / CHOP**) with hysteresis, applies churn governance, and outputs target exposures (**SOL/USDC bps**) plus **REQUEST\_\*** actions for an external execution service.
-- It maintains an append-only **truth ledger** of plan requests, plans, and execution results, and can generate weekly reports from the ledger only.
+- It maintains an append-only **truth ledger** of plan requests, plans, and execution results, and can generate weekly reports. Report facts come from the append-only ledger; baseline prices (SOL HODL, SOL DCA, USDC carry) come from the active canonical candle store.
 
 ## What Regime Engine is not
 
@@ -893,13 +893,14 @@ Behavior:
 
 ### `GET /v1/report/weekly?from=YYYY-MM-DD&to=YYYY-MM-DD`
 
-Returns weekly report output built from ledger only:
+Returns weekly report output:
+
+- Report facts (regime distribution, churn/stand-down stats, execution success + costs) come from the append-only ledger.
+- Baseline prices (SOL HODL, SOL DCA, USDC carry) come from the active canonical candle store (SQLite or PostgreSQL `CandleReadPort`).
+
+Output:
 
 - markdown report + JSON summary
-- regime distribution
-- churn / stand-down stats
-- execution success + costs (as reported by Autopilot)
-- baselines: SOL HODL, SOL DCA, USDC carry
 
 ## How Regime Engine interacts with the CLMM Autopilot microservice
 
@@ -936,7 +937,7 @@ Returns weekly report output built from ledger only:
 - `src/ledger/*`
   - sqlite schema, store, writer
 - `src/report/*`
-  - baselines, weekly report generator (ledger-only)
+  - baselines (from candle closes), weekly report generator (report facts from ledger, baselines from candle store)
 - `scripts/*`
   - harness to drive fixtures → plan → simulated results → report
 - `fixtures/*`

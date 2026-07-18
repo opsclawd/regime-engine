@@ -57,8 +57,13 @@ describe("buildApp composition", () => {
     const app = buildApp();
     const response = await app.inject({ method: "GET", url: "/v1/openapi.json" });
     expect(response.statusCode).toBe(200);
-    const doc = response.json() as { openapi: string };
+    const doc = response.json() as { openapi: string; paths?: Record<string, unknown> };
     expect(doc.openapi).toMatch(/^3\./);
+
+    const weeklySummary =
+      (doc.paths?.["/v1/report/weekly"] as { get?: { summary?: string } })?.get?.summary ?? "";
+    expect(weeklySummary).toMatch(/ledger/i);
+    expect(weeklySummary).toMatch(/candle/i);
 
     await app.close();
   });

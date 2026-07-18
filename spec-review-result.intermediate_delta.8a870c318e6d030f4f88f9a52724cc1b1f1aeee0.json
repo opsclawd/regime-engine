@@ -1,0 +1,11 @@
+{
+  "result": "fail",
+  "findings": [
+    {
+      "severity": "P2",
+      "summary": "The SQLite e2e test manually instantiates the use case with createSqliteCandleReadAdapter instead of using buildApplication(ctx), failing to prove the application's active-store selection when PostgreSQL is absent.",
+      "file": "src/composition/__tests__/weeklyReportCandleStore.e2e.test.ts",
+      "suggested_fix": "Replace the manual composition of candleReadPort, weeklyReportLedgerReadPort, and getWeeklyReport with `const app = buildApplication(ctx);` and call `await app.getWeeklyReport(...)`."
+    }
+  ]
+}

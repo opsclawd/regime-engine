@@ -1,0 +1,11 @@
+{
+  "result": "fail",
+  "findings": [
+    {
+      "severity": "P1",
+      "summary": "The `afterEach` hook deletes `process.env.DATABASE_URL`, which permanently removes the variable for the worker process and causes subsequent tests (including later tests in the same file) to crash with undefined errors when initializing the Postgres client.",
+      "file": "src/composition/__tests__/weeklyReportCandleStore.e2e.pg.test.ts",
+      "suggested_fix": "Remove `delete process.env.DATABASE_URL;` from the `afterEach` hooks. If environment isolation is needed, use `vi.stubEnv` and `vi.unstubAllEnvs()` instead of mutating `process.env` directly."
+    }
+  ]
+}

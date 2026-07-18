@@ -1,6 +1,6 @@
 # Regime Engine
 
-Regime Engine is the deterministic market-regime, support/resistance, insight-store, and execution-result ledger service for the SOL/USDC CLMM Autopilot system.
+Regime Engine is the deterministic market-regime, support/resistance, insight-store, and execution-result ledger service for the SOL/USDC CLMM Autopilot system. It does not execute trades; it emits REQUEST\_\* actions, persists truth records, and generates weekly reports. Report facts come from the append-only ledger; baseline prices (SOL HODL, SOL DCA, USDC carry) come from the active canonical candle store.
 
 It does not own the mobile app, wallet connection, position flow, Orca transaction assembly, or user signing surface. Those belong to `clmm-v2`.
 
