@@ -142,7 +142,7 @@ export const createPostgresEvidenceBundleRepository = (db: Db): EvidenceBundleRe
     getLatest: async ({ pair, scope, source, nowUnixMs }) => {
       const scopeKeyVal = evidenceScopeKey(scope);
 
-      if (source !== null && source.sourceId !== undefined) {
+      if (source !== null && source.publisher !== undefined && source.sourceId !== undefined) {
         const row = await db.execute(sql`
           SELECT
             id,
@@ -154,7 +154,7 @@ export const createPostgresEvidenceBundleRepository = (db: Db): EvidenceBundleRe
           FROM regime_engine.evidence_bundles
           WHERE pair = ${pair}
             AND scope_key = ${scopeKeyVal}
-            AND source_publisher = ${source.publisher ?? sql`source_publisher`}
+            AND source_publisher = ${source.publisher}
             AND source_id = ${source.sourceId}
           ORDER BY as_of_unix_ms DESC, received_at_unix_ms DESC, id DESC
           LIMIT 1
@@ -221,6 +221,7 @@ export const createPostgresEvidenceBundleRepository = (db: Db): EvidenceBundleRe
           WHERE pair = ${pair}
             AND scope_key = ${scopeKeyVal}
             ${source?.publisher ? sql`AND source_publisher = ${source.publisher}` : sql``}
+            ${source?.sourceId ? sql`AND source_id = ${source.sourceId}` : sql``}
         ) ranked
         WHERE rn = 1
         ORDER BY source_publisher, source_id
