@@ -1,7 +1,11 @@
-import { and, eq } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import type { Db } from "../../ledger/pg/db.js";
 import { evidenceBundles } from "../../ledger/pg/schema/evidenceBundles.js";
-import type { EvidenceBundleRepositoryPort } from "../../application/ports/evidenceBundleRepositoryPort.js";
+import type {
+  EvidenceBundleRecord,
+  EvidenceBundleRepositoryPort,
+  EvidenceLifecycle
+} from "../../application/ports/evidenceBundleRepositoryPort.js";
 import {
   EvidenceRunConflictError,
   evidenceScopeKey
@@ -10,6 +14,20 @@ import type { EvidenceBundleV1 } from "../../contract/evidence/v1/types.generate
 import { parseEvidenceBundleV1 } from "../../contract/evidence/v1/validate.js";
 
 const CANONICAL_TIMESTAMP_MS = (ts: string): number => new Date(ts).getTime();
+
+const deriveLifecycle = (
+  nowUnixMs: number,
+  freshUntilUnixMs: number,
+  expiresAtUnixMs: number
+): EvidenceLifecycle => {
+  if (nowUnixMs <= freshUntilUnixMs) {
+    return "FRESH";
+  }
+  if (nowUnixMs <= expiresAtUnixMs) {
+    return "STALE";
+  }
+  return "EXPIRED";
+};
 
 export const createPostgresEvidenceBundleRepository = (db: Db): EvidenceBundleRepositoryPort => {
   return {
@@ -119,6 +137,125 @@ export const createPostgresEvidenceBundleRepository = (db: Db): EvidenceBundleRe
         winner.evidenceHash,
         payloadHash
       );
+    },
+
+    getLatest: async ({ pair, scope, source, nowUnixMs }) => {
+      const scopeKeyVal = evidenceScopeKey(scope);
+
+      if (source !== null && source.sourceId !== undefined) {
+        const row = await db.execute(sql`
+          SELECT
+            id,
+            evidence_json,
+            evidence_hash,
+            received_at_unix_ms,
+            fresh_until_unix_ms,
+            expires_at_unix_ms
+          FROM regime_engine.evidence_bundles
+          WHERE pair = ${pair}
+            AND scope_key = ${scopeKeyVal}
+            AND source_publisher = ${source.publisher ?? sql`source_publisher`}
+            AND source_id = ${source.sourceId}
+          ORDER BY as_of_unix_ms DESC, received_at_unix_ms DESC, id DESC
+          LIMIT 1
+        `);
+
+        if (row.length === 0) {
+          return [];
+        }
+
+        type SingleRawRow = {
+          id: number;
+          evidence_json: unknown;
+          evidence_hash: string;
+          received_at_unix_ms: number;
+          fresh_until_unix_ms: number;
+          expires_at_unix_ms: number;
+        };
+
+        const raw = row[0] as unknown as SingleRawRow;
+
+        const bundle = parseEvidenceBundleV1(raw.evidence_json) as EvidenceBundleV1;
+        const lifecycle = deriveLifecycle(
+          nowUnixMs,
+          raw.fresh_until_unix_ms,
+          raw.expires_at_unix_ms
+        );
+
+        return [
+          {
+            id: raw.id,
+            bundle,
+            evidenceHash: raw.evidence_hash,
+            receivedAtUnixMs: raw.received_at_unix_ms,
+            lifecycle
+          }
+        ];
+      }
+
+      const rows = await db.execute(sql`
+        SELECT
+          id,
+          source_publisher,
+          source_id,
+          evidence_json,
+          evidence_hash,
+          received_at_unix_ms,
+          fresh_until_unix_ms,
+          expires_at_unix_ms
+        FROM (
+          SELECT
+            id,
+            source_publisher,
+            source_id,
+            evidence_json,
+            evidence_hash,
+            received_at_unix_ms,
+            fresh_until_unix_ms,
+            expires_at_unix_ms,
+            ROW_NUMBER() OVER (
+              PARTITION BY source_publisher, source_id
+              ORDER BY as_of_unix_ms DESC, received_at_unix_ms DESC, id DESC
+            ) AS rn
+          FROM regime_engine.evidence_bundles
+          WHERE pair = ${pair}
+            AND scope_key = ${scopeKeyVal}
+        ) ranked
+        WHERE rn = 1
+        ORDER BY source_publisher, source_id
+      `);
+
+      const records: EvidenceBundleRecord[] = [];
+
+      type RawRow = {
+        id: number;
+        source_publisher: string;
+        source_id: string;
+        evidence_json: unknown;
+        evidence_hash: string;
+        received_at_unix_ms: number;
+        fresh_until_unix_ms: number;
+        expires_at_unix_ms: number;
+      };
+
+      for (const raw of rows as unknown as RawRow[]) {
+        const bundle = parseEvidenceBundleV1(raw.evidence_json) as EvidenceBundleV1;
+        const lifecycle = deriveLifecycle(
+          nowUnixMs,
+          raw.fresh_until_unix_ms,
+          raw.expires_at_unix_ms
+        );
+
+        records.push({
+          id: raw.id,
+          bundle,
+          evidenceHash: raw.evidence_hash,
+          receivedAtUnixMs: raw.received_at_unix_ms,
+          lifecycle
+        });
+      }
+
+      return records;
     }
   };
 };

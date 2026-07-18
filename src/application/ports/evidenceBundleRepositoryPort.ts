@@ -33,6 +33,16 @@ export interface EvidenceScopeQuery {
   toUnixMs?: number;
 }
 
+export type EvidenceLifecycle = "FRESH" | "STALE" | "EXPIRED";
+
+export interface EvidenceBundleRecord {
+  readonly id: number;
+  readonly bundle: EvidenceBundleV1;
+  readonly evidenceHash: string;
+  readonly receivedAtUnixMs: number;
+  readonly lifecycle: EvidenceLifecycle;
+}
+
 export interface EvidenceBundleRepositoryPort {
   append(input: {
     bundle: EvidenceBundleV1;
@@ -43,6 +53,13 @@ export interface EvidenceBundleRepositoryPort {
     | { status: "created"; receipt: EvidenceBundleReceipt }
     | { status: "already_ingested"; receipt: EvidenceBundleReceipt }
   >;
+
+  getLatest(input: {
+    pair: "SOL/USDC";
+    scope: Scope;
+    source: EvidenceSourceFilter | null;
+    nowUnixMs: number;
+  }): Promise<EvidenceBundleRecord[]>;
 }
 
 const LENGTH_PREFIX = (s: string): string => `${s.length}:${s}`;
