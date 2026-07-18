@@ -293,7 +293,7 @@ function checkTimestampOrdering(bundle: EvidenceBundleV1, issues: EvidenceValida
     issues.push({
       path: "/createdAt",
       code: "SEMANTIC",
-      message: `createdAt (${bundle.createdAt}) must not be before asOf (${bundle.asOf})`
+      message: `createdAt (${bundle.createdAt}) must not be after asOf (${bundle.asOf})`
     });
   }
 
@@ -631,43 +631,45 @@ function checkAvailableFeatureValueKind(
   issues: EvidenceValidationIssue[]
 ): void {
   for (const feature of bundle.deterministicFeatures) {
-    if (feature.status !== "available") continue;
-
     const featureId = feature.featureId;
 
-    if (feature.featureKind === "number") {
-      if (typeof feature.value !== "number" || !Number.isFinite(feature.value)) {
-        issues.push({
-          path: `/deterministicFeatures/${featureId}/value`,
-          code: "SEMANTIC",
-          message: `Number feature ${featureId} must have finite numeric value`
-        });
+    if (feature.status === "available") {
+      if (feature.featureKind === "number") {
+        if (typeof feature.value !== "number" || !Number.isFinite(feature.value)) {
+          issues.push({
+            path: `/deterministicFeatures/${featureId}/value`,
+            code: "SEMANTIC",
+            message: `Number feature ${featureId} must have finite numeric value`
+          });
+        }
       }
-      if (feature.value === 0) {
-        issues.push({
-          path: `/deterministicFeatures/${featureId}/value`,
-          code: "SEMANTIC",
-          message: `Available number feature ${featureId} cannot have zero value (use unavailable status)`
-        });
-      }
-    }
 
-    if (feature.featureKind === "boolean") {
-      if (typeof feature.value !== "boolean") {
-        issues.push({
-          path: `/deterministicFeatures/${featureId}/value`,
-          code: "SEMANTIC",
-          message: `Boolean feature ${featureId} must have boolean value`
-        });
+      if (feature.featureKind === "boolean") {
+        if (typeof feature.value !== "boolean") {
+          issues.push({
+            path: `/deterministicFeatures/${featureId}/value`,
+            code: "SEMANTIC",
+            message: `Boolean feature ${featureId} must have boolean value`
+          });
+        }
       }
-    }
 
-    if (feature.featureKind === "category") {
-      if (typeof feature.value !== "string" || feature.value === "") {
+      if (feature.featureKind === "category") {
+        if (typeof feature.value !== "string" || feature.value === "") {
+          issues.push({
+            path: `/deterministicFeatures/${featureId}/value`,
+            code: "SEMANTIC",
+            message: `Category feature ${featureId} must have non-empty string value`
+          });
+        }
+      }
+    } else {
+      const value: unknown = feature.value;
+      if (value !== null) {
         issues.push({
           path: `/deterministicFeatures/${featureId}/value`,
           code: "SEMANTIC",
-          message: `Category feature ${featureId} must have non-empty string value`
+          message: `Feature ${featureId} has status ${feature.status} but value is not null`
         });
       }
     }
