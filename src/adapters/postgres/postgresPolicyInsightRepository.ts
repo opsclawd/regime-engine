@@ -1,11 +1,12 @@
-import { and, desc, eq } from "drizzle-orm";
+import { and, desc, eq, lt, or } from "drizzle-orm";
 import type { Db } from "../../ledger/pg/db.js";
 import { policyInsights } from "../../ledger/pg/schema/policyInsights.js";
 import type { PolicyInsightRow } from "../../ledger/pg/schema/policyInsights.js";
 import type {
   NewPolicyInsightRecord,
   PolicyInsightRepositoryPort,
-  StoredPolicyInsight
+  StoredPolicyInsight,
+  PolicyInsightHistoryCursor
 } from "../../application/ports/policyInsightRepositoryPort.js";
 import {
   PolicyInsightStoreUnavailableError,
@@ -328,6 +329,63 @@ export const createPostgresPolicyInsightRepository = (db: Db): PolicyInsightRepo
         }
 
         return mapRowToStoredInsight(rows[0]);
+      } catch (error) {
+        if (isTransientPostgresFailure(error)) {
+          throw new PolicyInsightStoreUnavailableError(undefined, { cause: error });
+        }
+        throw error;
+      }
+    },
+
+    getHistory: async ({ pair, scopeKey, limit, cursor }) => {
+      try {
+        const DEFAULT_LIMIT = 30;
+        const MIN_LIMIT = 1;
+        const MAX_LIMIT = 100;
+
+        const effectiveLimit = limit === undefined ? DEFAULT_LIMIT : limit;
+
+        if (effectiveLimit < MIN_LIMIT || effectiveLimit > MAX_LIMIT) {
+          throw new Error(`History limit must be between ${MIN_LIMIT} and ${MAX_LIMIT}`);
+        }
+
+        const queryLimit = effectiveLimit + 1;
+
+        const conditions = [eq(policyInsights.pair, pair), eq(policyInsights.scopeKey, scopeKey)];
+
+        if (cursor !== null) {
+          conditions.push(
+            or(
+              lt(policyInsights.generatedAtUnixMs, cursor.generatedAtUnixMs),
+              and(
+                eq(policyInsights.generatedAtUnixMs, cursor.generatedAtUnixMs),
+                lt(policyInsights.id, cursor.id)
+              )
+            )!
+          );
+        }
+
+        const rows = await db
+          .select()
+          .from(policyInsights)
+          .where(and(...conditions))
+          .orderBy(desc(policyInsights.generatedAtUnixMs), desc(policyInsights.id))
+          .limit(queryLimit);
+
+        const hasMore = rows.length > effectiveLimit;
+        const resultRows = rows.slice(0, effectiveLimit);
+        const records = resultRows.map(mapRowToStoredInsight);
+
+        let nextCursor: PolicyInsightHistoryCursor | null = null;
+        if (hasMore && records.length > 0) {
+          const lastRecord = records[records.length - 1];
+          nextCursor = {
+            generatedAtUnixMs: lastRecord.generatedAtUnixMs,
+            id: lastRecord.id
+          };
+        }
+
+        return { records, nextCursor };
       } catch (error) {
         if (isTransientPostgresFailure(error)) {
           throw new PolicyInsightStoreUnavailableError(undefined, { cause: error });

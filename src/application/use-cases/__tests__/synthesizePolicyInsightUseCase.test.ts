@@ -9,7 +9,8 @@ import type { SelectedEvidenceSummary } from "../../../engine/evidence/selectEvi
 import type {
   PolicyInsightRepositoryPort,
   NewPolicyInsightRecord,
-  StoredPolicyInsight
+  StoredPolicyInsight,
+  PolicyInsightHistoryCursor
 } from "../../ports/policyInsightRepositoryPort.js";
 import {
   createSynthesizePolicyInsightUseCase,
@@ -61,6 +62,13 @@ class FakePolicyInsightRepository implements PolicyInsightRepositoryPort {
         .filter((r) => r.pair === _input.pair && r.scopeKey === _input.scopeKey)
         .sort((a, b) => b.generatedAtUnixMs - a.generatedAtUnixMs || b.id - a.id)[0] || null
     );
+  }
+
+  async getHistory(): Promise<{
+    readonly records: readonly StoredPolicyInsight[];
+    readonly nextCursor: PolicyInsightHistoryCursor | null;
+  }> {
+    return { records: [], nextCursor: null };
   }
 }
 

@@ -46,4 +46,19 @@ export interface PolicyInsightRepositoryPort {
     readonly pair: "SOL/USDC";
     readonly scopeKey: string;
   }): Promise<StoredPolicyInsight | null>;
+
+  getHistory(input: {
+    readonly pair: "SOL/USDC";
+    readonly scopeKey: string;
+    readonly limit: number;
+    readonly cursor: PolicyInsightHistoryCursor | null;
+  }): Promise<{
+    readonly records: readonly StoredPolicyInsight[];
+    readonly nextCursor: PolicyInsightHistoryCursor | null;
+  }>;
+}
+
+export interface PolicyInsightHistoryCursor {
+  readonly generatedAtUnixMs: number;
+  readonly id: number;
 }

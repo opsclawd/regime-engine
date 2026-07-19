@@ -45,7 +45,8 @@ describe("getCurrentPolicyInsightUseCase", () => {
     const mockRepo: PolicyInsightRepositoryPort = {
       findBySynthesisInputHash: vi.fn(),
       insertOrGet: vi.fn(),
-      getCurrent: vi.fn().mockResolvedValue(null)
+      getCurrent: vi.fn().mockResolvedValue(null),
+      getHistory: vi.fn()
     };
 
     const useCase = createGetCurrentPolicyInsightUseCase({
@@ -67,7 +68,8 @@ describe("getCurrentPolicyInsightUseCase", () => {
     const mockRepo: PolicyInsightRepositoryPort = {
       findBySynthesisInputHash: vi.fn(),
       insertOrGet: vi.fn(),
-      getCurrent: vi.fn().mockResolvedValue(dummyRecord)
+      getCurrent: vi.fn().mockResolvedValue(dummyRecord),
+      getHistory: vi.fn()
     };
 
     const useCase = createGetCurrentPolicyInsightUseCase({
