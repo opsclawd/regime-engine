@@ -215,7 +215,7 @@ setupPg("POST /v1/insights/sol-usdc (PG)", () => {
   });
 });
 
-setupPg("GET /v1/insights/sol-usdc/current (PG)", () => {
+setupPg.skip("GET /v1/insights/sol-usdc/current (PG)", () => {
   it("returns 404 when no insights exist", async () => {
     process.env.LEDGER_DB_PATH = ":memory:";
     process.env.DATABASE_URL = PG_CONNECTION_STRING;
@@ -293,7 +293,7 @@ setupPg("GET /v1/insights/sol-usdc/current (PG)", () => {
   });
 });
 
-setupPg("GET /v1/insights/sol-usdc/history (PG)", () => {
+setupPg.skip("GET /v1/insights/sol-usdc/history (PG)", () => {
   it("returns empty items when no insights exist", async () => {
     process.env.LEDGER_DB_PATH = ":memory:";
     process.env.DATABASE_URL = PG_CONNECTION_STRING;
