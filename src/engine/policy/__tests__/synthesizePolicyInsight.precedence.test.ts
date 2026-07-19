@@ -208,4 +208,52 @@ describe("synthesizePolicyInsight - Precedence Guards", () => {
     // Since Stage 1 has higher precedence, recommendedAction must be "pause_rebalances"
     expect(result.recommendedAction).toBe("pause_rebalances");
   });
+
+  it("authoritative plan action HOLD locks recommended action to hold", () => {
+    const envelope: PolicySynthesisEnvelope = {
+      synthesisAtUnixMs: AS_OF,
+      pair: "SOL/USDC",
+      scope: positionScope,
+      market: makeMockMarketResponse({ regime: "UP" }),
+      positionPlan: {
+        position: makeMockPosition({
+          rangeState: "in-range"
+        }),
+        plan: makeMockPlan({
+          actions: [{ type: "HOLD", reasonCode: "MANUAL" }]
+        })
+      },
+      evidence: makeMockEvidenceSummary(),
+      hashes: { inputHash: "in-1", rulesetHash: "rules-1" }
+    };
+
+    const result = synthesizePolicyInsight(envelope, SOL_USDC_POLICY_V1);
+
+    expect(result.recommendedAction).toBe("hold");
+  });
+
+  it("does not incorrectly classify CLMM_BREACH_UPPER for non-breached positions or missing position details", () => {
+    const envelope: PolicySynthesisEnvelope = {
+      synthesisAtUnixMs: AS_OF,
+      pair: "SOL/USDC",
+      scope: positionScope,
+      market: makeMockMarketResponse({ regime: "UP" }),
+      positionPlan: {
+        position: makeMockPosition({
+          rangeState: "in-range"
+        }),
+        plan: makeMockPlan({
+          actions: [{ type: "REQUEST_EXIT_CLMM", reasonCode: "BREACH" }]
+        })
+      },
+      evidence: makeMockEvidenceSummary(),
+      hashes: { inputHash: "in-1", rulesetHash: "rules-1" }
+    };
+
+    const result = synthesizePolicyInsight(envelope, SOL_USDC_POLICY_V1);
+
+    expect(result.recommendedAction).toBe("exit_range");
+    expect(result.reasoning).not.toContain("CLMM_BREACH_UPPER");
+    expect(result.reasoning).not.toContain("CLMM_BREACH_LOWER");
+  });
 });

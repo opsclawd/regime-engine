@@ -197,9 +197,14 @@ export function synthesizePolicyInsight(
       allowClmm = false;
       if (envelope.positionPlan.position?.rangeState === "below-range") {
         reasoningSet.add("CLMM_BREACH_LOWER");
-      } else {
+      } else if (envelope.positionPlan.position?.rangeState === "above-range") {
         reasoningSet.add("CLMM_BREACH_UPPER");
       }
+    }
+
+    const holdAction = envelope.positionPlan.plan.actions.find((a) => a.type === "HOLD");
+    if (holdAction) {
+      actionLock ??= "hold";
     }
   }
 
