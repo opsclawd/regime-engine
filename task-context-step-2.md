@@ -1,6 +1,6 @@
 # Task Context: Task 2
 
-Title: Implement exact bundle and item scoring with terminal decisions
+Title: Implement hard-guard and market-regime precedence
 ## Workspace & Scope Constraints
 
 ## WORKSPACE CONSTRAINTS
@@ -9,140 +9,99 @@ Your working directory is a dedicated git worktree with the repository's complet
 
 .ai-orchestrator.local.json, if one exists, lives only in the main checkout and is intentionally not copied into your worktree — it is operator-machine-specific and not part of your task. Do not search for it or read it outside this directory. Reason about configuration using only .ai-orchestrator.json in your own working directory; treat it as the effective config for your task.
 
-Working Directory: /home/gary/.openclaw/workspace/regime-engine/.ai-worktrees/issue-60
+Working Directory: /home/gary/.openclaw/workspace/regime-engine/.ai-worktrees/issue-61
 Repository: opsclawd/regime-engine
-Branch: ai/issue-60
-Start Commit: 6a6956b3c169a8146d22f1b8f77b7c27de35d1b5
+Branch: ai/issue-61
+Start Commit: 8eb83b2403a525df9fbb640f75379bc56dc7bc3c
 
 ## Task Requirements
 
 **Files:**
 
-- Create: `src/engine/evidence/selectEvidence.ts`
-- Create: `src/engine/evidence/__tests__/evidenceSelectionFixtures.ts`
-- Create: `src/engine/evidence/__tests__/selectEvidence.scoring.test.ts`
+- Create: `src/engine/policy/synthesizePolicyInsight.ts`
+- Create: `src/engine/policy/__tests__/policyFixtures.ts`
+- Create: `src/engine/policy/__tests__/synthesizePolicyInsight.precedence.test.ts`
 
-**Exported API surface:** Add `SelectEvidenceInput`, `SelectedEvidenceSummary` and its named nested result/decision/lineage types, and `selectEvidence`. Keep the selector input limited to records, one instant, one exact scope, and policy; do not accept market state, plan state, or guards.
+**Invariants implemented first:**
 
-**Behavioral invariants to write as tests first:**
+- `hard-stale market locks pause posture and blocks CLMM despite bullish evidence`
+- `qualified lower breach remains exit_range under bullish contextual evidence`
+- `qualified upper breach remains exit_range under bearish contextual evidence`
+- `active stand-down prevents lower-precedence deployment increases`
+- `cooldown never permits higher sensitivity or capital than the baseline`
 
-- `selects fresh high-confidence features and claims with exact component scores`: exact formula uses confidence × source quality × provenance quality × minimum freshness divided by `10_000^3`, floors once with `bigint`, and returns a safe integer.
-- `downweights a stale bundle once and emits STALE_EVIDENCE_DOWNWEIGHTED`: stale bundle and stale feature use `min(bundle,item)` rather than multiplying stale twice.
-- `uses inclusive feature freshness and claim expiry boundaries`: equality is usable; strictly past feature freshness is stale and strictly past claim expiry is `CLAIM_EXPIRED`.
-- `excludes expired bundles and records every contained candidate as BUNDLE_EXPIRED`: expired evidence never reaches scoring or inclusion.
-- `excludes unavailable and invalid features with distinct terminal reasons`: unavailable and invalid candidates retain audit lineage but never score as selected.
-- `applies exact-source overrides before the conservative default and honors zero as disabled`: source keys are publisher+source qualified; publisher assessment cannot promote either path.
-- `applies calculator derived collected and human-authored provenance weights exactly`: deterministic features use calculator weight and each claim method uses its configured factor.
-- `excludes scores below threshold while retaining score components`: equality with the threshold is eligible; only lower scores are excluded.
-- `isolates scope and lifecycle metadata mismatches without corrupting valid peers`: mismatched records and their contents receive record mismatch reasons while valid records continue.
-- `rejects invalid input before returning partial output`: non-finite/non-integer/negative `selectedAtUnixMs`, invalid policy, or an impossible final score throws synchronously from the pure call.
+- [ ] **Step 1: Build canonical fixtures and write failing precedence tests**
 
-- [ ] **Step 1: Create contract-valid fixture builders and failing scoring tests**
+  Create builders for fixed #63-valid pair scope, market snapshots, optional position/plan context, and empty/full #60 summaries. Table-drive stages 1-4: hard stale/insufficient safety data, lower and upper qualified breaches, blocked active position, stand-down, cooldown, `UP`, `DOWN`, and `CHOP`/`ALLOWED`. Assert exact advisory action, posture, risk floor, confidence ceiling, CLMM permission, reason order, and expiry.
 
-  Builders must default to a fixed pair scope, source identity, canonical timestamps, at least one deterministic feature, at least one source reference, and internally consistent assessment/provenance. Expose overrides for source, lifecycle, feature/claim family, timestamps, confidence, provenance, brief, and references. Validate builder output with `parseEvidenceBundleV1` so tests cannot exercise impossible contract shapes accidentally.
+- [ ] **Step 2: Run the focused precedence suite and confirm RED**
 
-  In the exact arithmetic test, use factors that expose premature division/float rounding and assert the formula through a helper equivalent to:
+  Run: `pnpm exec vitest run src/engine/policy/__tests__/synthesizePolicyInsight.precedence.test.ts`
 
-  ```ts
-  const expected = Number(
-    (BigInt(confidenceBps) * BigInt(sourceBps) * BigInt(provenanceBps) * BigInt(freshnessBps)) /
-      10_000n ** 3n
-  );
-  ```
+  Expected: FAIL because the reducer is not implemented.
 
-- [ ] **Step 2: Run the scoring test file and observe the missing selector failure**
+- [ ] **Step 3: Implement the pure ordered reducer**
 
-  Run: `pnpm exec vitest run src/engine/evidence/__tests__/selectEvidence.scoring.test.ts`
-
-  Expected: FAIL because `selectEvidence` and result types do not exist.
-
-- [ ] **Step 3: Define the result model and selection stages**
-
-  Define qualified candidate identity as `<evidenceHash>/<kind>/<localId>` where kind is `deterministic_feature`, `contextual_claim`, or `research_brief`; use the literal local ID `<unavailable>` for a null brief decision. Each selected item and decision includes bundle hash/row/run/correlation/source identity, original item, raw confidence, source/provenance/freshness components, final score when calculable, source-reference IDs, status, and stable reasons.
-
-  The top-level shape must contain exactly the advisory selection concerns:
+  Export a reducer with an immutable envelope and explicit lock state:
 
   ```ts
-  export interface SelectEvidenceInput {
-    readonly records: readonly EvidenceBundleRecord[];
-    readonly selectedAtUnixMs: number;
-    readonly scope: Scope;
-    readonly policy: EvidenceSelectionPolicy;
-  }
-
-  export interface SelectedEvidenceSummary {
-    readonly selectionPolicyVersion: string;
-    readonly selectedAtUnixMs: number;
+  export interface PolicySynthesisEnvelope {
+    readonly synthesisAtUnixMs: number;
     readonly pair: "SOL/USDC";
     readonly scope: Scope;
-    readonly authority: "ADVISORY_ONLY";
-    readonly mode: "FULL" | "PARTIAL" | "DEGRADED_NO_RESEARCH";
-    readonly selected: {
-      readonly deterministicFeatures: readonly SelectedDeterministicFeature[];
-      readonly contextualEvidence: SelectedContextualFamilies;
-      readonly researchBrief: SelectedResearchBrief | null;
-    };
-    readonly familyCoverage: FamilyCoverageSummary;
-    readonly deterministicEvidenceCoverage: DeterministicCoverageSummary;
-    readonly conflicts: readonly ConflictSummary[];
-    readonly warnings: readonly SelectionWarning[];
-    readonly sourceReferences: readonly SelectedSourceReference[];
-    readonly bundles: readonly BundleSelectionLineage[];
-    readonly decisions: readonly EvidenceSelectionDecision[];
+    readonly market: RegimeCurrentResponse;
+    readonly positionPlan: {
+      readonly position: PlanRequestPosition;
+      readonly plan: PlanResponse;
+    } | null;
+    readonly evidence: SelectedEvidenceSummary;
+    readonly hashes: PolicySynthesisHashes;
   }
+
+  export function synthesizePolicyInsight(
+    envelope: PolicySynthesisEnvelope,
+    ruleset: PolicyRuleset
+  ): PolicyInsightV1;
   ```
 
-  Do not expose recommendation/action/allocation/CLMM/guard fields. Initialize summary fields through deterministic helper functions rather than mutable output shared between invocations.
+  Apply stages in fixed order. Represent locks explicitly (`action`, `posture`, `riskFloor`, `confidenceCeiling`, `allowClmm`, capital/sensitivity bounds) and expose no generic score that can cancel a guard. Map authoritative plan actions (`REQUEST_EXIT_CLMM`, `STAND_DOWN`, `HOLD`) without re-running breach or churn qualification. Compute expiry as the earliest ruleset, market, position, and selected-evidence boundary.
 
-- [ ] **Step 4: Implement exact lifecycle and score evaluation**
+- [ ] **Step 4: Verify precedence and boundary isolation**
 
-  Validate input first. Recompute lifecycle from bundle timestamps with `selectedAt <= freshUntil` → `FRESH`, else `selectedAt <= expiresAt` → `STALE`, else `EXPIRED`; reject record metadata disagreement instead of repairing it. Compare scope structurally through the existing deterministic `evidenceScopeKey` behavior (or an inner-layer equivalent that does not import the application port).
+  Run: `pnpm exec vitest run src/engine/policy/__tests__/synthesizePolicyInsight.precedence.test.ts`
 
-  Sort records explicitly by publisher, source ID, `asOf`, received time, row ID, then evidence hash using a comparator based on `<`, `>`, and numeric comparison (never locale-sensitive comparison). Resolve source quality by exact key then default. Evaluate bundle eligibility, feature status/freshness, claim expiry/provenance, and threshold. Use one `bigint` numerator and one denominator; assert the result lies in `[0, 10_000]` before converting to number.
+  Run: `pnpm exec eslint src/engine/policy/synthesizePolicyInsight.ts src/engine/policy/__tests__/policyFixtures.ts src/engine/policy/__tests__/synthesizePolicyInsight.precedence.test.ts`
 
-- [ ] **Step 5: Run focused verification**
+  Run: `pnpm exec depcruise --config .dependency-cruiser.cjs --output-type err "src/engine/policy/**/*.ts"`
 
-  Run: `pnpm exec vitest run src/engine/evidence/__tests__/selectEvidence.scoring.test.ts`
+  Expected: all scenarios pass; the policy engine imports only engine/contract modules and runtime-free types.
 
-  Expected: PASS with all ten scoring/lifecycle invariants.
+- [ ] **Step 5: Commit the task**
 
-  Run: `pnpm exec eslint src/engine/evidence/selectEvidence.ts src/engine/evidence/__tests__/evidenceSelectionFixtures.ts src/engine/evidence/__tests__/selectEvidence.scoring.test.ts --max-warnings 0`
-
-  Expected: PASS with zero warnings. The automatic workspace typecheck gate must also pass before commit.
-
-- [ ] **Step 6: Commit the scoring kernel**
-
-  ```bash
-  git add src/engine/evidence/selectEvidence.ts src/engine/evidence/__tests__/evidenceSelectionFixtures.ts src/engine/evidence/__tests__/selectEvidence.scoring.test.ts
-  git commit -m "m60: score evidence candidates exactly"
-  ```
+  Run: `git add src/engine/policy/synthesizePolicyInsight.ts src/engine/policy/__tests__/policyFixtures.ts src/engine/policy/__tests__/synthesizePolicyInsight.precedence.test.ts && git commit -m "m61: enforce policy precedence guards"`
 
 ## Repository Targets
 
 ### Expected Files
-- src/engine/evidence/selectEvidence.ts
-- src/engine/evidence/__tests__/evidenceSelectionFixtures.ts
-- src/engine/evidence/__tests__/selectEvidence.scoring.test.ts
+- src/engine/policy/synthesizePolicyInsight.ts
+- src/engine/policy/__tests__/policyFixtures.ts
+- src/engine/policy/__tests__/synthesizePolicyInsight.precedence.test.ts
 
 ## Validation Commands
 
 ```bash
-pnpm exec vitest run src/engine/evidence/__tests__/selectEvidence.scoring.test.ts
-pnpm exec eslint src/engine/evidence/selectEvidence.ts src/engine/evidence/__tests__/evidenceSelectionFixtures.ts src/engine/evidence/__tests__/selectEvidence.scoring.test.ts --max-warnings 0
+pnpm exec vitest run src/engine/policy/__tests__/synthesizePolicyInsight.precedence.test.ts
+pnpm exec eslint src/engine/policy/synthesizePolicyInsight.ts src/engine/policy/__tests__/policyFixtures.ts src/engine/policy/__tests__/synthesizePolicyInsight.precedence.test.ts
+pnpm exec depcruise --config .dependency-cruiser.cjs --output-type err "src/engine/policy/**/*.ts"
 ```
 
 ## Behavioral Invariants
 
 You MUST implement the following behavioral invariants as named tests first (TDD):
 
-- **exact fresh scoring**: Fresh candidates use exact bigint multiplication and one floored division with all score components preserved. (Test: `selects fresh high-confidence features and claims with exact component scores`)
-- **single stale penalty**: A stale bundle remains eligible at the stale factor and bundle/item staleness is combined with minimum rather than multiplied twice. (Test: `downweights a stale bundle once and emits STALE_EVIDENCE_DOWNWEIGHTED`)
-- **inclusive item boundaries**: Feature freshness and claim expiry accept equality and change behavior only when the selection instant is strictly later. (Test: `uses inclusive feature freshness and claim expiry boundaries`)
-- **expired bundle terminal exclusion**: An expired bundle and every candidate it contains are terminally excluded before scoring. (Test: `excludes expired bundles and records every contained candidate as BUNDLE_EXPIRED`)
-- **feature status exclusions**: Unavailable and invalid deterministic features receive distinct audit reasons and are never selected. (Test: `excludes unavailable and invalid features with distinct terminal reasons`)
-- **source policy precedence**: An exact qualified source override wins over default quality, zero disables the source, and publisher assessment never promotes it. (Test: `applies exact-source overrides before the conservative default and honors zero as disabled`)
-- **provenance weighting**: Calculator, derived, collected, and human-authored candidates receive their exact configured provenance factors. (Test: `applies calculator derived collected and human-authored provenance weights exactly`)
-- **threshold boundary**: A score equal to the minimum remains eligible while a lower score is excluded with components retained. (Test: `excludes scores below threshold while retaining score components`)
-- **record mismatch isolation**: Scope or recomputed-lifecycle mismatch excludes only the bad record and does not corrupt valid peers. (Test: `isolates scope and lifecycle metadata mismatches without corrupting valid peers`)
-- **fail-fast input validation**: Invalid time, policy, or internal score fails before any partial summary is returned. (Test: `rejects invalid input before returning partial output`)
+- **hard stale dominates evidence**: A hard-stale or unsafe market state pauses rebalances, blocks CLMM, floors risk, and caps confidence regardless of bullish lower-priority evidence. (Test: `hard-stale market locks pause posture and blocks CLMM despite bullish evidence`)
+- **lower breach cannot reverse**: A fresh qualified below-range breach remains an advisory exit even when contextual evidence is bullish. (Test: `qualified lower breach remains exit_range under bullish contextual evidence`)
+- **upper breach cannot reverse**: A fresh qualified above-range breach remains an advisory exit even when contextual evidence is bearish. (Test: `qualified upper breach remains exit_range under bearish contextual evidence`)
+- **stand-down lock**: An active authoritative stand-down fixes pause posture and CLMM denial until its supplied boundary. (Test: `active stand-down prevents lower-precedence deployment increases`)
+- **cooldown caution floor**: Cooldown state cannot result in increased sensitivity or capital deployment. (Test: `cooldown never permits higher sensitivity or capital than the baseline`)
 
