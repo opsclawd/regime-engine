@@ -120,6 +120,11 @@ export interface ConflictSummary {
   readonly conflictType: string;
   readonly message: string;
   readonly affectedCandidates: readonly string[];
+  readonly consensus: number;
+  readonly totals: {
+    readonly bullish: number;
+    readonly bearish: number;
+  };
 }
 
 export interface SelectionWarning {
@@ -173,7 +178,7 @@ export interface EvidenceSelectionDecision {
   readonly provenanceQuality: number;
   readonly freshnessWeight: number;
   readonly score: number | null;
-  readonly status: "SELECTED" | "EXCLUDED";
+  readonly status: "INCLUDED" | "EXCLUDED";
   readonly reasons: readonly string[];
 }
 
@@ -880,7 +885,7 @@ export function selectEvidence(input: SelectEvidenceInput): SelectedEvidenceSumm
   // Helper to build a complete decision object
   const buildDecisionObj = (
     c: IntermediateCandidate,
-    status: "SELECTED" | "EXCLUDED",
+    status: "INCLUDED" | "EXCLUDED",
     reasons: readonly string[],
     score: number | null
   ): EvidenceSelectionDecision => ({
@@ -1036,7 +1041,7 @@ export function selectEvidence(input: SelectEvidenceInput): SelectedEvidenceSumm
     if (!finalReasons.includes(inclusionReason)) {
       finalReasons.push(inclusionReason);
     }
-    decisionMap.set(candId, buildDecisionObj(c, "SELECTED", finalReasons, c.score));
+    decisionMap.set(candId, buildDecisionObj(c, "INCLUDED", finalReasons, c.score));
   }
 
   // 5. Evaluate briefs after non-brief decisions are terminal
@@ -1052,14 +1057,14 @@ export function selectEvidence(input: SelectEvidenceInput): SelectedEvidenceSumm
       const claimDec = decisionMap.get(claimId);
 
       const isSelected =
-        (featDec && featDec.status === "SELECTED") || (claimDec && claimDec.status === "SELECTED");
+        (featDec && featDec.status === "INCLUDED") || (claimDec && claimDec.status === "INCLUDED");
       if (!isSelected) {
         missingOrExcludedIds.push(refId);
       }
     }
 
     if (missingOrExcludedIds.length > 0) {
-      missingOrExcludedIds.sort();
+      missingOrExcludedIds.sort((a, b) => (a < b ? -1 : a > b ? 1 : 0));
       decisionMap.set(
         brief.candidateId,
         buildDecisionObj(
@@ -1087,7 +1092,7 @@ export function selectEvidence(input: SelectEvidenceInput): SelectedEvidenceSumm
       if (computedScore >= validatedPolicy.minimumEffectiveScoreBps) {
         decisionMap.set(
           brief.candidateId,
-          buildDecisionObj(brief, "SELECTED", [...brief.reasons], computedScore)
+          buildDecisionObj(brief, "INCLUDED", [...brief.reasons], computedScore)
         );
       } else {
         decisionMap.set(
@@ -1100,7 +1105,7 @@ export function selectEvidence(input: SelectEvidenceInput): SelectedEvidenceSumm
 
   // Re-populate selected lists and coverage counters based on final decisionMap status
   for (const [candId, dec] of decisionMap.entries()) {
-    if (dec.status === "SELECTED") {
+    if (dec.status === "INCLUDED") {
       const c = allRegisteredCandidates.get(candId);
       if (!c) continue;
 
@@ -1284,16 +1289,32 @@ export function selectEvidence(input: SelectEvidenceInput): SelectedEvidenceSumm
           (c) => c.direction.toLowerCase() === "bullish" || c.direction.toLowerCase() === "bearish"
         )
         .map((c) => c.candidateId)
-        .sort();
+        .sort((a, b) => (a < b ? -1 : a > b ? 1 : 0));
+
+      let bullish = 0;
+      let bearish = 0;
+      for (const c of selectedList) {
+        if (c.direction.toLowerCase() === "bullish") {
+          bullish += c.score;
+        } else if (c.direction.toLowerCase() === "bearish") {
+          bearish += c.score;
+        }
+      }
+      const consensus = Math.floor((Math.abs(bullish - bearish) * 10000) / (bullish + bearish));
 
       conflicts.push({
         conflictType: "family_conflict",
         message: `Family ${fam} has conflicting bullish and bearish claims`,
-        affectedCandidates
+        affectedCandidates,
+        consensus,
+        totals: {
+          bullish,
+          bearish
+        }
       });
     }
   }
-  conflicts.sort((a, b) => a.message.localeCompare(b.message));
+  conflicts.sort((a, b) => (a.message < b.message ? -1 : a.message > b.message ? 1 : 0));
 
   // Warnings
   const rawWarnings: SelectionWarning[] = [];
@@ -1418,7 +1439,7 @@ export function selectEvidence(input: SelectEvidenceInput): SelectedEvidenceSumm
     const famRankB = FAMILY_RANK[famB] ?? 999;
     if (famRankA !== famRankB) return famRankA - famRankB;
 
-    return a.message.localeCompare(b.message);
+    return a.message < b.message ? -1 : a.message > b.message ? 1 : 0;
   });
 
   // 6. Build the qualified source-reference union
@@ -1480,7 +1501,7 @@ export function selectEvidence(input: SelectEvidenceInput): SelectedEvidenceSumm
       for (const refId of feature.inputLineage) {
         const entry = getRefEntry(refId, record);
         if (entry) {
-          if (dec.status === "SELECTED") {
+          if (dec.status === "INCLUDED") {
             entry.isSelectedLineage = true;
           } else {
             entry.isAuditOnly = true;
@@ -1506,7 +1527,7 @@ export function selectEvidence(input: SelectEvidenceInput): SelectedEvidenceSumm
       for (const refId of claim.sourceReferenceIds) {
         const entry = getRefEntry(refId, record);
         if (entry) {
-          if (dec.status === "SELECTED") {
+          if (dec.status === "INCLUDED") {
             entry.isSelectedLineage = true;
           } else {
             entry.isAuditOnly = true;
@@ -1530,76 +1551,83 @@ export function selectEvidence(input: SelectEvidenceInput): SelectedEvidenceSumm
     .map((f) => {
       const originalItem = {
         ...f.originalItem,
-        inputLineage: [...f.originalItem.inputLineage].sort() as [string, ...string[]],
+        inputLineage: [...f.originalItem.inputLineage].sort((a, b) =>
+          a < b ? -1 : a > b ? 1 : 0
+        ) as [string, ...string[]],
         warnings: f.originalItem.warnings
-          ? [...f.originalItem.warnings].sort((a, b) => a.localeCompare(b))
+          ? [...f.originalItem.warnings].sort((a, b) => (a < b ? -1 : a > b ? 1 : 0))
           : undefined
       };
       return {
         ...f,
-        sourceReferenceIds: [...f.sourceReferenceIds].sort(),
+        sourceReferenceIds: [...f.sourceReferenceIds].sort((a, b) => (a < b ? -1 : a > b ? 1 : 0)),
         originalItem: originalItem as unknown as SelectedDeterministicFeature["originalItem"]
       };
     })
-    .sort((a, b) => a.candidateId.localeCompare(b.candidateId));
+    .sort((a, b) => (a.candidateId < b.candidateId ? -1 : a.candidateId > b.candidateId ? 1 : 0));
 
   const normalizeContextualClaim = (c: SelectedContextualClaim) => {
     const originalItem = {
       ...c.originalItem,
-      sourceReferenceIds: [...c.originalItem.sourceReferenceIds].sort() as [string, ...string[]]
+      sourceReferenceIds: [...c.originalItem.sourceReferenceIds].sort((a, b) =>
+        a < b ? -1 : a > b ? 1 : 0
+      ) as [string, ...string[]]
     };
     return {
       ...c,
-      sourceReferenceIds: [...c.sourceReferenceIds].sort(),
+      sourceReferenceIds: [...c.sourceReferenceIds].sort((a, b) => (a < b ? -1 : a > b ? 1 : 0)),
       originalItem: originalItem as unknown as SelectedContextualClaim["originalItem"]
     };
   };
 
   const finalSR = selectedSR
     .map(normalizeContextualClaim)
-    .sort((a, b) => a.candidateId.localeCompare(b.candidateId));
+    .sort((a, b) => (a.candidateId < b.candidateId ? -1 : a.candidateId > b.candidateId ? 1 : 0));
   const finalFlows = selectedFlows
     .map(normalizeContextualClaim)
-    .sort((a, b) => a.candidateId.localeCompare(b.candidateId));
+    .sort((a, b) => (a.candidateId < b.candidateId ? -1 : a.candidateId > b.candidateId ? 1 : 0));
   const finalDerivatives = selectedDerivatives
     .map(normalizeContextualClaim)
-    .sort((a, b) => a.candidateId.localeCompare(b.candidateId));
+    .sort((a, b) => (a.candidateId < b.candidateId ? -1 : a.candidateId > b.candidateId ? 1 : 0));
   const finalEvents = selectedEvents
     .map(normalizeContextualClaim)
-    .sort((a, b) => a.candidateId.localeCompare(b.candidateId));
+    .sort((a, b) => (a.candidateId < b.candidateId ? -1 : a.candidateId > b.candidateId ? 1 : 0));
   const finalNews = selectedNews
     .map(normalizeContextualClaim)
-    .sort((a, b) => a.candidateId.localeCompare(b.candidateId));
+    .sort((a, b) => (a.candidateId < b.candidateId ? -1 : a.candidateId > b.candidateId ? 1 : 0));
 
   let finalBrief: SelectedResearchBrief | null = null;
   if (selectedBrief) {
     const originalItem = {
       ...selectedBrief.originalItem,
-      sourceEvidenceIds: [...selectedBrief.originalItem.sourceEvidenceIds].sort() as [
-        string,
-        ...string[]
-      ],
+      sourceEvidenceIds: [...selectedBrief.originalItem.sourceEvidenceIds].sort((a, b) =>
+        a < b ? -1 : a > b ? 1 : 0
+      ) as [string, ...string[]],
       keyFindings: selectedBrief.originalItem.keyFindings
-        ? [...selectedBrief.originalItem.keyFindings].sort()
+        ? [...selectedBrief.originalItem.keyFindings].sort((a, b) => (a < b ? -1 : a > b ? 1 : 0))
         : [],
       uncertainties: selectedBrief.originalItem.uncertainties
-        ? [...selectedBrief.originalItem.uncertainties].sort()
+        ? [...selectedBrief.originalItem.uncertainties].sort((a, b) => (a < b ? -1 : a > b ? 1 : 0))
         : []
     };
     finalBrief = {
       ...selectedBrief,
-      sourceEvidenceIds: [...selectedBrief.sourceEvidenceIds].sort(),
+      sourceEvidenceIds: [...selectedBrief.sourceEvidenceIds].sort((a, b) =>
+        a < b ? -1 : a > b ? 1 : 0
+      ),
       originalItem: originalItem as unknown as SelectedResearchBrief["originalItem"]
     };
   }
 
   const sortedBundles = [...bundles].sort((a, b) => {
-    if (a.publisher !== b.publisher) return a.publisher.localeCompare(b.publisher);
-    if (a.sourceId !== b.sourceId) return a.sourceId.localeCompare(b.sourceId);
-    return a.bundleHash.localeCompare(b.bundleHash);
+    if (a.publisher !== b.publisher) return a.publisher < b.publisher ? -1 : 1;
+    if (a.sourceId !== b.sourceId) return a.sourceId < b.sourceId ? -1 : 1;
+    return a.bundleHash < b.bundleHash ? -1 : a.bundleHash > b.bundleHash ? 1 : 0;
   });
 
-  const finalDecisions = [...decisions].sort((a, b) => a.candidateId.localeCompare(b.candidateId));
+  const finalDecisions = [...decisions].sort((a, b) =>
+    a.candidateId < b.candidateId ? -1 : a.candidateId > b.candidateId ? 1 : 0
+  );
 
   // Assertions for integrity
   for (const candidateId of allRegisteredCandidates.keys()) {
@@ -1610,7 +1638,7 @@ export function selectEvidence(input: SelectEvidenceInput): SelectedEvidenceSumm
       );
     }
     const dec = decs[0];
-    if (dec.status !== "SELECTED" && dec.status !== "EXCLUDED") {
+    if (dec.status !== "INCLUDED" && dec.status !== "EXCLUDED") {
       throw new Error(`Decision for ${candidateId} has non-terminal status ${dec.status}`);
     }
   }
@@ -1626,8 +1654,8 @@ export function selectEvidence(input: SelectEvidenceInput): SelectedEvidenceSumm
   ];
   for (const candId of allSelectedCandidateIds) {
     const dec = finalDecisions.find((d) => d.candidateId === candId);
-    if (!dec || dec.status !== "SELECTED") {
-      throw new Error(`Selected candidate ${candId} must map to a SELECTED decision`);
+    if (!dec || dec.status !== "INCLUDED") {
+      throw new Error(`Selected candidate ${candId} must map to an INCLUDED decision`);
     }
   }
 

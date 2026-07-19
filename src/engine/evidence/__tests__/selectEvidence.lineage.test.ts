@@ -71,7 +71,7 @@ describe("Evidence lineage, capping, and brief resolution", () => {
     const dec1 = res.decisions.find((d) => d.localId === "feat-1");
     const dec2 = res.decisions.find((d) => d.localId === "feat-2");
 
-    expect(dec1?.status).toBe("SELECTED");
+    expect(dec1?.status).toBe("INCLUDED");
     expect(dec2?.status).toBe("EXCLUDED");
     expect(dec2?.reasons).toContain("FAMILY_SELECTION_LIMIT");
   });
@@ -212,7 +212,7 @@ describe("Evidence lineage, capping, and brief resolution", () => {
     });
 
     const dec1 = res.decisions.find((d) => d.localId === "feat-1");
-    expect(dec1?.status).toBe("SELECTED");
+    expect(dec1?.status).toBe("INCLUDED");
     expect(dec1?.reasons).not.toContain("FEATURE_DEPENDENCY_EXCLUDED");
   });
 

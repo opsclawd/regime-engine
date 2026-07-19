@@ -67,18 +67,15 @@ describe("Evidence selection summary, coverage, and conflict rules", () => {
     expect(bearClaim).toBeDefined();
 
     // Verify consensus computation
-    const bullScore = bullClaim!.score; // 8000
-    const bearScore = bearClaim!.score; // 4000
-    const expectedConsensus = Math.floor(
-      (Math.abs(bullScore - bearScore) * 10000) / (bullScore + bearScore)
-    );
-    expect(expectedConsensus).toBe(3333);
-
-    // Verify conflict summary was added
     expect(res.conflicts).toHaveLength(1);
     expect(res.conflicts[0].conflictType).toBe("family_conflict");
     expect(res.conflicts[0].affectedCandidates).toContain(bullClaim!.candidateId);
     expect(res.conflicts[0].affectedCandidates).toContain(bearClaim!.candidateId);
+    expect(res.conflicts[0].consensus).toBe(3333);
+    expect(res.conflicts[0].totals).toEqual({
+      bullish: bullClaim!.score,
+      bearish: bearClaim!.score
+    });
 
     // Verify conflict warning is emitted
     const conflictWarning = res.warnings.find((w) => w.code === "conflicted_family");
@@ -631,11 +628,11 @@ describe("Evidence selection summary, coverage, and conflict rules", () => {
     const uniqueCandidateIds = new Set(candidateIds);
     expect(candidateIds.length).toBe(uniqueCandidateIds.size); // No duplicate decisions
 
-    // Every selected claim must be marked as SELECTED in decisions
+    // Every selected claim must be marked as INCLUDED in decisions
     for (const claim of res.selected.contextualEvidence.supportResistance) {
       const decision = res.decisions.find((d) => d.candidateId === claim.candidateId);
       expect(decision).toBeDefined();
-      expect(decision!.status).toBe("SELECTED");
+      expect(decision!.status).toBe("INCLUDED");
     }
   });
 
