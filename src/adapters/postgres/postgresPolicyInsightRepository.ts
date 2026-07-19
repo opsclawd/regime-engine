@@ -1,4 +1,4 @@
-import { and, eq } from "drizzle-orm";
+import { and, desc, eq } from "drizzle-orm";
 import type { Db } from "../../ledger/pg/db.js";
 import { policyInsights } from "../../ledger/pg/schema/policyInsights.js";
 import type { PolicyInsightRow } from "../../ledger/pg/schema/policyInsights.js";
@@ -304,6 +304,30 @@ export const createPostgresPolicyInsightRepository = (db: Db): PolicyInsightRepo
             record: mapRowToStoredInsight(existing[0])
           };
         });
+      } catch (error) {
+        if (isTransientPostgresFailure(error)) {
+          throw new PolicyInsightStoreUnavailableError(undefined, { cause: error });
+        }
+        throw error;
+      }
+    },
+
+    getCurrent: async (input) => {
+      try {
+        const rows = await db
+          .select()
+          .from(policyInsights)
+          .where(
+            and(eq(policyInsights.pair, input.pair), eq(policyInsights.scopeKey, input.scopeKey))
+          )
+          .orderBy(desc(policyInsights.generatedAtUnixMs), desc(policyInsights.id))
+          .limit(1);
+
+        if (rows.length === 0) {
+          return null;
+        }
+
+        return mapRowToStoredInsight(rows[0]);
       } catch (error) {
         if (isTransientPostgresFailure(error)) {
           throw new PolicyInsightStoreUnavailableError(undefined, { cause: error });

@@ -51,6 +51,17 @@ class FakePolicyInsightRepository implements PolicyInsightRepositoryPort {
     this.findHits.set(input.synthesisInputHash, record);
     return { status: "created", record };
   }
+
+  async getCurrent(_input: {
+    readonly pair: "SOL/USDC";
+    readonly scopeKey: string;
+  }): Promise<StoredPolicyInsight | null> {
+    return (
+      Array.from(this.findHits.values())
+        .filter((r) => r.pair === _input.pair && r.scopeKey === _input.scopeKey)
+        .sort((a, b) => b.generatedAtUnixMs - a.generatedAtUnixMs || b.id - a.id)[0] || null
+    );
+  }
 }
 
 const makeDummyMarket = (nowUnixMs: number, poolAddress = "Pool123"): RegimeCurrentResponse => ({

@@ -41,4 +41,9 @@ export interface PolicyInsightRepositoryPort {
     readonly status: "created" | "already_exists";
     readonly record: StoredPolicyInsight;
   }>;
+
+  getCurrent(input: {
+    readonly pair: "SOL/USDC";
+    readonly scopeKey: string;
+  }): Promise<StoredPolicyInsight | null>;
 }
