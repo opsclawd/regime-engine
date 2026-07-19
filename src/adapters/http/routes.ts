@@ -27,9 +27,10 @@ import type { GetWeeklyReportUseCase } from "../../application/use-cases/getWeek
 import type { IngestEvidenceBundleUseCase } from "../../application/use-cases/ingestEvidenceBundleUseCase.js";
 import type { GetCurrentEvidenceUseCase } from "../../application/use-cases/getCurrentEvidenceUseCase.js";
 import type { GetEvidenceHistoryUseCase } from "../../application/use-cases/getEvidenceHistoryUseCase.js";
+import type { SrThesesV2Store } from "../../ledger/srThesesV2Store.js";
+import type { GetCurrentPolicyInsightUseCase } from "../../application/use-cases/getCurrentPolicyInsightUseCase.js";
 import type { LedgerStore } from "../../ledger/store.js";
 import type { InsightsStore } from "../../ledger/insightsStore.js";
-import type { SrThesesV2Store } from "../../ledger/srThesesV2Store.js";
 
 export interface VersionInfo {
   name: string;
@@ -56,6 +57,7 @@ export interface HttpRouteDependencies {
   getEvidenceHistory: GetEvidenceHistoryUseCase | null;
   ledgerStore: LedgerStore;
   insightsStore: InsightsStore | null;
+  getCurrentPolicyInsight: GetCurrentPolicyInsightUseCase | null;
   srThesesV2Store: SrThesesV2Store | null;
   versionInfo: VersionInfo;
   checkHealth(): Promise<HealthResult>;
@@ -93,7 +95,10 @@ export const registerRoutes = (app: FastifyInstance, deps: HttpRouteDependencies
   );
   app.get("/v1/regime/current", createRegimeCurrentHandler(deps.getCurrentRegime));
   app.post("/v1/insights/sol-usdc", createInsightsIngestHandler(deps.insightsStore));
-  app.get("/v1/insights/sol-usdc/current", createInsightsCurrentHandler(deps.insightsStore));
+  app.get(
+    "/v1/insights/sol-usdc/current",
+    createInsightsCurrentHandler(deps.getCurrentPolicyInsight)
+  );
   app.get("/v1/insights/sol-usdc/history", createInsightsHistoryHandler(deps.insightsStore));
   app.post("/v2/sr-levels", createSrLevelsV2IngestHandler(deps.srThesesV2Store));
   app.get("/v2/sr-levels/current", createSrLevelsV2CurrentHandler(deps.srThesesV2Store));
