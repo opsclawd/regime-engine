@@ -193,7 +193,7 @@ export function synthesizePolicyInsight(
       (a) => a.type === "REQUEST_EXIT_CLMM"
     );
     if (exitAction) {
-      actionLock = "exit_range";
+      actionLock ??= "exit_range";
       allowClmm = false;
       if (envelope.positionPlan.position?.rangeState === "below-range") {
         reasoningSet.add("CLMM_BREACH_LOWER");
@@ -210,16 +210,16 @@ export function synthesizePolicyInsight(
   );
   if (isStandDownAction || standDownUntil > envelope.synthesisAtUnixMs) {
     reasoningSet.add("CHURN_STAND_DOWN_ACTIVE");
-    actionLock = "pause_rebalances";
-    postureLock = "paused";
+    actionLock ??= "pause_rebalances";
+    postureLock ??= "paused";
     allowClmm = false;
   }
 
   const cooldownUntil = envelope.positionPlan?.plan?.constraints?.cooldownUntilUnixMs ?? 0;
   if (cooldownUntil > envelope.synthesisAtUnixMs) {
     reasoningSet.add("CHURN_COOLDOWN_ACTIVE");
-    capitalCap = baselineCapital;
-    sensitivityCap = baselineSensitivity;
+    capitalCap ??= baselineCapital;
+    sensitivityCap ??= baselineSensitivity;
   }
 
   // Stage 4: Market Regime

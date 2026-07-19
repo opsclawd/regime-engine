@@ -167,4 +167,45 @@ describe("synthesizePolicyInsight - Precedence Guards", () => {
     expect(result.clmmPolicy.rebalanceSensitivity).toBe("low");
     expect(result.reasoning).toContain("CHURN_COOLDOWN_ACTIVE");
   });
+
+  it("Stage 1 hard-stale lock is not overwritten by Stage 2 exit_range breach lock", () => {
+    const envelope: PolicySynthesisEnvelope = {
+      synthesisAtUnixMs: AS_OF,
+      pair: "SOL/USDC",
+      scope: positionScope,
+      market: makeMockMarketResponse({
+        regime: "UP",
+        freshness: {
+          generatedAtIso: new Date(AS_OF - 5000).toISOString(),
+          lastCandleOpenUnixMs: AS_OF - 3600000,
+          lastCandleOpenIso: new Date(AS_OF - 3600000).toISOString(),
+          lastCandleCloseUnixMs: AS_OF - 60000,
+          lastCandleCloseIso: new Date(AS_OF - 60000).toISOString(),
+          ageSeconds: 5,
+          softStale: false,
+          hardStale: true,
+          softStaleSeconds: 1500,
+          hardStaleSeconds: 2100
+        }
+      }),
+      positionPlan: {
+        position: makeMockPosition({
+          rangeState: "below-range",
+          breachQualified: true
+        }),
+        plan: makeMockPlan({
+          actions: [{ type: "REQUEST_EXIT_CLMM", reasonCode: "BREACH" }]
+        })
+      },
+      evidence: makeMockEvidenceSummary(),
+      hashes: { inputHash: "in-1", rulesetHash: "rules-1" }
+    };
+
+    const result = synthesizePolicyInsight(envelope, SOL_USDC_POLICY_V1);
+
+    // Stage 1 (DATA_HARD_STALE) sets actionLock = "pause_rebalances"
+    // Stage 2 (BREACH) sets actionLock = "exit_range"
+    // Since Stage 1 has higher precedence, recommendedAction must be "pause_rebalances"
+    expect(result.recommendedAction).toBe("pause_rebalances");
+  });
 });
