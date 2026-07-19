@@ -420,12 +420,33 @@ export function synthesizePolicyInsight(
 
   // Build sorted reasoning using deterministic reasoning engine
   const orderedReasonCodes = Array.from(reasoningSet);
-  const boundedIdentifiers =
-    envelope.evidence.selected?.deterministicFeatures?.map((f) => f.candidateId) || [];
+  const boundedIdentifiers: string[] = [];
+  if (envelope.evidence.selected?.deterministicFeatures) {
+    for (const f of envelope.evidence.selected.deterministicFeatures) {
+      boundedIdentifiers.push(f.candidateId);
+    }
+  }
+  if (envelope.evidence.selected?.contextualEvidence) {
+    const ctx = envelope.evidence.selected.contextualEvidence;
+    const allClaims = [
+      ...(ctx.supportResistance || []),
+      ...(ctx.flows || []),
+      ...(ctx.derivatives || []),
+      ...(ctx.events || []),
+      ...(ctx.newsRegulatory || [])
+    ];
+    for (const claim of allClaims) {
+      boundedIdentifiers.push(claim.candidateId);
+    }
+  }
+  if (envelope.evidence.selected?.researchBrief) {
+    boundedIdentifiers.push(envelope.evidence.selected.researchBrief.candidateId);
+  }
 
   const renderedReasoning = renderPolicyReasoning({
     orderedReasonCodes,
-    boundedIdentifiers
+    boundedIdentifiers,
+    reasonOrder: ruleset.reasonOrder
   });
 
   const derivedWarnings: string[] = [];
