@@ -85,7 +85,10 @@ export function synthesizePolicyInsight(
     ];
     for (const claim of allClaims) {
       if (claim.originalItem?.expiresAt) {
-        evidenceExpiresAt.push(Date.parse(claim.originalItem.expiresAt));
+        const expiresAtMs = Date.parse(claim.originalItem.expiresAt);
+        if (expiresAtMs >= envelope.synthesisAtUnixMs) {
+          evidenceExpiresAt.push(expiresAtMs);
+        }
       }
     }
   }
@@ -436,6 +439,12 @@ export function synthesizePolicyInsight(
       ...(ctx.newsRegulatory || [])
     ];
     for (const claim of allClaims) {
+      if (
+        claim.originalItem?.expiresAt &&
+        Date.parse(claim.originalItem.expiresAt) < envelope.synthesisAtUnixMs
+      ) {
+        continue;
+      }
       boundedIdentifiers.push(claim.candidateId);
     }
   }

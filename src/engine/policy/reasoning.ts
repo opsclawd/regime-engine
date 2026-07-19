@@ -24,8 +24,11 @@ export function renderPolicyReasoning(input: {
     result.push(code);
   }
 
-  // Include bounded identifiers (features, claims, briefs, etc.)
-  for (const ident of input.boundedIdentifiers) {
+  // Include bounded identifiers (features, claims, briefs, etc.) sorted lexicographically
+  const sortedIdentifiers = [...input.boundedIdentifiers].sort((a, b) => {
+    return a < b ? -1 : a > b ? 1 : 0;
+  });
+  for (const ident of sortedIdentifiers) {
     result.push(`IDENTIFIER: ${ident}`);
   }
 
