@@ -328,6 +328,11 @@ describe("postgresPolicyInsightRepository transient failure handling", () => {
         select: () => ({
           from: () => ({
             where: () => ({
+              orderBy: () => ({
+                limit: async () => {
+                  throw makeTransientDbError(code);
+                }
+              }),
               limit: async () => {
                 throw makeTransientDbError(code);
               }
@@ -357,6 +362,22 @@ describe("postgresPolicyInsightRepository transient failure handling", () => {
       await expect(repository.insertOrGet(record)).rejects.toThrow(
         PolicyInsightStoreUnavailableError
       );
+
+      await expect(
+        repository.getCurrent({
+          pair: TEST_PAIR,
+          scopeKey: "pair"
+        })
+      ).rejects.toThrow(PolicyInsightStoreUnavailableError);
+
+      await expect(
+        repository.getHistory({
+          pair: TEST_PAIR,
+          scopeKey: "pair",
+          limit: 10,
+          cursor: null
+        })
+      ).rejects.toThrow(PolicyInsightStoreUnavailableError);
     }
   );
 });
