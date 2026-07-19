@@ -1,0 +1,17 @@
+{
+  "result": "fail",
+  "findings": [
+    {
+      "severity": "P0",
+      "summary": "Determinism violation: `a.localeCompare(b)` is used for sorting in `renderPolicyReasoning`, which is environment-dependent and breaks byte-identical output guarantees.",
+      "file": "src/engine/policy/reasoning.ts",
+      "suggested_fix": "Replace `a.localeCompare(b)` with explicit primitive comparator `a < b ? -1 : (a > b ? 1 : 0)`."
+    },
+    {
+      "severity": "P1",
+      "summary": "`renderPolicyReasoning` uses a hardcoded `REASON_PRECEDENCE` map instead of dynamically reading `reasonOrder` from the provided policy ruleset.",
+      "file": "src/engine/policy/reasoning.ts",
+      "suggested_fix": "Update `renderPolicyReasoning` input to accept `reasonOrder: Readonly<Record<string, number>>` and pass `ruleset.reasonOrder` from `synthesizePolicyInsight`."
+    }
+  ]
+}

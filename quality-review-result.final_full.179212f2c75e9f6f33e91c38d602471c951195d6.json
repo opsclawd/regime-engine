@@ -1,0 +1,23 @@
+{
+  "result": "fail",
+  "findings": [
+    {
+      "severity": "P1",
+      "summary": "The repository port erases the required canonical domain types and permits inconsistent input, output, lineage, canonical text, and hash values to become the immutable stored winner.",
+      "file": "src/application/ports/policyInsightRepositoryPort.ts",
+      "suggested_fix": "Type the canonical input as PolicySynthesisEnvelope, the output as PolicyInsightV1 or InsightIngestRequest, and lineage as explicit domain DTOs; validate the output and recompute its canonical text and hash before insertion, with malformed-first-write and replay coverage."
+    },
+    {
+      "severity": "P1",
+      "summary": "Real postgres.js connection outages bypass PolicyInsightStoreUnavailableError because the classifier omits the driver's native connection error codes.",
+      "file": "src/adapters/postgres/postgresPolicyInsightRepository.ts",
+      "suggested_fix": "Classify postgres.js CONNECT_TIMEOUT, CONNECTION_CLOSED, CONNECTION_ENDED, and CONNECTION_DESTROYED codes, plus PostgreSQL SQLSTATE class 08 connection exceptions, and add focused mapping tests for both repository methods."
+    },
+    {
+      "severity": "P2",
+      "summary": "The changed-input insertion test changes only insightId, so it never verifies that a distinct canonical input and synthesisInputHash create a second append-only record.",
+      "file": "src/adapters/postgres/__tests__/postgresPolicyInsightRepository.command.test.ts",
+      "suggested_fix": "Add a case with a different canonical input, matching synthesisInputHash, insightId, payload, and hashes; assert status created, a different row ID, and two persisted rows, while retaining the existing same-tuple immutability case separately."
+    }
+  ]
+}

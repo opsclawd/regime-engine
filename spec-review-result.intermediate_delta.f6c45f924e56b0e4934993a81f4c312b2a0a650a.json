@@ -1,0 +1,17 @@
+{
+  "result": "fail",
+  "findings": [
+    {
+      "severity": "P1",
+      "summary": "Missing mapping for authoritative plan action HOLD",
+      "file": "src/engine/policy/synthesizePolicyInsight.ts",
+      "suggested_fix": "Add handling for the HOLD action in the authoritative plan actions section, alongside REQUEST_EXIT_CLMM and STAND_DOWN, to lock the action to 'hold'."
+    },
+    {
+      "severity": "P1",
+      "summary": "Incorrect classification of CLMM_BREACH_UPPER for non-breached positions",
+      "file": "src/engine/policy/synthesizePolicyInsight.ts",
+      "suggested_fix": "Change the `else` block for breach classification to an explicit `else if (envelope.positionPlan.position?.rangeState === 'above-range')` so that 'in-range' or missing positions do not incorrectly trigger an upper breach."
+    }
+  ]
+}

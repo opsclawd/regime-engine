@@ -1,0 +1,23 @@
+{
+  "result": "fail",
+  "findings": [
+    {
+      "severity": "P1",
+      "summary": "Expired contextual claims cause the generated policy insight to instantly expire because their expiry dates are included in the earliestExpiryMs calculation, despite being explicitly ignored in the synthesis voting logic.",
+      "file": "src/engine/policy/synthesizePolicyInsight.ts",
+      "suggested_fix": "Only include a claim's expiresAt in evidenceExpiresAt if Date.parse(claim.originalItem.expiresAt) >= envelope.synthesisAtUnixMs, or track valid claims during Stage 6 and compute expiry/bounded identifiers only for unexpired claims."
+    },
+    {
+      "severity": "P2",
+      "summary": "Expired contextual claims are unconditionally added to boundedIdentifiers, which misrepresents the evidence used since they are skipped during voting.",
+      "file": "src/engine/policy/synthesizePolicyInsight.ts",
+      "suggested_fix": "Filter out expired contextual claims before pushing their candidateId into boundedIdentifiers."
+    },
+    {
+      "severity": "P2",
+      "summary": "Bounded identifiers are not sorted lexicographically before being appended to the reasoning list, which could lead to non-deterministic plan hashes if the input arrays of selected evidence change order.",
+      "file": "src/engine/policy/reasoning.ts",
+      "suggested_fix": "Sort input.boundedIdentifiers lexicographically before appending them to the result array in renderPolicyReasoning."
+    }
+  ]
+}

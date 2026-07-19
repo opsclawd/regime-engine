@@ -1,6 +1,6 @@
 # Task Context: Task 1
 
-Title: Define and validate the versioned selection policy
+Title: Define and validate the versioned policy ruleset
 ## Workspace & Scope Constraints
 
 ## WORKSPACE CONSTRAINTS
@@ -9,101 +9,97 @@ Your working directory is a dedicated git worktree with the repository's complet
 
 .ai-orchestrator.local.json, if one exists, lives only in the main checkout and is intentionally not copied into your worktree — it is operator-machine-specific and not part of your task. Do not search for it or read it outside this directory. Reason about configuration using only .ai-orchestrator.json in your own working directory; treat it as the effective config for your task.
 
-Working Directory: /home/gary/.openclaw/workspace/regime-engine/.ai-worktrees/issue-60
+Working Directory: /home/gary/.openclaw/workspace/regime-engine/.ai-worktrees/issue-61
 Repository: opsclawd/regime-engine
-Branch: ai/issue-60
-Start Commit: 6a6956b3c169a8146d22f1b8f77b7c27de35d1b5
+Branch: ai/issue-61
+Start Commit: 8eb83b2403a525df9fbb640f75379bc56dc7bc3c
 
 ## Task Requirements
 
 **Files:**
 
-- Create: `src/engine/evidence/selectionPolicy.ts`
-- Create: `src/engine/evidence/__tests__/selectionPolicy.test.ts`
+- Create: `src/engine/policy/ruleset.ts`
+- Create: `src/engine/policy/__tests__/ruleset.test.ts`
 
-**Exported API surface:** Add `EvidenceSelectionPolicy`, `ProvenanceClass`, `EvidenceSelectionReasonCode`, `EvidenceSelectionWarningCode`, `EVIDENCE_SELECTION_POLICY_VERSION`, `EVIDENCE_SELECTION_POLICY_V1`, `evidenceSourceQualityKey`, and `validateEvidenceSelectionPolicy`. These declarations and their tests belong in this task; no port or adapter changes are involved.
+- [ ] **Step 1: Write failing ruleset tests first**
 
-**Behavioral invariants to write as tests first:**
+  Add named tests `accepts and freezes sol-usdc-policy.v1`, `rejects non-monotone thresholds`, `rejects duplicate reason ordering`, `rejects unsupported binding type or unit`, and `rejects an expiry configuration without a positive safety ttl`. Assert deep immutability and exact rejection messages.
 
-- `ships the conservative immutable v1 policy values`: version is `evidence-selection.v1`, minimum score is `2_500`, stale weight is `5_000`, family cap is `16`, default source quality is `5_000`, provenance is calculator `10_000`, derived `9_000`, collected `8_000`, human-authored `7_000`, and the reviewed-source map is empty.
-- `qualifies source quality keys without publisher/source collisions`: publisher and source ID are encoded with length prefixes (for example `${publisher.length}:${publisher}${sourceId.length}:${sourceId}`), so delimiter-bearing identities cannot alias.
-- `rejects non-finite or out-of-range policy basis points`: every bps field and source override must be a finite integer in `[0, 10_000]`.
-- `rejects zero or non-integer family limits and blank versions`: `maxSelectedPerFamily` must be a positive integer and `version` must contain non-whitespace text.
-- `does not permit mutation of the shipped policy`: nested maps are copied/frozen (or otherwise exposed read-only without a mutable backing object) so one caller cannot alter later selections.
+- [ ] **Step 2: Run the focused test and confirm RED**
 
-- [ ] **Step 1: Write the failing policy tests**
+  Run: `pnpm exec vitest run src/engine/policy/__tests__/ruleset.test.ts`
 
-  Create `selectionPolicy.test.ts` with the exact test names above. For collision safety, compare keys for identities such as `("ab", "c")` and `("a", "bc")`; for validation, table-drive every scalar boundary (`-1`, `10_001`, `1.5`, `NaN`, `Infinity`) plus an invalid per-source override. Assert `validateEvidenceSelectionPolicy` throws `TypeError` with a field-qualified message.
+  Expected: FAIL because `ruleset.ts` and its exports do not exist.
 
-- [ ] **Step 2: Run the focused tests and observe the missing module failure**
+- [ ] **Step 3: Implement the immutable ruleset**
 
-  Run: `pnpm exec vitest run src/engine/evidence/__tests__/selectionPolicy.test.ts`
-
-  Expected: FAIL because `selectionPolicy.ts` and its exports do not exist.
-
-- [ ] **Step 3: Implement policy types, constants, keys, and validation**
-
-  Use integer bps throughout and define the public shape explicitly:
+  Define the complete first-version policy surface in one file:
 
   ```ts
-  export type ProvenanceClass =
-    | "deterministic_calculator"
-    | "derived"
-    | "collected"
-    | "human_authored";
+  export const POLICY_RULESET_VERSION = "sol-usdc-policy.v1" as const;
 
-  export interface EvidenceSelectionPolicy {
-    readonly version: string;
-    readonly minimumEffectiveScoreBps: number;
-    readonly staleWeightBps: number;
-    readonly maxSelectedPerFamily: number;
-    readonly defaultSourceQualityBps: number;
-    readonly sourceQualityBps: Readonly<Record<string, number>>;
-    readonly provenanceQualityBps: Readonly<Record<ProvenanceClass, number>>;
+  export interface PolicyFeatureBinding {
+    readonly bindingId: string;
+    readonly family: string;
+    readonly featureId: string;
+    readonly calculatorName: string;
+    readonly calculatorVersion: string;
+    readonly kind: "number";
+    readonly unit: string;
+    readonly tighten: "risk" | "confidence" | "capital" | "range" | "support" | "resistance";
+    readonly threshold: number;
   }
 
-  export const EVIDENCE_SELECTION_POLICY_VERSION = "evidence-selection.v1" as const;
+  export interface PolicyRuleset {
+    readonly version: typeof POLICY_RULESET_VERSION;
+    readonly maxInsightLifetimeMs: number;
+    readonly positionMaxAgeMs: number;
+    readonly degradedSafetyTtlMs: number;
+    readonly confidenceOrder: readonly string[];
+    readonly riskOrder: readonly string[];
+    readonly postureOrder: readonly string[];
+    readonly rangeBiasOrder: readonly string[];
+    readonly reasonOrder: Readonly<Record<string, number>>;
+    readonly featureBindings: readonly PolicyFeatureBinding[];
+  }
+
+  export declare const validatePolicyRuleset: (candidate: PolicyRuleset) => PolicyRuleset;
+  export declare const SOL_USDC_POLICY_V1: PolicyRuleset;
   ```
 
-  Include stable reason-code unions for record mismatch, bundle expiry/disablement, feature unavailable/invalid/dependency failure, claim expiry, score threshold, family cap, brief unavailable/citation failure, and fresh/stale inclusion. Include warning-code unions for stale input, missing/rejected/conflicted families, and no selected research. `validateEvidenceSelectionPolicy` must validate a copied policy before selection starts and return an immutable normalized policy; do not consult `process.env`.
+  Use #63 enum values directly in the real implementation. Encode every precedence stage, monotone categorical order, freshness/expiry threshold, support/resistance limit, and deterministic feature binding in the ruleset; no reducer constant may silently alter output outside this version.
 
-- [ ] **Step 4: Run focused verification**
+- [ ] **Step 4: Verify GREEN and local quality**
 
-  Run: `pnpm exec vitest run src/engine/evidence/__tests__/selectionPolicy.test.ts`
+  Run: `pnpm exec vitest run src/engine/policy/__tests__/ruleset.test.ts`
 
-  Expected: PASS with all five named invariants.
+  Run: `pnpm exec eslint src/engine/policy/ruleset.ts src/engine/policy/__tests__/ruleset.test.ts`
 
-  Run: `pnpm exec eslint src/engine/evidence/selectionPolicy.ts src/engine/evidence/__tests__/selectionPolicy.test.ts --max-warnings 0`
+  Expected: all focused tests pass and ESLint reports no warnings.
 
-  Expected: PASS with zero warnings. The implement loop also runs its automatic workspace `pnpm -r typecheck` gate.
+- [ ] **Step 5: Commit the task**
 
-- [ ] **Step 5: Commit the independently usable policy unit**
-
-  ```bash
-  git add src/engine/evidence/selectionPolicy.ts src/engine/evidence/__tests__/selectionPolicy.test.ts
-  git commit -m "m60: define evidence selection policy"
-  ```
+  Run: `git add src/engine/policy/ruleset.ts src/engine/policy/__tests__/ruleset.test.ts && git commit -m "m61: define policy synthesis ruleset"`
 
 ## Repository Targets
 
 ### Expected Files
-- src/engine/evidence/selectionPolicy.ts
-- src/engine/evidence/__tests__/selectionPolicy.test.ts
+- src/engine/policy/ruleset.ts
+- src/engine/policy/__tests__/ruleset.test.ts
 
 ## Validation Commands
 
 ```bash
-pnpm exec vitest run src/engine/evidence/__tests__/selectionPolicy.test.ts
-pnpm exec eslint src/engine/evidence/selectionPolicy.ts src/engine/evidence/__tests__/selectionPolicy.test.ts --max-warnings 0
+pnpm exec vitest run src/engine/policy/__tests__/ruleset.test.ts
+pnpm exec eslint src/engine/policy/ruleset.ts src/engine/policy/__tests__/ruleset.test.ts
 ```
 
 ## Behavioral Invariants
 
 You MUST implement the following behavioral invariants as named tests first (TDD):
 
-- **v1 policy constants**: The shipped immutable policy uses the reviewed v1 version, threshold, stale weight, cap, default source quality, provenance weights, and no invented source override. (Test: `ships the conservative immutable v1 policy values`)
-- **collision-safe source identity**: Publisher and source ID are length-qualified so distinct identity pairs cannot map to the same policy lookup key. (Test: `qualifies source quality keys without publisher/source collisions`)
-- **basis-point validation**: Every policy bps value, including exact-source overrides, is a finite integer from zero through ten thousand. (Test: `rejects non-finite or out-of-range policy basis points`)
-- **version and limit validation**: The version is nonblank and the per-family limit is a positive integer. (Test: `rejects zero or non-integer family limits and blank versions`)
-- **shipped policy immutability**: One caller cannot mutate the shipped policy or its nested lookup tables for later selections. (Test: `does not permit mutation of the shipped policy`)
+- **immutable valid ruleset**: The accepted sol-usdc-policy.v1 configuration is defensively copied and deeply frozen. (Test: `accepts and freezes sol-usdc-policy.v1`)
+- **monotone threshold order**: A ruleset whose confidence, risk, posture, range, or threshold ordering can relax a higher guard is rejected. (Test: `rejects non-monotone thresholds`)
+- **unambiguous reason precedence**: Every configured machine reason has one unique deterministic order. (Test: `rejects duplicate reason ordering`)
+- **strict deterministic feature binding**: Unsupported feature types or units cannot acquire policy meaning. (Test: `rejects unsupported binding type or unit`)
 

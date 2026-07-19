@@ -1,710 +1,341 @@
-# Evidence Selection and Scoring for Policy Synthesis
+# Deterministic PolicyInsight Synthesis
 
-**Issue:** #60
+**Issue:** #61
 
 **Status:** Proposed design
 
-**Date:** 2026-07-18
+**Date:** 2026-07-19
 
-## Problem and motivation
+## Problem and why it matters
 
-Regime Engine now accepts and stores strict `EvidenceBundle v1` records and can
-read the latest bundle for each source within an exact scope. That query surface
-is intentionally observational: it returns fresh, stale, and expired records in
-repository order and does not decide whether any record should influence policy.
-Passing those records directly to future PolicyInsight synthesis would make the
-newest publisher output an implicit policy input regardless of its age,
-confidence, provenance, coverage, or internal consistency.
+Regime Engine already owns two inputs needed for policy advice: deterministic market-state computation and position-scoped plan guards. Issue #60 added the third input, a deterministic selector that turns stored `EvidenceBundle v1` records into a bounded `SelectedEvidenceSummary` with scores, freshness treatment, conflicts, warnings, and complete inclusion/exclusion lineage. The service does not yet have the policy layer that combines those inputs into the one canonical `PolicyInsight v1` owned by issue #63.
 
-The missing layer is a deterministic selector that converts current bundle
-records into a bounded, synthesis-ready summary. It must explain every inclusion
-and exclusion, retain source lineage, expose missing and conflicting evidence,
-and explicitly degrade when research is absent. It must remain advisory: the
-selector neither reads nor changes deterministic market state and cannot emit an
-action, allocation, CLMM permission, or hard-guard override.
+Without that layer, the existing insight API remains a passive mailbox. `POST /v1/insights/sol-usdc` accepts an externally authored recommendation, `clmm_insights` stores it, and the current/history handlers replay it. That bypasses Regime Engine's candle freshness, CLMM suitability, breach qualification, cooldown, and stand-down policy. It also permits research prose to arrive as a final action without an auditable rule proving how higher-authority state constrained it.
 
-This matters because evidence includes contextual claims and an optional LLM
-brief. Those inputs can inform later synthesis, but they are less authoritative
-than candle-derived freshness and safety rules. An auditable selection boundary
-prevents low-quality or expired research from quietly becoming policy and gives
-the later synthesis issue a stable, testable input contract.
+The new synthesis path must make Regime Engine the sole policy author while preserving the authority boundary: it recommends but never signs, submits, or claims that execution occurred. This matters most during conflict and degradation. A qualified range breach must not turn into a contradictory hold because a research brief is bullish or bearish, and absent evidence must not be represented as a successful zero-valued signal.
 
-## Existing architecture and constraints
+## Repository findings that shape the design
 
-The design follows these repository facts:
-
-- `EvidenceBundle v1` structurally separates deterministic features, five
-  contextual families, an optional research brief, source references, bundle
-  assessment, and provenance. The accepted bundle is immutable and already
-  semantically validated.
-- `EvidenceBundleRepositoryPort.getLatest` returns the latest record per
-  `(source.publisher, source.sourceId)` for one exact pair/scope. It derives
-  `FRESH`, `STALE`, or `EXPIRED` at a caller-supplied instant and orders records
-  by source identity. It deliberately includes stale and expired records.
-- `GetCurrentEvidenceUseCase` captures the clock once and delegates to the
-  repository without filtering. The HTTP current-evidence route is an
-  observability surface and must retain those semantics.
-- Only `sol-usdc-clmm-intelligence` can publish v1 bundles, but `sourceId` is an
-  opaque pipeline identity. Publisher-owned `overallConfidenceBps` is not an
-  authoritative source-quality rating.
-- Individual deterministic features have status, confidence, and
-  `freshUntil`; contextual claims have confidence and an optional `expiresAt`;
-  research briefs have lineage but no independent confidence field.
-- Existing market-regime code independently computes candle freshness and
-  hard guards. `GeneratePlanUseCase` refuses hard-stale market data, while
-  `evaluateMarketClmmSuitability` owns deterministic `UNKNOWN`/`BLOCKED`
-  decisions. Evidence selection must not couple to or weaken that path.
-- The inner layers are environment-free and deterministic. Time arrives through
-  `ClockPort`, policy values are explicit versioned configuration, and tests are
-  co-located in `__tests__` directories.
-- There is no requirement to persist a selection result yet. The evidence table
-  has future-facing lineage metadata, but accepted evidence rows are append-only
-  and should not be mutated with clock-dependent selection state.
+- `src/engine/marketRegime/buildRegimeCurrent.ts` already produces the canonical regime, telemetry, CLMM suitability, market reasons, freshness, candle lineage, and engine/config versions. `GeneratePlanUseCase` additionally refuses hard-stale market data.
+- `src/engine/plan/positionPlan.ts` already encodes the position precedence needed here: qualified range breach, blocked suitability for an active position, churn stand-down, unqualified breach, unknown data quality, then hold. Reimplementing that logic independently would create drift.
+- `PlanRequest.position` carries `rangeState`, `breachQualified`, price bounds, observation time, and optional position telemetry. `PlanResponse` carries the advisory action, constraints, market data, reasons, and `planHash`. It does not represent live execution truth.
+- `src/engine/evidence/selectEvidence.ts` returns selected and rejected items, bundle lineage, conflicts, coverage, warnings, source references, scores, and selection-policy version. It is deterministic for records, scope, selection instant, and policy. The selection result is neither persisted nor assigned an identity/hash today.
+- Selection is exact-scope. Pair, Whirlpool, wallet, and position evidence are not merged by #60. The synthesis caller must therefore choose one scope explicitly rather than search around the selector.
+- The evidence contract has generic feature IDs and numeric/string/boolean values. Contextual support/resistance claims contain prose and direction, not structured numeric prices. Synthesis cannot safely infer numerical levels from claim text.
+- The current `src/contract/v1/insights.ts` shape and `regime_engine.clmm_insights` table represent legacy externally authored insights. They lack ruleset version, insight identity, selection identity, input snapshots/hashes, reason-code lineage, and the richer #63 fields.
+- Current insight reads order by `asOf`, while history orders by receipt time. A new canonical store needs one documented ordering rule and a stable ID tie-breaker.
+- Clean Architecture boundaries are enforced: `src/engine/**` cannot import application, adapters, ledger, composition, or runtime APIs; application code can depend only inward and through ports. Time and persistence must be injected.
+- PostgreSQL is already mandatory for evidence and insight capabilities in production. Evidence-store absence is represented by nullable composition dependencies, while transient repository failures become explicit application errors.
+- Issue #63's canonical artifacts are not present in this worktree. This issue is blocked on them and must consume them rather than extending the legacy contract or guessing a replacement.
 
 ## Goals
 
-- Select usable evidence from the latest exact-scope bundle for every source.
-- Apply deterministic bundle, item, confidence, and source-quality rules.
-- Exclude expired, invalid, unavailable, unsupported, and under-threshold items
-  with stable reason codes.
-- Downweight stale-but-not-expired evidence rather than treating it as fresh.
-- Bound and deterministically order the material passed to synthesis.
-- Detect directional conflict without deleting either side of the conflict.
-- Derive coverage from what survived selection, not merely from the publisher's
-  claimed bundle coverage.
-- Preserve bundle identity, item identity, evidence hashes, source-reference
-  lineage, scores, and inclusion/exclusion reasons.
-- Return an explicit degraded result when no contextual research or brief is
-  selectable, including when no bundles exist.
-- Make the output advisory-only so future synthesis must combine it with a
-  separately supplied deterministic market state whose hard guards retain
-  precedence.
-- Produce byte-stable logical output for the same records, selection instant,
-  and policy version regardless of input ordering.
+- Produce exactly one strict `PolicyInsight v1` for one canonical synthesis input envelope.
+- Encode precedence and policy decisions in testable, versioned code/configuration.
+- Reuse authoritative regime and position-plan results instead of duplicating their guard logic.
+- Permit selected evidence to refine only the dimensions allowed at its precedence level.
+- Continue deterministically in no-evidence, partial-evidence, stale-evidence, conflict, and missing-brief modes.
+- Persist an append-only output plus enough canonical input and lineage material to reconstruct it.
+- Deduplicate semantically identical synthesis attempts, including concurrent attempts.
+- Preserve the current/history read resources while replacing their backing data with internally synthesized canonical insights.
 
-## Non-goals
+## Approaches considered
 
-- Adding or changing evidence ingest/current/history HTTP routes or OpenAPI.
-- Changing `EvidenceBundle v1`, generated contract types, canonical bundle
-  hashing, persistence schema, migrations, or append/replay semantics.
-- Persisting selection results or mutating `selectionLineage` on evidence rows.
-- Producing a final `PolicyInsight`, recommendation, risk decision, allocation,
-  CLMM posture, plan action, or execution request.
-- Changing market-regime classification, candle freshness, plan generation, or
-  any deterministic hard guard.
-- Fetching evidence from external services or looking behind source references.
-- Learning source quality from outcomes. The first version uses reviewed static
-  policy; feedback-driven calibration is separate work.
-- Combining pair, Whirlpool, wallet, and position scopes. One invocation selects
-  one exact scope, matching the repository boundary. Future synthesis may invoke
-  the selector for more than one scope under a separately designed precedence
-  rule.
-- Falling back through evidence history when a source's latest bundle is
-  unusable. Selection consumes the current-per-source view established by #59.
-- Treating the research brief as an independent source of facts.
+### 1. Pure synthesis reducer plus application orchestration and a dedicated append-only store — recommended
 
-## Design alternatives
+A pure engine function accepts an immutable, already-resolved synthesis envelope and a versioned ruleset, then returns a #63 `PolicyInsight v1`. An application use case captures the clock once, obtains authoritative market/plan state and the #60 selection result through injected collaborators, computes stable fingerprints, checks idempotency, invokes the reducer, validates the exact #63 contract, and persists the output through a repository port.
 
-### 1. Filter bundles only, then pass accepted bundles through unchanged
+This follows the existing pure-core/application/adapter split, makes the rule matrix easy to fixture-test, and isolates storage races and failures from policy logic. A dedicated synthesized-insight table prevents legacy external rows from being mistaken for canonical output. The trade-off is more explicit types and mapping code, plus a migration/cutover for existing current/history readers.
 
-This is the smallest change: reject expired bundles, attach one bundle-level
-score, and pass all contents of the remaining bundles to synthesis. It fails to
-handle an expired claim inside a fresh bundle, unavailable or invalid features,
-briefs that cite excluded evidence, family-size bounds, and conflicts between
-items. It also makes publisher array order materially affect future synthesis.
-This approach is not recommended.
+### 2. Extend the position plan builder to emit and persist PolicyInsights
 
-### 2. Materialize scored evidence in new relational tables
+This would reuse breach and churn precedence directly and could synthesize after every `/v1/plan` call. It was rejected because PolicyInsights are also required without a position, evidence updates need not coincide with plan requests, and plan persistence is SQLite while evidence/final insight persistence is PostgreSQL. It would turn a pure plan concern into a research and storage concern and make a plan request partially fail after its plan had already been committed.
 
-Persisting one row per selected item would make selection history and analytics
-easy to query. However, selection is clock- and policy-version-dependent, so
-materializing it introduces migrations, idempotency semantics, recomputation
-rules, and transactions before any consumer exists. It would also blur the
-append-only publisher truth record with Regime-owned derived state. This is a
-reasonable later audit feature, but it is outside this issue and not recommended
-for the first selector.
+### 3. Synthesize lazily in `GET /current`
 
-### 3. Pure item-level selector with a thin application use case
-
-Add a pure selector that accepts validated `EvidenceBundleRecord` values, one
-selection instant, and a versioned Regime-owned policy. A use case captures the
-clock once and reads the existing exact-scope current view. The pure function
-scores and orders candidates, derives coverage/conflict, and returns a bounded
-advisory summary plus complete decision lineage. This preserves the current HTTP
-semantics, needs no persistence change, and can be exhaustively unit tested.
-This is the recommended approach.
+This avoids a separate command trigger and always evaluates recent data at read time. It was rejected because GET would acquire write side effects, concurrent readers could create races, historical results would depend on observation traffic, and persistence failure would blur “no insight” with “could not create insight.” It also makes byte-stable replay harder because wall-clock freshness changes during a read.
 
 ## Proposed architecture
 
-### Components
-
-The implementation should add three focused units:
-
-1. `src/engine/evidence/selectionPolicy.ts` owns the immutable policy values,
-   reason/warning codes, and `EVIDENCE_SELECTION_POLICY_VERSION`. It has no
-   environment access. Changes to trust weights, thresholds, family limits, or
-   stale handling require a version change.
-2. `src/engine/evidence/selectEvidence.ts` is the pure policy kernel. It accepts
-   records, `selectedAtUnixMs`, and a policy; it does not perform I/O and does not
-   import application, adapter, ledger, HTTP, or market-regime modules.
-3. `src/application/use-cases/selectEvidenceForSynthesisUseCase.ts` captures
-   `ClockPort.nowUnixMs()` once, calls
-   `EvidenceBundleRepositoryPort.getLatest` for `SOL/USDC` and the requested
-   exact scope, then passes the records and same instant to the pure selector.
-
-`buildApplication` exposes this use case as nullable under the same Postgres
-availability rule as the three current evidence use cases. No route consumes it
-in this issue. A missing configured evidence repository therefore does not
-affect `getCurrentRegime`, `generatePlan`, or their deterministic dependencies.
-
-No repository-port method is added. In particular, the observational
-`GetCurrentEvidenceUseCase` is not changed to return selected evidence; raw
-current evidence and internal policy selection have different purposes.
-
-### Selection input
-
-The pure input is conceptually:
-
-```ts
-interface SelectEvidenceInput {
-  records: readonly EvidenceBundleRecord[];
-  selectedAtUnixMs: number;
-  scope: Scope;
-  policy: EvidenceSelectionPolicy;
-}
-```
-
-All records are already contract-valid. The selector still treats inconsistent
-record metadata defensively: the record pair/scope must equal the invocation
-pair/scope and the record lifecycle must equal a lifecycle recomputed from the
-bundle timestamps at `selectedAtUnixMs`. A mismatch excludes the entire bundle
-with `RECORD_SCOPE_MISMATCH` or `RECORD_LIFECYCLE_MISMATCH`; it is not silently
-repaired.
-
-The application use case accepts `{ scope: Scope }` only. It intentionally does
-not accept the observational source filter: synthesis should consider all
-configured sources for the exact scope. Tests may call the pure selector with
-arbitrary records.
-
-### Versioned selection policy
-
-The initial policy should use integer basis points throughout:
-
-```ts
-interface EvidenceSelectionPolicy {
-  version: string;
-  minimumEffectiveScoreBps: number;
-  staleWeightBps: number;
-  maxSelectedPerFamily: number;
-  defaultSourceQualityBps: number;
-  sourceQualityBps: Readonly<Record<string, number>>;
-  provenanceQualityBps: Readonly<Record<ProvenanceClass, number>>;
-}
-```
-
-The recommended v1 constants are:
-
-- minimum effective score: `2_500` bps;
-- stale weight: `5_000` bps;
-- maximum selected items per family: `16`;
-- unreviewed source default quality: `5_000` bps;
-- reviewed exact-source override: `8_000` bps once its production identity is
-  explicitly configured;
-- deterministic calculator provenance: `10_000` bps;
-- contextual `derived`: `9_000`, `collected`: `8_000`, and
-  `human_authored`: `7_000` bps.
-
-An exact `publisher + NUL + sourceId` lookup overrides the default. Using a
-length-safe or delimiter-safe key avoids identity collisions. The shipped
-policy must not invent a production `sourceId`; deployment configuration is
-changed in code alongside the policy version when a source is reviewed. Source
-quality is Regime-owned configuration; neither `assessment.quality` nor
-`assessment.overallConfidenceBps` can promote a source. Unknown identities use
-the conservative default rather than being silently trusted or unconditionally
-discarded.
-
-These initial values are intentionally conservative and simple. They are policy
-constants, not empirically calibrated claims. Keeping them named and versioned
-allows later outcome analysis to replace them without changing selection
-semantics invisibly.
-
-### Candidate identity and families
-
-Every candidate receives a fully qualified identity:
-
-```text
-<evidenceHash>/<kind>/<local evidence ID>
-```
-
-Kinds are `deterministic_feature`, `contextual_claim`, and `research_brief`.
-Contextual family is part of the decision record. IDs are unique only within a
-bundle, so the selector must never deduplicate different bundles by local ID
-alone.
-
-Selection families are:
-
-- deterministic feature families: `market_state`, `price_quality`,
-  `clmm_economics`, `position_state`, `liquidity`, and `risk`;
-- contextual families: `supportResistance`, `flows`, `derivatives`, `events`,
-  and `newsRegulatory`;
-- `researchBrief`.
-
-The output keeps deterministic and contextual evidence structurally separate.
-It must not flatten them into a single untyped list.
-
-## Scoring and selection rules
-
-### Bundle eligibility
-
-For each record:
-
-1. `EXPIRED` excludes the bundle and every contained candidate with
-   `BUNDLE_EXPIRED`. Expired evidence is never downweighted into usability.
-2. `FRESH` gives a bundle freshness weight of `10_000` bps.
-3. `STALE` gives a bundle freshness weight of `staleWeightBps` and adds
-   `STALE_EVIDENCE_DOWNWEIGHTED` to the result.
-4. A source-quality value of zero excludes the bundle as
-   `SOURCE_DISABLED_BY_POLICY`.
-5. Bundle assessment coverage and warnings are retained as publisher metadata,
-   but do not decide selected coverage. The selector recomputes coverage from
-   surviving items.
-
-Selection evaluates all supplied records after first sorting them by source
-publisher, source ID, bundle `asOf`, received time, row ID, and evidence hash,
-using explicit UTF-16 string comparison. It never relies on input, `Map`, or
-`Set` iteration order.
-
-### Deterministic features
-
-- `status: unavailable` is excluded as `FEATURE_UNAVAILABLE`.
-- `status: invalid` is excluded as `FEATURE_INVALID`.
-- An available feature whose `freshUntil` is before the selection instant is
-  stale, not expired, because the v1 feature has no item-level expiry. Its item
-  freshness weight becomes `staleWeightBps` until its bundle expires.
-- A fresh available feature has item freshness weight `10_000`.
-- If feature lineage names another feature in the same bundle, that dependency
-  must also survive selection. After preliminary score and family-limit
-  decisions, a fixed-point lineage pass excludes dependants of excluded
-  features as `FEATURE_DEPENDENCY_EXCLUDED` and records the dependency IDs. The
-  selector does not backfill a cap slot after this safety exclusion. Lineage
-  that resolves directly to a source reference remains valid.
-- Feature warnings are retained in the selected item and decision lineage; they
-  do not automatically exclude a contract-valid available feature.
-
-### Contextual claims
-
-- A non-null claim `expiresAt` strictly before the selection instant excludes
-  the claim as `CLAIM_EXPIRED`. The existing inclusive contract boundary is
-  preserved: `now == expiresAt` remains usable.
-- A claim with `expiresAt: null` is bounded by its bundle lifecycle.
-- Claims inherit the bundle freshness weight. There is no invented soft-stale
-  window based on `observedAt` because v1 supplies no family-specific lifetime.
-- Provenance method contributes a policy-owned quality multiplier. Source
-  references and their locators do not create additional trust merely because
-  they exist.
-- Neutral, mixed, and unknown directions remain eligible. Direction affects
-  conflict summarization, not the evidence's inclusion score.
-
-### Effective score
-
-For a deterministic feature or contextual claim:
-
-```text
-effectiveScoreBps = floor(
-  confidenceBps
-  * sourceQualityBps
-  * provenanceQualityBps
-  * min(bundleFreshnessBps, itemFreshnessBps)
-  / 10_000^3
-)
-```
-
-All factors are integers in `[0, 10_000]`; the maximum intermediate value is
-`10^16`, which exceeds JavaScript's safe integer range. The implementation must
-therefore use stepwise integer multiplication/division with `bigint`, or an
-equivalent exact integer helper, and convert the final bounded result to number.
-Floating-point rounding is not permitted.
-
-Using `min` for bundle and item freshness avoids applying the same stale event
-twice. A score below `minimumEffectiveScoreBps` is excluded as
-`BELOW_MINIMUM_EFFECTIVE_SCORE`; its component factors and calculated score are
-still recorded.
-
-Publisher `overallConfidenceBps` is retained for audit but is not multiplied
-into item scores. It is a publisher self-assessment and would otherwise count
-confidence twice. Item `confidenceBps` is the only publisher confidence input to
-item scoring.
-
-### Research brief
-
-A brief cannot be treated as independent evidence because it has no confidence
-field and is derived from `sourceEvidenceIds`:
-
-- `researchBrief: null` records `RESEARCH_BRIEF_UNAVAILABLE`.
-- Every cited evidence ID must correspond to an item from the same bundle that
-  survived final selection, including lineage and family-limit passes. If any
-  citation was excluded, the brief is excluded as
-  `BRIEF_REFERENCES_EXCLUDED_EVIDENCE` with the excluded IDs.
-- A surviving brief's effective score is the minimum of the bundle's
-  `assessment.overallConfidenceBps` and the floor of the cited selected items'
-  average effective score. This prevents a summary from becoming more trusted
-  than either its publisher assessment or its supporting material.
-- The same minimum score threshold applies. The brief does not add new source
-  references; it inherits the union from its cited selected items.
-
-Brief evaluation occurs after all non-brief caps and exclusions so its lineage
-cannot point at material omitted from the synthesis summary.
-
-### Family bounds and deterministic tie-breaking
-
-Eligible candidates in each non-brief family are ranked by:
-
-1. effective score descending;
-2. bundle `asOf` descending;
-3. item `observedAt` descending, with null last;
-4. source publisher ascending;
-5. source ID ascending;
-6. local evidence ID ascending;
-7. evidence hash ascending.
-
-The first `maxSelectedPerFamily` candidates receive preliminary inclusion.
-Remaining eligible candidates are excluded as `FAMILY_SELECTION_LIMIT`, after
-which the deterministic-feature lineage fixed point runs. This is a synthesis
-input bound, not a statement that the omitted items are false. The complete
-decisions array retains scores and reasons, and brief evaluation runs only after
-these decisions are terminal.
-
-An included item receives stable reason codes such as `FRESH_HIGH_ENOUGH_SCORE`
-or `STALE_HIGH_ENOUGH_SCORE`; prose messages are explanatory and must not be
-parsed by consumers.
-
-## Conflict and coverage summarization
-
-### Directional conflict
-
-For each contextual family, sum effective scores into `bullish`, `bearish`,
-`neutral`, `mixed`, and `unknown` buckets. A family is `CONFLICTED` when both
-bullish and bearish buckets are non-zero. Both sides remain selected and a
-`CONFLICTING_<FAMILY>_EVIDENCE` warning is emitted.
-
-The family summary exposes all direction totals plus:
-
-```text
-directionalConsensusBps =
-  bullish + bearish == 0
-    ? 0
-    : floor(abs(bullish - bearish) * 10_000 / (bullish + bearish))
-```
-
-This metric describes agreement, not truth. Synthesis can see conflict without
-having the selector choose a narrative. Neutral, mixed, and unknown weights are
-reported separately and do not inflate directional consensus.
-
-Deterministic feature values can have different kinds and units, so this issue
-does not invent generic value-conflict semantics. Multiple selected features in
-the same deterministic family are preserved. Semantic reconciliation by
-calculator/feature identity belongs to synthesis policy if needed.
-
-### Derived coverage and mode
-
-Coverage is derived only after scoring, lineage checks, and family caps:
-
-- a family with at least one selected item is `AVAILABLE`;
-- a contextual family with selected bullish and bearish evidence is
-  `CONFLICTED`;
-- a family with candidates but none selected is `REJECTED`;
-- a family with no candidates is `MISSING`.
-
-The synthesis mode is:
-
-- `FULL` when all five contextual families and a research brief are available
-  and none is conflicted;
-- `PARTIAL` when at least one contextual claim or brief is selected but the
-  `FULL` condition is not met;
-- `DEGRADED_NO_RESEARCH` when no contextual claim and no brief is selected,
-  including zero records and deterministic-only bundles.
-
-External deterministic features do not change `DEGRADED_NO_RESEARCH` to
-`PARTIAL`; the mode specifically describes research enrichment. A separate
-`deterministicEvidenceCoverage` summary reports selected external deterministic
-families. It must not be confused with Regime Engine's independently computed
-market state.
-
-Stable `MISSING_<FAMILY>`, `REJECTED_<FAMILY>`, conflict, stale, and
-`NO_RESEARCH_EVIDENCE_SELECTED` warnings are emitted in canonical family/code
-order. The selector trusts neither `assessment.coverage` nor
-`assessment.quality` as the selected result, though it retains both so a later
-audit can compare publisher claims with actual selection.
-
-## Selection result
-
-The output is conceptually:
-
-```ts
-interface SelectedEvidenceSummary {
-  selectionPolicyVersion: string;
-  selectedAtUnixMs: number;
-  pair: "SOL/USDC";
-  scope: Scope;
-  authority: "ADVISORY_ONLY";
-  mode: "FULL" | "PARTIAL" | "DEGRADED_NO_RESEARCH";
-  selected: {
-    deterministicFeatures: SelectedDeterministicFeature[];
-    contextualEvidence: SelectedContextualFamilies;
-    researchBrief: SelectedResearchBrief | null;
-  };
-  familyCoverage: FamilyCoverageSummary;
-  conflicts: ConflictSummary[];
-  warnings: SelectionWarning[];
-  sourceReferences: SelectedSourceReference[];
-  bundles: BundleSelectionLineage[];
-  decisions: EvidenceSelectionDecision[];
-}
-```
-
-Each selected item contains the original contract item plus its qualified ID,
-bundle hash/run/source identity, raw confidence, component weights, effective
-score, and inclusion reason codes. `decisions` contains one entry for every
-bundle and candidate considered, including expired bundle contents, with
-`INCLUDED` or `EXCLUDED`, stable reason codes, relevant timestamps, scores when
-calculable, and source-reference IDs.
-
-`sourceReferences` is the deterministic union of references reachable from
-selected items and from excluded-item decisions. Each entry says whether it is
-`SELECTED_LINEAGE`, `AUDIT_ONLY`, or both and retains the originating bundle
-identity. References with the same local `referenceId` in different bundles
-remain distinct. This satisfies auditability without implying that an excluded
-reference influenced synthesis.
-
-`bundles` records row ID, hash, run/correlation/source identity, publisher
-assessment, lifecycle, source-quality lookup result, and bundle decision. Raw
-bundle payloads are not duplicated in the result because they remain available
-from immutable storage.
-
-All result arrays have explicit comparators and are emitted in documented
-canonical order. The result does not need a public schema or persisted hash in
-this issue, but the same inputs, selection instant, and policy must produce
-deep-equal output and byte-identical canonical JSON.
-
-## Hard-guard isolation
-
-The selector enforces the authority boundary structurally:
-
-- it does not accept `RegimeCurrentResponse`, plan state, or guard state;
-- it does not return recommendation, action, allocation, `allowClmm`, or guard
-  override fields;
-- every result has the literal `authority: "ADVISORY_ONLY"`;
-- it is wired beside, not inside, `getCurrentRegime` and `generatePlan`;
-- an empty evidence read returns `DEGRADED_NO_RESEARCH` rather than modifying or
-  suppressing deterministic market state;
-- evidence-store unavailability remains an evidence error and cannot make the
-  deterministic market endpoints unavailable, because those use cases have no
-  evidence dependency.
-
-Issue #61 must accept deterministic market state and selected evidence as
-separate inputs and apply the established precedence:
-
-```text
-deterministic hard guards
-  > deterministic market/evidence posture
-    > contextual and LLM evidence
-```
-
-That future synthesis boundary must test that `BLOCKED`, `UNKNOWN`, and
-hard-stale decisions cannot be promoted by even maximum-score research. This
-issue prepares that guarantee by ensuring selected evidence carries no policy
-authority. It does not duplicate final synthesis rules prematurely.
-
-## Error and degraded behavior
-
-- No records is a successful selection with `DEGRADED_NO_RESEARCH`, empty
-  selected arrays, missing-family warnings, and no decisions. It is not 404.
-- Records containing only expired or rejected evidence also return a successful
-  degraded result with complete exclusion lineage.
-- A transient repository failure remains `EvidenceStoreUnavailableError` and is
-  not converted to an empty result; absence and infrastructure failure must be
-  distinguishable.
-- An invalid selection policy, non-finite selection instant, or impossible
-  internal score is a programmer/configuration error and fails fast before
-  partial output.
-- A record metadata mismatch is isolated as a bundle exclusion when the rest of
-  the records remain evaluable.
-- The use case calls the clock and repository once. It never retries or reads
-  history; adapter retry policy is outside the pure selector.
+### Canonical synthesis envelope
+
+The pure reducer receives a single input object with no repositories, HTTP types, environment values, or implicit clock reads:
+
+- `synthesisAtUnixMs`, captured once by the application use case;
+- `pair` and exact evidence `scope`;
+- a canonical `RegimeCurrentResponse` snapshot or equivalent domain projection, including freshness, suitability, reasons, candle count, and engine/config versions;
+- optional position-plan context, consisting of a validated current position snapshot and the authoritative `PlanResponse` produced from it, including `planId`, `planHash`, action, cooldown/stand-down constraints, and observation time;
+- the complete `SelectedEvidenceSummary` returned by #60, not raw evidence rows and not a second selector implementation;
+- stable fingerprints for the regime snapshot, optional position/plan snapshot, and selection result;
+- the validated synthesis ruleset.
+
+The application layer must ensure all time-sensitive reads use the same captured `synthesisAtUnixMs`. It must reject mismatched pair/scope, a plan whose `planHash` does not verify, a position snapshot outside the ruleset's freshness limit, or a selection whose `selectedAtUnixMs` differs from the captured instant. No “latest payload wins” fallback is allowed.
+
+Position context is optional. If supplied and fresh, the synthesized insight is position-scoped and includes the position identity required by #63. If absent, the result is pair-scoped and the position identity is omitted. Stale supplied position context is a hard guard, not equivalent to absent context: the result is explicitly paused/stand-down with poor data quality and a stale-position warning.
+
+### Modules and responsibilities
+
+The intended boundaries are:
+
+- `src/engine/policy/ruleset.ts`: immutable ruleset definition and validation. It owns `sol-usdc-policy.v1`, threshold constants, allowed state transitions, feature bindings, reason-code ordering, and expiry limits.
+- `src/engine/policy/synthesizePolicyInsight.ts`: pure precedence reducer. It owns no I/O, clock, canonical hashing, or LLM calls.
+- `src/engine/policy/reasoning.ts`: deterministic templates that turn reason codes and selected lineage into concise bounded reasoning/warnings. It never copies arbitrary research prose into an action rule.
+- `src/application/use-cases/synthesizePolicyInsightUseCase.ts`: captures/validates the complete envelope, computes fingerprints and idempotency key, invokes the reducer, validates the #63 output, and coordinates persistence.
+- `src/application/ports/policyInsightRepositoryPort.ts`: atomic insert-or-return-existing, current read, and cursor-based history read.
+- `src/adapters/postgres/postgresPolicyInsightRepository.ts`: append-only persistence and race-safe deduplication.
+- HTTP current/history handlers: thin adapters over application read use cases, returning only #63-defined success shapes and the existing error taxonomy.
+- Composition: creates the repository and use cases only when PostgreSQL is available and exposes an explicit synthesis command to the trusted internal caller.
+
+No new public endpoint is required by this design. The application command is the stable entry point for an internal scheduler/orchestrator or a later thin authenticated adapter. Synthesis must not be hidden inside current reads, evidence ingest, candle ingest, or plan generation. The concrete production trigger is assumed to be composition/runtime work in this issue if one already exists by implementation time; otherwise exposing the composed command for the established internal caller is sufficient and trigger scheduling is documented as follow-up integration.
+
+### Versioned ruleset and precedence reducer
+
+The ruleset identifier is `sol-usdc-policy.v1`. The identifier is persisted in every output and forms part of the idempotency key. Any change that can alter action, posture, confidence, risk, data quality, level extraction, expiry, reason codes, or reasoning text requires a new ruleset version.
+
+The reducer evaluates these stages in order and locks fields as authority is established:
+
+| Precedence | Condition                                                                                                       | Required semantic outcome                                                                                                | Fields locked against lower levels                                 |
+| ---------- | --------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------ |
+| 1          | Market hard-stale, insufficient/unknown safety data, invalid snapshot linkage, or supplied position state stale | `pause_rebalances`/stand-down semantics, paused posture, critical or elevated risk, degraded/stale data quality          | action, posture, minimum risk, maximum confidence, CLMM permission |
+| 2          | Fresh qualified below-range or above-range breach                                                               | `exit_range`, defensive posture, CLMM deployment disabled; direction-specific reason code                                | action, posture, CLMM permission                                   |
+| 2          | Existing authoritative plan requests exit because an active CLMM position is blocked                            | `exit_range`, defensive posture, CLMM deployment disabled                                                                | action, posture, CLMM permission                                   |
+| 3          | Explicit stand-down active                                                                                      | `pause_rebalances`, paused posture, CLMM deployment disabled until the supplied boundary                                 | action, posture, CLMM permission                                   |
+| 3          | Cooldown active without a higher guard                                                                          | at least `hold`/`watch`, no increased rebalance sensitivity or capital deployment                                        | minimum caution bounds                                             |
+| 4          | `UP` or `DOWN`, or deterministic CLMM suitability `BLOCKED`                                                     | defensive monitoring; no evidence-created CLMM permission                                                                | posture and CLMM permission                                        |
+| 4          | `CHOP` with `ALLOWED` suitability                                                                               | neutral/eligible baseline subject to lower-level risk refinement                                                         | baseline only                                                      |
+| 5          | Allowlisted selected deterministic feature crosses a versioned threshold                                        | may lower capital cap, widen/passivate range, raise risk, reduce confidence, or produce stand-down if explicitly encoded | only the affected safety bound                                     |
+| 6          | Selected contextual claims and conflict summary                                                                 | may move confidence downward, raise risk, or increase monitoring emphasis; may not relax a locked field                  | no reversal authority                                              |
+| 7          | Selected research brief                                                                                         | contributes bounded explanation and warning context only                                                                 | no action or numerical authority                                   |
+
+`below-range` and `above-range` breaches both remain `exit_range`; separate reason codes preserve direction. Bullish evidence cannot change a qualified lower-bound exit to hold, and bearish evidence cannot change a qualified upper-bound exit to hold. The final object always marks its authority as advisory according to #63 and contains no executable instruction, transaction data, route, slippage, or approval state.
+
+The reducer should use monotone modifiers after the baseline decision: lower-precedence stages may make posture more defensive, risk higher, confidence lower, deployment smaller, range wider/more passive, or monitoring stronger. They cannot move those dimensions in the permissive direction once a higher-precedence stage locks them. Implementing this as ordered state plus explicit lock flags is clearer and safer than a score where positive and negative evidence can cancel a hard guard.
+
+### Evidence interpretation
+
+The selector's result is authoritative for evidence eligibility. Synthesis never loads bundles, follows URLs, parses raw source material, recomputes scores, or resurrects excluded candidates.
+
+The ruleset contains an allowlist of deterministic feature bindings. Each binding identifies the expected semantic feature, family, calculator name/version, feature kind, and unit, plus bounded thresholds and the policy dimensions it may tighten. Unknown features remain in lineage but cannot affect policy. This prevents an opaque `featureId` or numerically incompatible unit from silently acquiring meaning.
+
+Contextual directions are aggregated only from #60's selected claims and conflict totals. They influence confidence, risk, fundamental-regime classification, and reasoning through explicit thresholds. Conflicted families cannot produce a directional upgrade and add a conflict warning. Neutral/mixed/unknown claims never count as bullish or bearish votes.
+
+The optional research brief is not interpreted to choose an action or extract metrics. If its lineage survived #60, a bounded summary may be included as explanatory text only if #63 permits; otherwise the output references its brief ID and source evidence IDs. Missing or rejected briefs add warnings but do not fail synthesis.
+
+Support/resistance arrays are populated only from selected deterministic numeric features bound by the ruleset to support/resistance semantics with an exact expected price unit. They are deduplicated and sorted numerically, with contract limits applied deterministically. The current contextual support/resistance claim shape contains prose but no numeric level, so its text must not be parsed into a price. When no eligible structured numeric levels exist, arrays are empty if #63 permits them; if #63 requires a non-empty level block, this ruleset must omit the optional block rather than invent values.
+
+### Confidence, risk, fundamental regime, and data quality
+
+These outputs are categorical mappings defined in the ruleset, never free-form model judgments:
+
+- Start confidence from deterministic market quality and sample/freshness state. Cap it for soft-stale market data, stale selected evidence, partial coverage, conflicts, or stale position context. Evidence agreement may support the existing cap but cannot raise confidence above the deterministic-state ceiling.
+- Start risk from market suitability and volatility. Raise it for hard guards, selected risk/price-quality features, conflicts, missing critical evidence families, and stale inputs. Lower-precedence evidence cannot reduce risk below a higher-stage floor.
+- Derive `fundamentalRegime` from deterministic allowlisted fundamentals first, then selected contextual directional consensus. Conflict or insufficient coverage maps to the #63 neutral/unknown value, not a fabricated directional label.
+- Derive data quality from the worst relevant authoritative state: hard-stale/invalid, soft-stale, selection mode, stale selected inputs, missing/rejected families, and conflict. Missing research is degraded metadata, never a zero observation.
+
+Exact enum spellings and percentage units come exclusively from #63. In particular, implementation must not carry forward the legacy ambiguity between `maxCapitalDeploymentPercent` and `maxCapitalDeploymentPct`, singular/plural level fields, or `0..1` versus `0..100` values.
+
+### Reason codes, reasoning, and warnings
+
+Reason codes are stable ruleset-owned constants, ordered first by precedence and then lexicographically within a stage. At minimum the first version distinguishes:
+
+- market hard stale, soft stale, insufficient samples, and blocked suitability;
+- qualified lower breach and qualified upper breach;
+- blocked active position, cooldown, and stand-down;
+- `UP`, `DOWN`, and `CHOP` baselines;
+- deterministic feature tightening by binding ID;
+- evidence mode `NONE`/degraded, partial coverage, stale selection, expired/rejected candidates, family conflict, and missing optional brief;
+- no eligible structured support/resistance levels;
+- advisory-only/no-execution-authority.
+
+Reasoning strings are generated from fixed templates using validated categorical values and bounded identifiers. They are concise, stable, and ordered with their reason codes. Warnings from #60 are mapped to #63 warning codes without dropping the original selection lineage. Arbitrary claim or brief prose is not promoted into a machine reason code.
+
+### Freshness and expiry
+
+One application clock value is used for market reads, evidence selection, position validation, output generation, and persistence metadata. The output expiry is the earliest applicable boundary among:
+
+- the ruleset's maximum insight lifetime;
+- the market hard-stale boundary derived from the last closed candle;
+- the position freshness boundary, when position context is supplied;
+- selected evidence item/bundle expiry boundaries available in selected original items and bundle lineage.
+
+If the computed expiry is not after generation time, synthesis emits an immediately degraded/stand-down result only when #63 supports a valid future expiry using a small ruleset-defined safety TTL; it must not label expired inputs fresh. If #63 disallows that representation, the use case fails with an explicit invalid-current-input error and persists nothing. This behavior is fixed when #63 lands and is covered by contract tests.
+
+### Identity, hashing, and deterministic deduplication
+
+The application layer computes canonical SHA-256 fingerprints with the repository's existing canonical JSON utility:
+
+- `marketStateHash`: regime snapshot excluding presentation-only moving fields such as `ageSeconds`, while retaining source candle identity, freshness class/boundaries, telemetry, and config/engine versions;
+- `positionPlanHash`: the verified `planHash` plus a canonical hash of the supplied position observation, or an explicit `NONE` marker;
+- `selectionHash`: the full #60 selection result excluding only presentation-time fields, while retaining policy version, scope, mode, scores, selected/rejected decisions, bundle hashes, warnings, conflicts, and source references;
+- `synthesisInputHash`: ruleset version + pair/scope + the three preceding fingerprints.
+
+The exact exclusions are versioned with the ruleset and documented; no adapter may improvise them. A deterministic `insightId` is derived from the full input hash, using the #63 identity format. `payloadHash` is SHA-256 over canonical validated `PolicyInsight v1` output.
+
+Before invoking the reducer, the use case checks for `synthesisInputHash`. If present, it returns the stored canonical output. If absent, it builds the output with the captured generation time and attempts an insert. A unique index on `(schema_version, ruleset_version, synthesis_input_hash)` makes concurrent identical attempts race-safe; the loser reads and returns the winner. Thus operational retries return one historical insight even though the first creation timestamp is assigned at runtime. A change to meaningful state, effective freshness class, selection decisions, scope, position snapshot, or ruleset creates a distinct row.
+
+### Persistence and audit model
+
+Add a dedicated append-only `regime_engine.policy_insights` table rather than extending `clmm_insights`. Required columns are:
+
+- surrogate row ID, canonical insight ID, schema version, ruleset version, pair, scope key, optional position ID;
+- generated/as-of/expiry and persisted timestamps;
+- market-state, optional position-plan, selection, and full synthesis-input hashes;
+- selection policy version and selected evidence bundle/source identifiers needed for indexed audit queries;
+- canonical input envelope JSON and canonical output JSON;
+- output payload hash;
+- selected and excluded evidence decision/lineage JSON when it is not already wholly preserved in the canonical input envelope.
+
+The canonical input envelope is the reconstruction source of truth; typed/index columns optimize lookup and enforce invariants. Database checks enforce supported schema/ruleset versions, pair, timestamp ordering, and lowercase 64-character hashes. Rows are never updated or deleted by synthesis.
+
+Persistence occurs in one PostgreSQL transaction. There is no successful in-memory fallback. Repository unavailability maps to an explicit service-unavailable application error and no fabricated current insight is returned. The legacy `clmm_insights` table remains readable only for migration/audit purposes until #62 decides its removal; canonical current/history endpoints switch atomically to `policy_insights` and never merge legacy and canonical rows.
+
+### Current and history reads
+
+The existing resources remain:
+
+- `GET /v1/insights/sol-usdc/current`
+- `GET /v1/insights/sol-usdc/history`
+
+Both become thin adapters over repository-backed application read use cases and return only #63 contract shapes. Current selects the newest persisted canonical insight for the requested/default scope by `generated_at_unix_ms DESC, id DESC`; position-specific reads require the #63-approved scope selector. It reports stored insight freshness from its timestamps without synthesizing or mutating state. No row yields the existing not-found category; no repository yields explicit service unavailable.
+
+History uses a bounded cursor `(generatedAtUnixMs, id)` rather than an unbounded offset and orders by the same tuple as current. The history envelope, pagination fields, and current freshness wrapper must be exactly those defined by #63; this issue does not create alternate DTOs.
+
+## Data flow
+
+1. A trusted internal caller invokes `SynthesizePolicyInsightUseCase` with market selectors, exact evidence scope, and optional current position/plan context.
+2. The use case captures the clock once and obtains or verifies the canonical Regime Engine state.
+3. If position context exists, it verifies freshness and the canonical plan hash. The existing plan result is treated as the authority for breach/churn action; synthesis does not rerun a divergent position policy.
+4. The use case invokes #60's `SelectEvidenceForSynthesisUseCase` for exactly the supplied scope and shared instant. Empty repository results legitimately produce its deterministic degraded summary.
+5. It computes the canonical fingerprints and checks the insight repository for an existing synthesis input.
+6. On a miss, the pure reducer applies `sol-usdc-policy.v1`, maps to the imported #63 type, and generates deterministic reason/warning order.
+7. The application validates the produced object with #63's runtime validator, canonicalizes it, and computes the output hash.
+8. The repository atomically inserts the complete audit record or returns the concurrent winner.
+9. Current/history queries later return the persisted canonical payload. They never rebuild it from lossy typed columns.
+
+## Degraded operation
+
+- **No evidence records:** use the #60 `DEGRADED_NO_RESEARCH` result, preserve empty selection lineage, use deterministic market/position policy, and map to #63's `NONE`/degraded evidence status.
+- **Partial evidence:** use only selected candidates, surface missing/rejected-family warnings, and cap confidence/data quality according to the ruleset.
+- **Stale but eligible evidence:** honor #60's single downweighting, surface stale warnings, and shorten expiry as appropriate. Do not downweight a second time as though it were a score.
+- **Expired evidence:** it remains excluded in #60 decisions and audit lineage and cannot contribute to any policy dimension.
+- **Conflicting evidence:** preserve both sides and the computed conflict; do not average a conflict into false certainty. It may raise risk/lower confidence but not relax a guard.
+- **Optional brief unavailable or rejected:** continue without it and emit the mapped warning.
+- **Market or supplied position hard stale:** emit the deterministic paused/stand-down safety outcome if representable by #63, regardless of evidence direction.
+- **Persistence unavailable:** fail explicitly. Do not return an unstored “current” insight.
 
 ## Testing strategy
 
-### Pure selector unit tests
+### Pure ruleset and reducer tests
 
-Co-locate tests under `src/engine/evidence/__tests__/`. Fixtures should use
-small contract-valid builders and a fixed instant. Required cases include:
+- Validate the ruleset and freeze/copy behavior; reject invalid thresholds, duplicate reason ordering, unknown enum mappings, and inconsistent feature bindings.
+- Table-drive every precedence row and every allowed monotone modifier.
+- Prove bullish research cannot reverse a qualified lower-bound exit and bearish research cannot reverse a qualified upper-bound exit.
+- Prove contextual/brief input cannot authorize CLMM, increase capital, lower a locked risk floor, or choose an action.
+- Cover calm CHOP, upward trend, downward trend, extreme/stressed volatility, sparse evidence, poor price quality, cooldown, and stand-down.
+- Cover no evidence, partial selection, stale inclusion, expired exclusion, conflicts, missing families, and unavailable brief.
+- Cover allowlisted feature type/unit/calculator matching and prove unknown or mismatched numeric features do not affect output.
+- Cover deterministic support/resistance extraction, sorting, deduplication, bounds, and the no-structured-level case.
+- Assert the same envelope/ruleset produces byte-identical canonical output when generation time is fixed.
 
-- fresh high-confidence deterministic and contextual items are selected with
-  exact component and effective scores;
-- a stale bundle remains eligible, receives the exact stale multiplier, and
-  emits a warning;
-- an expired bundle and individually expired contextual claim are excluded at
-  the inclusive timestamp boundaries;
-- stale deterministic feature freshness uses the minimum freshness factor and
-  is not double-penalized with a stale bundle;
-- unavailable and invalid deterministic features are excluded with distinct
-  reasons;
-- low-confidence, unknown-source, and explicitly disabled-source cases;
-- exact source override wins over publisher/default quality;
-- derived, collected, and human-authored provenance produce the configured
-  score differences;
-- selected feature lineage closure and dependant exclusion;
-- null brief, valid brief, under-threshold brief, and brief referencing an
-  excluded/capped item;
-- partial family coverage is recomputed from selected items despite optimistic
-  publisher assessment;
-- deterministic-only and completely empty inputs return explicit
-  `DEGRADED_NO_RESEARCH` results;
-- bullish/bearish conflicts preserve both claims, emit the warning, and compute
-  exact directional totals and consensus;
-- neutral/mixed/unknown claims do not create false directional conflict;
-- family limit ranking and every tie-break level are deterministic;
-- duplicate local evidence/reference IDs across different bundles remain
-  qualified and distinct;
-- permutation tests show record order does not affect deep equality or
-  canonical JSON;
-- every candidate receives exactly one terminal decision and every selected
-  item has a matching `INCLUDED` decision;
-- selected and audit-only source-reference unions are complete and ordered;
-- mismatched scope/lifecycle records are excluded without corrupting valid
-  peers;
-- policy validation rejects out-of-range weights and limits.
+### Application tests
 
-The conflict fixture should include fresh, stale, and differently sourced claims
-so the test proves conflict uses effective scores rather than raw claim counts.
+- Capture the clock once and pass the same instant to every time-sensitive collaborator.
+- Reject pair/scope, selection-time, plan-hash, and position-freshness mismatches.
+- Assert exact replay returns the stored row without inserting a second one.
+- Assert changed market, position, selection, scope, or ruleset fingerprints produce distinct history.
+- Simulate concurrent insert conflict and return the winning canonical row.
+- Propagate repository unavailability explicitly and never return an unpersisted result.
+- Validate every result against #63 before persistence.
 
-### Application use-case tests
+### Adapter, migration, and HTTP tests
 
-Co-locate tests with existing application use-case tests. Verify that the use
-case:
-
-- captures the clock once;
-- calls `getLatest` once with `pair: "SOL/USDC"`, the exact scope, no source
-  filter, and the captured instant;
-- passes the same instant and configured policy to the selector;
-- returns degraded success for an empty repository result;
-- propagates `EvidenceStoreUnavailableError` unchanged;
-- does not invoke any candle, regime, plan, ledger-write, HTTP, or history path.
-
-### Composition and regression tests
-
-Add a small composition test showing that the selector use case is present when
-Postgres evidence storage is configured and null otherwise, matching existing
-evidence wiring. Existing regime and plan tests remain unchanged; they are
-regression evidence that selection is not inserted into deterministic paths.
-No HTTP end-to-end test is required because no route changes.
+- PostgreSQL migration shape, checks, unique input hash, append-only behavior, current ordering, cursor history, and canonical JSON round-trip.
+- End-to-end synthesis with a real PostgreSQL test database and fake authoritative inputs.
+- Current/history contract tests using #63 valid fixtures and negative shape assertions.
+- Verify canonical endpoints never return a legacy externally authored row and that no external final-policy write path is introduced by this work.
+- OpenAPI snapshots/contract checks where #63 exposes schemas.
+- Run typecheck, unit tests, PostgreSQL tests, lint, boundary checks, format check, and production build.
 
 ## Assumptions
 
-- Issue #59's merged `getLatest` behavior is the intended candidate read model:
-  one latest bundle per source and exact scope, including its derived lifecycle.
-- Policy synthesis will initially request pair-scoped evidence. The selector is
-  exact-scope generic so position-scoped use can be added without changing its
-  internal rules.
-- The current v1 publisher may use multiple stable `sourceId` values. Source
-  quality therefore needs a conservative global default plus optional
-  exact-identity overrides qualified by publisher and source ID.
-- Regime Engine owns source-quality policy. Publisher assessment and provenance
-  are inputs/audit metadata, not permission to set trust.
-- Stale evidence is useful at half weight until hard expiry. This is a
-  conservative initial policy choice, not a learned optimum.
-- The minimum score and family cap proposed above are acceptable initial safety
-  bounds and will be versioned when calibrated.
-- A context claim with `expiresAt: null` intentionally inherits the bundle's
-  hard expiry; no undocumented family TTL is inferred.
-- An available deterministic feature past its own `freshUntil` can be
-  downweighted until bundle expiry because v1 provides no feature-level hard
-  expiry.
-- A research brief is usable only when all cited evidence survives selection;
-  partial citation support is too ambiguous for the first version.
-- The selection result is ephemeral in this issue. Final synthesized insight
-  persistence will own any durable selection snapshot/lineage required for
-  replay.
-- Empty evidence is normal degraded operation; evidence-store failure is not
-  equivalent to empty evidence.
-- No questions are required to resolve these choices; any later policy change
-  should update the version and its tests rather than silently changing values.
+- Issue #63 lands before implementation and supplies the sole `PolicyInsight v1` TypeScript type, runtime validator, JSON Schema, fixtures, identity format, enum spellings, units, current envelope, and history envelope. This design does not guess or fork those artifacts.
+- `sol-usdc-policy.v1` is the first synthesis ruleset and only SOL/USDC is supported.
+- The trusted caller can provide an exact evidence scope and, when applicable, a canonical fresh position snapshot plus verified PlanResponse. Regime Engine does not query live wallet/position state from clmm-v2.
+- Pair-scoped synthesis is valid when position context is unavailable. It must not imply a position-specific breach decision.
+- The existing position plan is the authoritative reusable source for qualified-breach, blocked-active-position, cooldown, and stand-down outcomes. Synthesis maps those outcomes rather than creating a second qualification/debounce algorithm.
+- #60 remains the sole selector. Its complete summary can be embedded in the audit input even though #60 does not currently persist or hash selections.
+- PostgreSQL is the authoritative persistence layer for canonical insights. SQLite plan/execution ledgers remain unchanged.
+- A trusted runtime trigger exists or will call the composed application command. A new public synthesis route and a scheduling policy are not necessary to define the domain use case.
+- Structured numerical S/R values are usable only when an allowlisted deterministic feature supplies them with an expected unit. Contextual prose is not parsed for numbers.
+- Existing legacy insight rows do not satisfy #63 and are not exposed through the canonical read path after cutover.
+
+## Scope
+
+### In scope
+
+- Pure policy synthesis and deterministic reasoning templates.
+- The explicit `sol-usdc-policy.v1` matrix, feature bindings, precedence, locks, confidence/risk/data-quality mapping, and degraded modes.
+- Application orchestration around existing regime/plan state and #60 selection.
+- Exact mapping and validation against #63's canonical output.
+- Stable input/output hashing, insight identity, idempotency, and concurrent deduplication.
+- New append-only PostgreSQL persistence and complete audit lineage.
+- Canonical current/history repository and handler integration as required by #63.
+- Fixtures, unit/integration/contract tests, OpenAPI updates where owned here, and documentation.
+
+### Explicitly out of scope
+
+- Evidence ingestion, selection/scoring changes, external fetches, or “latest payload wins” logic.
+- Defining or modifying `PolicyInsight v1`; #63 owns the wire contract.
+- Removal/migration policy for the legacy external insight POST beyond ensuring it is not used by synthesis; #62 owns final removal.
+- clmm-v2 breach qualification, debounce, live balances, position truth, routing, fees, slippage, retry, approvals, signing, or transaction submission.
+- LLM action selection, metric generation, numerical extraction from prose, or unconstrained reasoning generation.
+- Automatic outcome learning, backtesting/calibration, multi-pair support, UI work, or cross-repository adapters.
+- Combining evidence across scopes or introducing a scheduler/public synthesis command unless an existing runtime integration requires a thin adapter.
 
 ## Risks and concerns
 
-### Source quality is not represented in EvidenceBundle v1
+### #63 contract dependency
 
-The selector needs a Regime-owned lookup table because the contract does not
-carry an authoritative trust score. New `sourceId` values will receive the
-conservative default until reviewed. Operational rollout must therefore include
-a visible inventory of production source identities; otherwise good evidence
-may be unexpectedly downweighted. This is preferable to automatically trusting
-an opaque new source.
+The canonical contract is absent from this branch. Its exact freshness representation, optional level semantics, scope selector, and action enums may constrain the reducer. Implementation must begin by importing #63 and resolving those details; modifying the legacy `InsightIngestRequest` would violate the issue boundary.
 
-### Static weights are policy, not measured truth
+### Missing structured S/R values
 
-The proposed weights and threshold are explainable but uncalibrated. They could
-exclude useful low-confidence evidence or retain noisy evidence. Versioning,
-component-score lineage, and later outcome analysis are necessary before tuning.
+`EvidenceBundle v1` contextual support/resistance claims contain text and direction but no price. Blind number extraction would violate determinism and the no-invented-metrics guardrail. The safe first version may often emit no levels unless publishers also provide allowlisted deterministic numeric features. If #63 requires levels, the upstream evidence contract needs a separately versioned enhancement rather than a synthesis workaround.
 
-### Latest-per-source can hide an older still-usable bundle
+### Plan/state duplication and freshness
 
-The repository selects latest by `asOf`, receipt time, and ID. A malformed
-publisher lifecycle could theoretically make a newer bundle expire before an
-older bundle. The contract allows differing expiry windows, and this design does
-not search history for fallback. Adding fallback would require a bounded
-candidate query and explicit anti-replay semantics; it should not be hidden in
-this issue.
+Market regime and plan generation currently compute related state through separate use cases, and position truth is caller-supplied rather than stored as a canonical current projection. Accepting arbitrary pieces would risk a regime/plan mismatch. The synthesis envelope therefore needs strict fingerprint and timestamp linkage, and the implementation should extract shared pure projections only where needed to prevent drift.
 
-### Candidate volume is bounded only after the database read
+### Trigger ambiguity
 
-Each bundle is schema-bounded, and output is family-capped, but the number of
-distinct source IDs returned by `getLatest` is not currently capped. A publisher
-creating unbounded source IDs could increase query and selection cost. The v1
-publisher identity restriction reduces but does not remove this risk. If source
-cardinality grows, the repository should gain a bounded configured-source read
-rather than truncating nondeterministically in the selector.
+The issue specifies the use case and persistence but not when production invokes it. Hiding synthesis in GET, evidence ingest, candle ingest, or plan generation creates worse transactional and coupling problems. The design exposes an explicit internal command and treats runtime scheduling/adapter choice as composition integration. Deployment must verify that a trusted caller actually invokes it before switching current reads.
 
-### Contract lineage is local to a bundle
+### Cross-store atomicity
 
-Local evidence and reference IDs can repeat across bundles. All output identity,
-deduplication, and reference resolution must stay qualified by bundle hash.
-Using raw IDs as global `Map` keys would silently cross-wire lineage.
+Plan facts are in SQLite while evidence and canonical insights are in PostgreSQL. No transaction can atomically cover both. The canonical input envelope and verified hashes are therefore essential: persistence records exactly which immutable plan/evidence snapshots were used rather than claiming a distributed snapshot transaction.
 
-### Brief confidence is derived indirectly
+### Time-dependent idempotency
 
-The brief lacks its own confidence field. Deriving its score from cited evidence
-and publisher assessment is conservative but may reject useful summaries. It is
-safer than inventing a fixed LLM confidence or allowing the brief to outrank its
-supporting evidence.
+Freshness changes with time even when source rows do not. Fingerprints must include effective freshness classes and expiry boundaries but exclude presentation-only ages, or retries will either create needless history or reuse an insight after a meaningful boundary changes. Boundary-equality tests are required.
 
-### Conflict is directional, not semantic
+### Legacy cutover
 
-The generic conflict calculation catches bullish-versus-bearish disagreement
-but cannot determine that two numerical support zones or two category features
-are logically incompatible. Adding semantic conflict rules requires
-feature/kind-specific policy and should happen only when synthesis needs it.
+The existing current/history handlers reconstruct a legacy payload from typed columns, and the legacy table can contain externally authored records. Mixing both generations would make “current” nondeterministic and violate the exact #63 contract. Cutover must be atomic at the read adapter and covered by regression tests; legacy history can remain accessible only through an explicitly non-canonical audit path if separately required.
 
-### Clock-dependent output is not persisted
+### Reasoning leakage and output bounds
 
-Re-running selection later can yield a different result as evidence crosses
-freshness and expiry boundaries. Future synthesis persistence must store either
-the full selected summary or enough inputs—selection instant, policy version,
-bundle hashes, and deterministic algorithm version—to reproduce it.
+Selected claims and briefs can contain long publisher-authored prose. Copying them wholesale risks unstable, oversized, or misleading reasoning. Fixed templates, bounded identifiers, deterministic ordering, and #63 maximum lengths must be enforced before hashing and persistence.
 
-### The hard-guard guarantee completes in #61
+## Acceptance mapping
 
-This selector prevents evidence from carrying authority and leaves current
-deterministic use cases untouched. The final proof that research cannot promote
-a hard-blocked state must live where market state and evidence are actually
-combined. Implementers must not interpret an `ADVISORY_ONLY` summary as
-sufficient authorization in the synthesis issue.
-
-## Scope summary
-
-In scope is a pure deterministic evidence selector, its versioned policy, a
-repository-backed internal application use case, composition wiring, and tests
-covering fresh, stale, expired, partial, conflicting, missing, and lineage-heavy
-cases. Explicitly out of scope are external APIs, contract/persistence changes,
-selection persistence, final policy synthesis, UI, and all modifications to
-deterministic market guards or execution behavior.
+| Issue requirement                | Design mechanism                                                                                   |
+| -------------------------------- | -------------------------------------------------------------------------------------------------- |
+| Consume only #60 selection       | Synthesis envelope accepts `SelectedEvidenceSummary`; no evidence repository access in the reducer |
+| Validate exact #63 output        | Runtime validation before canonicalization/persistence; handlers reuse #63 DTOs                    |
+| Versioned rules and precedence   | `sol-usdc-policy.v1`, ordered reducer stages, monotone locks, persisted ruleset version            |
+| Breach direction cannot reverse  | Position plan authority plus lower/upper fixture tests and action/posture locks                    |
+| Explicit degraded modes          | Deterministic mapping for empty, partial, stale, expired, conflict, and no-brief selections        |
+| Complete recommendation metadata | #63 mapping plus stable reason/warning templates and selection source references                   |
+| Auditable lineage                | Canonical input envelope, component hashes, full selection decisions, output canonical JSON/hash   |
+| Deterministic scenario coverage  | Table-driven reducer fixtures and snapshot/hash tests across all named market/data states          |
+| No execution authority           | Advisory contract marker, no transaction fields/dependencies, boundary tests                       |

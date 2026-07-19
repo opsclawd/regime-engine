@@ -35,6 +35,7 @@ export function computePolicyInsightFingerprints(
   const marketCopy = JSON.parse(JSON.stringify(input.market));
   if (marketCopy.freshness) {
     delete marketCopy.freshness.ageSeconds;
+    delete marketCopy.freshness.generatedAtIso;
   }
   const marketHash = sha256Hex(toCanonicalJson(marketCopy));
 

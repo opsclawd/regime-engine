@@ -1,0 +1,17 @@
+{
+  "result": "fail",
+  "findings": [
+    {
+      "severity": "P1",
+      "summary": "renderPolicyReasoning uses a hardcoded REASON_PRECEDENCE map instead of the ruleset.reasonOrder configuration, breaking data-driven policy rules.",
+      "file": "src/engine/policy/reasoning.ts",
+      "suggested_fix": "Add `reasonOrder: Readonly<Record<string, number>>` to `renderPolicyReasoning` input, remove the hardcoded `REASON_PRECEDENCE` map, and pass `ruleset.reasonOrder` from `synthesizePolicyInsight.ts`."
+    },
+    {
+      "severity": "P2",
+      "summary": "boundedIdentifiers array in synthesizePolicyInsight only includes deterministic feature candidate IDs, dropping contextual evidence and research brief candidate IDs.",
+      "file": "src/engine/policy/synthesizePolicyInsight.ts",
+      "suggested_fix": "Collect candidate IDs from `envelope.evidence.selected.contextualEvidence` claims and `researchBrief` into `boundedIdentifiers` before passing to `renderPolicyReasoning`."
+    }
+  ]
+}
