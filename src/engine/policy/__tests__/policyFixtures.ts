@@ -160,3 +160,64 @@ export const makeMockPlan = (overrides?: Partial<PlanResponse>): PlanResponse =>
   },
   ...overrides
 });
+
+// Pre-defined fixtures for evidence and market conditions
+export const calmChopMarket = makeMockMarketResponse({
+  regime: "CHOP",
+  telemetry: {
+    realizedVolShort: 0.01,
+    realizedVolLong: 0.01,
+    volRatio: 1.0,
+    trendStrength: 0.0,
+    compression: 0.1
+  }
+});
+
+export const upwardMarket = makeMockMarketResponse({
+  regime: "UP"
+});
+
+export const downwardMarket = makeMockMarketResponse({
+  regime: "DOWN"
+});
+
+export const stressedMarket = makeMockMarketResponse({
+  regime: "CHOP",
+  telemetry: {
+    realizedVolShort: 0.08,
+    realizedVolLong: 0.02,
+    volRatio: 4.0,
+    trendStrength: 0.1,
+    compression: 0.8
+  }
+});
+
+export const poorPriceQualityMarket = makeMockMarketResponse({
+  freshness: {
+    generatedAtIso: new Date(Date.now() - 3000000).toISOString(),
+    lastCandleOpenUnixMs: Date.now() - 3600000,
+    lastCandleOpenIso: new Date(Date.now() - 3600000).toISOString(),
+    lastCandleCloseUnixMs: Date.now() - 600000,
+    lastCandleCloseIso: new Date(Date.now() - 600000).toISOString(),
+    ageSeconds: 3000,
+    softStale: true,
+    hardStale: true,
+    softStaleSeconds: 1500,
+    hardStaleSeconds: 2100
+  }
+});
+
+export const sparseEvidenceSummary = makeMockEvidenceSummary({
+  mode: "DEGRADED_NO_RESEARCH",
+  selected: {
+    deterministicFeatures: [],
+    contextualEvidence: {
+      supportResistance: [],
+      flows: [],
+      derivatives: [],
+      events: [],
+      newsRegulatory: []
+    },
+    researchBrief: null
+  }
+});

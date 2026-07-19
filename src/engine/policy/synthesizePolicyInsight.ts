@@ -17,6 +17,7 @@ import {
   CONFIDENCES,
   RISK_LEVELS
 } from "../../contract/v1/insights.js";
+import { renderPolicyReasoning, renderPolicyWarnings } from "./reasoning.js";
 
 type RecommendedAction = (typeof RECOMMENDED_ACTIONS)[number];
 type Posture = (typeof POSTURES)[number];
@@ -236,6 +237,114 @@ export function synthesizePolicyInsight(
     reasoningSet.add("MARKET_REGIME_CHOP");
   }
 
+  // Support & Resistance levels arrays extracted from features
+  const extractedSupport: number[] = [];
+  const extractedResistance: number[] = [];
+
+  // Stage 5: Deterministic features
+  if (envelope.evidence.selected?.deterministicFeatures) {
+    for (const feature of envelope.evidence.selected.deterministicFeatures) {
+      const originalItem = feature.originalItem;
+      if (originalItem.status !== "available" || !("calculator" in originalItem)) {
+        continue;
+      }
+      // Find matching binding
+      const binding = ruleset.featureBindings.find(
+        (b) =>
+          b.family === feature.family &&
+          b.featureId === feature.featureId &&
+          b.calculatorName === originalItem.calculator.name &&
+          b.calculatorVersion === originalItem.calculator.version &&
+          b.unit === originalItem.unit
+      );
+
+      if (binding) {
+        const val = Number(feature.value);
+        if (!isNaN(val) && val >= binding.threshold) {
+          reasoningSet.add("FEATURE_THRESHOLD_BREACHED");
+          if (binding.tighten === "risk") {
+            riskFloor = "elevated";
+          } else if (binding.tighten === "confidence") {
+            confidenceCeiling = "medium";
+          } else if (binding.tighten === "capital") {
+            capitalCap = Math.min(capitalCap ?? maxCapital, 50);
+          } else if (binding.tighten === "range") {
+            rangeBias = "tight";
+          } else if (binding.tighten === "support") {
+            if (val > 0) {
+              extractedSupport.push(val);
+            }
+          } else if (binding.tighten === "resistance") {
+            if (val > 0) {
+              extractedResistance.push(val);
+            }
+          }
+        }
+      }
+    }
+  }
+
+  // Stage 6: Contextual evidence votes & conflicts
+  let bullishCount = 0;
+  let bearishCount = 0;
+  if (envelope.evidence.selected?.contextualEvidence) {
+    const ctx = envelope.evidence.selected.contextualEvidence;
+    const allClaims = [
+      ...(ctx.supportResistance || []),
+      ...(ctx.flows || []),
+      ...(ctx.derivatives || []),
+      ...(ctx.events || []),
+      ...(ctx.newsRegulatory || [])
+    ];
+    for (const claim of allClaims) {
+      if (
+        claim.originalItem?.expiresAt &&
+        Date.parse(claim.originalItem.expiresAt) < envelope.synthesisAtUnixMs
+      ) {
+        // Expired contextual claims are ignored/excluded
+        continue;
+      }
+      if (claim.direction === "bullish") {
+        bullishCount++;
+      } else if (claim.direction === "bearish") {
+        bearishCount++;
+      }
+    }
+  }
+
+  const hasConflict =
+    envelope.evidence.conflicts.length > 0 || (bullishCount > 0 && bearishCount > 0);
+
+  if (hasConflict) {
+    reasoningSet.add("CONTEXTUAL_EVIDENCE_VOTE");
+    // Conflict can increase risk or reduce confidence but cannot produce directional upgrade
+    riskFloor = "elevated";
+    confidenceCeiling = "low";
+  } else if (bearishCount > bullishCount) {
+    reasoningSet.add("CONTEXTUAL_EVIDENCE_VOTE");
+    // Bearish direction: tighten fields
+    riskFloor = "elevated";
+    capitalCap = Math.min(capitalCap ?? maxCapital, 50);
+    // Shift posture down to a safer one (towards paused)
+    const postureIndex = ruleset.postureOrder.indexOf(posture);
+    if (postureIndex !== -1 && postureIndex < ruleset.postureOrder.length - 1) {
+      posture = ruleset.postureOrder[postureIndex + 1];
+    }
+  } else if (bullishCount > bearishCount) {
+    reasoningSet.add("CONTEXTUAL_EVIDENCE_VOTE");
+    // Bullish direction: directional upgrade
+    // Shift posture up to a more aggressive one (towards aggressive/first)
+    const postureIndex = ruleset.postureOrder.indexOf(posture);
+    if (postureIndex > 0) {
+      posture = ruleset.postureOrder[postureIndex - 1];
+    }
+  }
+
+  // Stage 7: Research briefs
+  if (envelope.evidence.selected?.researchBrief) {
+    reasoningSet.add("RESEARCH_BRIEF_ANALYSIS");
+  }
+
   // Apply locks and limits
   if (actionLock) {
     action = actionLock;
@@ -271,17 +380,73 @@ export function synthesizePolicyInsight(
     }
   }
 
-  // Build sorting for reasoning based on Ruleset reasonOrder
-  const sortedReasoning = Array.from(reasoningSet).sort((a, b) => {
-    const orderA = ruleset.reasonOrder[a] ?? 999;
-    const orderB = ruleset.reasonOrder[b] ?? 999;
-    return orderA - orderB;
-  });
+  // Support and resistance logic sorting/deduplication/bounds
+  const currentPrice = envelope.positionPlan?.position?.currentPrice ?? 100;
+  const lowerBound = envelope.positionPlan?.position?.lowerBoundPrice ?? 95;
+  const upperBound = envelope.positionPlan?.position?.upperBoundPrice ?? 110;
+
+  // Aggregate support values, filter, deduplicate, and sort descending
+  const supportSet = new Set<number>();
+  if (envelope.positionPlan) {
+    supportSet.add(lowerBound);
+  }
+  for (const s of extractedSupport) {
+    if (s <= currentPrice && s > 0) {
+      supportSet.add(s);
+    }
+  }
+  const sortedSupport = Array.from(supportSet).sort((a, b) => b - a);
+
+  // Aggregate resistance values, filter, deduplicate, and sort ascending
+  const resistanceSet = new Set<number>();
+  if (envelope.positionPlan) {
+    resistanceSet.add(upperBound);
+  }
+  for (const r of extractedResistance) {
+    if (r >= currentPrice && r > 0) {
+      resistanceSet.add(r);
+    }
+  }
+  const sortedResistance = Array.from(resistanceSet).sort((a, b) => a - b);
+
+  // Fallbacks if empty
+  const finalSupport = sortedSupport.length > 0 ? sortedSupport : [100];
+  const finalResistance = sortedResistance.length > 0 ? sortedResistance : [200];
 
   const levels = {
-    support: envelope.positionPlan ? [envelope.positionPlan.position.lowerBoundPrice] : [100],
-    resistance: envelope.positionPlan ? [envelope.positionPlan.position.upperBoundPrice] : [200]
+    support: finalSupport.slice(0, 16),
+    resistance: finalResistance.slice(0, 16)
   };
+
+  // Build sorted reasoning using deterministic reasoning engine
+  const orderedReasonCodes = Array.from(reasoningSet);
+  const boundedIdentifiers =
+    envelope.evidence.selected?.deterministicFeatures?.map((f) => f.candidateId) || [];
+
+  const renderedReasoning = renderPolicyReasoning({
+    orderedReasonCodes,
+    boundedIdentifiers
+  });
+
+  const derivedWarnings: string[] = [];
+  if (envelope.market.freshness?.hardStale) {
+    derivedWarnings.push("market data is hard stale");
+  }
+
+  const renderedWarnings = renderPolicyWarnings({
+    selection: envelope.evidence,
+    derivedWarnings
+  });
+
+  // Combine reasoning and warnings, keeping at most 16 elements total
+  const combinedReasoning = [...renderedReasoning, ...renderedWarnings].slice(0, 16);
+
+  // Source refs
+  const sourceRefs = (envelope.evidence.sourceReferences || [])
+    .map((ref) => ref.referenceId)
+    .filter(Boolean)
+    .slice(0, 16)
+    .map((s) => s.substring(0, 512));
 
   return {
     schemaVersion: SCHEMA_VERSION,
@@ -302,8 +467,8 @@ export function synthesizePolicyInsight(
       maxCapitalDeploymentPercent: maxCapital
     },
     levels,
-    reasoning: sortedReasoning,
-    sourceRefs: [],
+    reasoning: combinedReasoning,
+    sourceRefs,
     expiresAt: expiresAtIso
   };
 }
