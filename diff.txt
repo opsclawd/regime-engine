@@ -1,0 +1,211 @@
+diff --git a/implementation-log.md b/implementation-log.md
+index d69eb3b..05009b9 100644
+--- a/implementation-log.md
++++ b/implementation-log.md
+@@ -1,23 +1,17 @@
+-# Task 5 Implementation Log
++# Task 6 Implementation Log
+ 
+ ## Overview
+-Implemented Task 5: "Add the repository-backed selection use case".
++Implemented Task 6: "Wire nullable evidence selection without changing deterministic paths".
+ 
+ ## Changes
+-- **selectEvidenceForSynthesisUseCase.ts**:
+-  - Implemented the repository-backed selection use case.
+-  - Set up dependencies signature accepting repository, clock, and optional selector/policy.
+-  - Orchesrated a single clock read (`nowUnixMs()`) followed by a single read (`getLatest`) to read all current sources for the exact input scope on the "SOL/USDC" pair.
+-  - Injected the selected evidence selector (`selectEvidence`) and policy (`EVIDENCE_SELECTION_POLICY_V1`) as defaults.
+-- **selectEvidenceForSynthesisUseCase.test.ts**:
+-  - Implemented TDD-style unit tests verifying all five behavioral invariants:
+-    1. `captures the clock once and reads all current sources for the exact scope`
+-    2. `passes the same records instant scope and configured policy to the selector`
+-    3. `returns degraded success when the repository returns no records`
+-    4. `propagates EvidenceStoreUnavailableError unchanged without retry`
+-    5. `does not invoke history writes candles regime plan ledger or HTTP dependencies`
++- **src/composition/__tests__/evidenceSelectionWiring.test.ts**:
++  - Implemented TDD-style unit tests verifying all four behavioral invariants:
++    1. `exposes null selection when PostgreSQL evidence storage is not configured` (SQLite-only nullable check)
++    2. `exposes selection beside existing evidence use cases when PostgreSQL is configured` (wired with shared repo)
++    3. `does not wire selection into regime or plan generation` (retains only current deterministic dependencies)
++    4. `does not register a selection HTTP route` (checks internal-only composition in OpenAPI spec)
+ 
+ ## Verification
+-- Running `pnpm exec vitest run src/application/use-cases/__tests__/selectEvidenceForSynthesisUseCase.test.ts` passes with all tests green.
++- Running `pnpm exec vitest run src/composition/__tests__/evidenceSelectionWiring.test.ts` passes with all tests green.
+ - Typechecking passes without error: `pnpm run typecheck`
+ - Linter passes with zero warnings: `pnpm run lint`
+diff --git a/src/application/ports/evidenceBundleRepositoryPort.ts b/src/application/ports/evidenceBundleRepositoryPort.ts
+index 81ae993..1a13f16 100644
+--- a/src/application/ports/evidenceBundleRepositoryPort.ts
++++ b/src/application/ports/evidenceBundleRepositoryPort.ts
+@@ -33,15 +33,12 @@ export interface EvidenceScopeQuery {
+   toUnixMs?: number;
+ }
+ 
+-export type EvidenceLifecycle = "FRESH" | "STALE" | "EXPIRED";
++import type {
++  EvidenceLifecycle,
++  EvidenceBundleRecord
++} from "../../engine/evidence/selectEvidence.js";
+ 
+-export interface EvidenceBundleRecord {
+-  readonly id: number;
+-  readonly bundle: EvidenceBundleV1;
+-  readonly evidenceHash: string;
+-  readonly receivedAtUnixMs: number;
+-  readonly lifecycle: EvidenceLifecycle;
+-}
++export type { EvidenceLifecycle, EvidenceBundleRecord };
+ 
+ export interface EvidenceHistoryCursor {
+   receivedAtUnixMs: number;
+diff --git a/src/composition/__tests__/evidenceSelectionWiring.test.ts b/src/composition/__tests__/evidenceSelectionWiring.test.ts
+new file mode 100644
+index 0000000..0fc3435
+--- /dev/null
++++ b/src/composition/__tests__/evidenceSelectionWiring.test.ts
+@@ -0,0 +1,95 @@
++import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
++import { buildApplication } from "../buildApplication.js";
++import { buildApp } from "../buildApp.js";
++import { createLedgerStore } from "../../ledger/store.js";
++import type { RuntimeStoreContext } from "../buildStoreContext.js";
++import type { Db } from "../../ledger/pg/db.js";
++
++describe("evidenceSelectionWiring", () => {
++  let store: ReturnType<typeof createLedgerStore>;
++
++  beforeEach(() => {
++    store = createLedgerStore(":memory:");
++  });
++
++  afterEach(() => {
++    store.close();
++    vi.restoreAllMocks();
++  });
++
++  it("exposes null selection when PostgreSQL evidence storage is not configured", () => {
++    const ctx: RuntimeStoreContext = {
++      ledger: store,
++      pg: null,
++      candleStore: null,
++      insightsStore: null,
++      srThesesV2Store: null,
++      close: async () => {}
++    };
++
++    const appDeps = buildApplication(ctx);
++
++    expect(appDeps.selectEvidenceForSynthesis).toBeNull();
++    expect(appDeps.ingestEvidenceBundle).toBeNull();
++    expect(appDeps.getCurrentEvidence).toBeNull();
++    expect(appDeps.getEvidenceHistory).toBeNull();
++
++    expect(appDeps.getCurrentRegime).toBeDefined();
++    expect(appDeps.generatePlan).toBeDefined();
++    expect(appDeps.ingestCandles).toBeDefined();
++  });
++
++  it("exposes selection beside existing evidence use cases when PostgreSQL is configured", () => {
++    const dbDouble = {} as unknown as Db;
++    const ctx: RuntimeStoreContext = {
++      ledger: store,
++      pg: dbDouble,
++      candleStore: null,
++      insightsStore: null,
++      srThesesV2Store: null,
++      close: async () => {}
++    };
++
++    const appDeps = buildApplication(ctx);
++
++    expect(appDeps.selectEvidenceForSynthesis).not.toBeNull();
++    expect(appDeps.ingestEvidenceBundle).not.toBeNull();
++    expect(appDeps.getCurrentEvidence).not.toBeNull();
++    expect(appDeps.getEvidenceHistory).not.toBeNull();
++  });
++
++  it("does not wire selection into regime or plan generation", () => {
++    const ctx: RuntimeStoreContext = {
++      ledger: store,
++      pg: null,
++      candleStore: null,
++      insightsStore: null,
++      srThesesV2Store: null,
++      close: async () => {}
++    };
++
++    const appDeps = buildApplication(ctx);
++
++    expect(appDeps.selectEvidenceForSynthesis).toBeNull();
++    expect(typeof appDeps.getCurrentRegime).toBe("function");
++    expect(typeof appDeps.generatePlan).toBe("function");
++  });
++
++  it("does not register a selection HTTP route", async () => {
++    vi.stubEnv("LEDGER_DB_PATH", ":memory:");
++    vi.stubEnv("DATABASE_URL", "");
++
++    const app = buildApp();
++    const response = await app.inject({ method: "GET", url: "/v1/openapi.json" });
++    expect(response.statusCode).toBe(200);
++    const doc = response.json() as { paths?: Record<string, unknown> };
++    const paths = Object.keys(doc.paths ?? {});
++
++    for (const path of paths) {
++      expect(path).not.toContain("selection");
++      expect(path).not.toContain("synthesis");
++    }
++
++    await app.close();
++  });
++});
+diff --git a/src/engine/evidence/__tests__/evidenceSelectionFixtures.ts b/src/engine/evidence/__tests__/evidenceSelectionFixtures.ts
+index ba94042..019984c 100644
+--- a/src/engine/evidence/__tests__/evidenceSelectionFixtures.ts
++++ b/src/engine/evidence/__tests__/evidenceSelectionFixtures.ts
+@@ -10,10 +10,7 @@ import type {
+   BundleProvenance,
+   BundleWarning
+ } from "../../../contract/evidence/v1/types.generated.js";
+-import type {
+-  EvidenceBundleRecord,
+-  EvidenceLifecycle
+-} from "../../../application/ports/evidenceBundleRepositoryPort.js";
++import type { EvidenceBundleRecord, EvidenceLifecycle } from "../selectEvidence.js";
+ 
+ export interface BundleFixtureOverrides {
+   scope?: Scope;
+diff --git a/src/engine/evidence/selectEvidence.ts b/src/engine/evidence/selectEvidence.ts
+index 895d7ba..90c0b9f 100644
+--- a/src/engine/evidence/selectEvidence.ts
++++ b/src/engine/evidence/selectEvidence.ts
+@@ -1,5 +1,6 @@
+ import { validateEvidenceSelectionPolicy, evidenceSourceQualityKey } from "./selectionPolicy.js";
+ import type { EvidenceSelectionPolicy } from "./selectionPolicy.js";
++import type { EvidenceBundleV1 } from "../../contract/evidence/v1/types.generated.js";
+ import type {
+   Scope,
+   DeterministicFeature,
+@@ -10,10 +11,16 @@ import type {
+   EventClaim,
+   NewsRegulatoryClaim
+ } from "../../contract/evidence/v1/types.generated.js";
+-import type {
+-  EvidenceBundleRecord,
+-  EvidenceLifecycle
+-} from "../../application/ports/evidenceBundleRepositoryPort.js";
++
++export type EvidenceLifecycle = "FRESH" | "STALE" | "EXPIRED";
++
++export interface EvidenceBundleRecord {
++  readonly id: number;
++  readonly bundle: EvidenceBundleV1;
++  readonly evidenceHash: string;
++  readonly receivedAtUnixMs: number;
++  readonly lifecycle: EvidenceLifecycle;
++}
+ 
+ export interface SelectEvidenceInput {
+   readonly records: readonly EvidenceBundleRecord[];

@@ -1,6 +1,6 @@
 # Task Context: Task 1
 
-Title: Establish the normative schema and reproducible type-generation toolchain
+Title: Define and validate the versioned selection policy
 ## Workspace & Scope Constraints
 
 ## WORKSPACE CONSTRAINTS
@@ -9,143 +9,101 @@ Your working directory is a dedicated git worktree with the repository's complet
 
 .ai-orchestrator.local.json, if one exists, lives only in the main checkout and is intentionally not copied into your worktree — it is operator-machine-specific and not part of your task. Do not search for it or read it outside this directory. Reason about configuration using only .ai-orchestrator.json in your own working directory; treat it as the effective config for your task.
 
-Working Directory: /home/gary/.openclaw/workspace/regime-engine/.ai-worktrees/issue-58
+Working Directory: /home/gary/.openclaw/workspace/regime-engine/.ai-worktrees/issue-60
 Repository: opsclawd/regime-engine
-Branch: ai/issue-58
-Start Commit: 7bd5b19db3afbf66e95e06ac273453030f5381fe
+Branch: ai/issue-60
+Start Commit: 6a6956b3c169a8146d22f1b8f77b7c27de35d1b5
 
 ## Task Requirements
 
 **Files:**
 
-- Create: `contracts/evidence-bundle/v1/evidence-bundle.schema.json`
-- Create: `contracts/evidence-bundle/v1/schema.sha256`
-- Create: `scripts/generateEvidenceContract.ts`
-- Create: `src/contract/evidence/v1/types.generated.ts`
-- Create: `src/contract/evidence/v1/__tests__/generation.test.ts`
-- Modify: `package.json`
-- Modify: `pnpm-lock.yaml`
+- Create: `src/engine/evidence/selectionPolicy.ts`
+- Create: `src/engine/evidence/__tests__/selectionPolicy.test.ts`
 
-- [ ] **Step 1: Write the failing reproducibility test**
+**Exported API surface:** Add `EvidenceSelectionPolicy`, `ProvenanceClass`, `EvidenceSelectionReasonCode`, `EvidenceSelectionWarningCode`, `EVIDENCE_SELECTION_POLICY_VERSION`, `EVIDENCE_SELECTION_POLICY_V1`, `evidenceSourceQualityKey`, and `validateEvidenceSelectionPolicy`. These declarations and their tests belong in this task; no port or adapter changes are involved.
 
-Create `src/contract/evidence/v1/__tests__/generation.test.ts`. It must spawn `pnpm run contract:evidence:check`, assert exit code zero after generation exists, independently hash the schema bytes, parse `schema.sha256` as `<hex>  <relative-path>`, and assert the generated declaration header contains both the schema path and digest. Name the cases exactly:
+**Behavioral invariants to write as tests first:**
 
-- `keeps generated types and schema digest reproducible` invokes check mode from a child process and asserts a zero exit code.
-- `records the exact schema byte hash in every generated authority marker` reads the schema, digest file, and generated declaration header, computes SHA-256 with `node:crypto`, and asserts all three lowercase digests are identical.
+- `ships the conservative immutable v1 policy values`: version is `evidence-selection.v1`, minimum score is `2_500`, stale weight is `5_000`, family cap is `16`, default source quality is `5_000`, provenance is calculator `10_000`, derived `9_000`, collected `8_000`, human-authored `7_000`, and the reviewed-source map is empty.
+- `qualifies source quality keys without publisher/source collisions`: publisher and source ID are encoded with length prefixes (for example `${publisher.length}:${publisher}${sourceId.length}:${sourceId}`), so delimiter-bearing identities cannot alias.
+- `rejects non-finite or out-of-range policy basis points`: every bps field and source override must be a finite integer in `[0, 10_000]`.
+- `rejects zero or non-integer family limits and blank versions`: `maxSelectedPerFamily` must be a positive integer and `version` must contain non-whitespace text.
+- `does not permit mutation of the shipped policy`: nested maps are copied/frozen (or otherwise exposed read-only without a mutable backing object) so one caller cannot alter later selections.
 
-Run: `pnpm vitest run src/contract/evidence/v1/__tests__/generation.test.ts`
+- [ ] **Step 1: Write the failing policy tests**
 
-Expected: FAIL because the schema, generator, and package scripts do not exist.
+  Create `selectionPolicy.test.ts` with the exact test names above. For collision safety, compare keys for identities such as `("ab", "c")` and `("a", "bc")`; for validation, table-drive every scalar boundary (`-1`, `10_001`, `1.5`, `NaN`, `Infinity`) plus an invalid per-source override. Assert `validateEvidenceSelectionPolicy` throws `TypeError` with a field-qualified message.
 
-- [ ] **Step 2: Add pinned tooling and deterministic scripts**
+- [ ] **Step 2: Run the focused tests and observe the missing module failure**
 
-Add `ajv` and `ajv-formats` to `dependencies`, and `json-schema-to-typescript` to `devDependencies`. Add these scripts:
+  Run: `pnpm exec vitest run src/engine/evidence/__tests__/selectionPolicy.test.ts`
 
-```json
-{
-  "contract:evidence:generate": "tsx scripts/generateEvidenceContract.ts --write",
-  "contract:evidence:check": "tsx scripts/generateEvidenceContract.ts --check"
-}
-```
+  Expected: FAIL because `selectionPolicy.ts` and its exports do not exist.
 
-Run `pnpm install` so `pnpm-lock.yaml` records the chosen exact resolution and the focused tests can load the new packages. Do not add a general schema code-generation framework.
+- [ ] **Step 3: Implement policy types, constants, keys, and validation**
 
-- [ ] **Step 3: Author the complete strict JSON Schema**
+  Use integer bps throughout and define the public shape explicitly:
 
-Create a draft 2020-12 schema with stable `$id`, root title `EvidenceBundleV1`, `additionalProperties: false` on every object, every root property required, explicit nullable unions, and these root properties:
+  ```ts
+  export type ProvenanceClass =
+    | "deterministic_calculator"
+    | "derived"
+    | "collected"
+    | "human_authored";
 
-```json
-{
-  "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://contracts.opsclawd.dev/regime-engine/evidence-bundle/v1/evidence-bundle.schema.json",
-  "title": "EvidenceBundleV1",
-  "type": "object",
-  "additionalProperties": false,
-  "required": [
-    "schemaVersion",
-    "pair",
-    "scope",
-    "source",
-    "runId",
-    "correlationId",
-    "createdAt",
-    "asOf",
-    "freshUntil",
-    "expiresAt",
-    "deterministicFeatures",
-    "contextualEvidence",
-    "researchBrief",
-    "sourceReferences",
-    "assessment",
-    "provenance"
-  ]
-}
-```
+  export interface EvidenceSelectionPolicy {
+    readonly version: string;
+    readonly minimumEffectiveScoreBps: number;
+    readonly staleWeightBps: number;
+    readonly maxSelectedPerFamily: number;
+    readonly defaultSourceQualityBps: number;
+    readonly sourceQualityBps: Readonly<Record<string, number>>;
+    readonly provenanceQualityBps: Readonly<Record<ProvenanceClass, number>>;
+  }
 
-Implement `$defs` for the four exact scope variants; source identity; three discriminated feature kinds crossed with `available | unavailable | invalid`; five contextual claim families; research brief/model; source reference; coverage, warning, assessment, and provenance. Encode all enumerations and bounds from `design.md`, including 1–128 identifiers, 1–256 run/correlation IDs, canonical timestamp regex `^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d{3}Z$`, lowercase 64-hex hashes, confidence integers 0–10000, finite JSON numeric bounds, array min/max/uniqueness, exact five contextual properties, and numeric units `usd | sol | usdc | percent | basis_points | ratio | seconds | milliseconds | count | price_usdc_per_sol` plus `boolean | category` for their matching feature kinds. Fix family-specific claim kinds to `support_zone | resistance_zone | breakout_level`, `spot_flow | stablecoin_flow | exchange_flow`, `funding | open_interest | liquidation | options_skew`, `scheduled_event | protocol_incident | network_incident`, and `ecosystem_news | regulatory_update`, respectively. Fix source types to `api | database | chain | document | internal_bundle`. Use `if`/`then` branches so feature kind/status determines `value`, `unit`, timestamps, confidence, and warning minima. Keep cross-record reference resolution and time ordering out of the schema for Task 2.
+  export const EVIDENCE_SELECTION_POLICY_VERSION = "evidence-selection.v1" as const;
+  ```
 
-- [ ] **Step 4: Implement write/check generation modes**
+  Include stable reason-code unions for record mismatch, bundle expiry/disablement, feature unavailable/invalid/dependency failure, claim expiry, score threshold, family cap, brief unavailable/citation failure, and fresh/stale inclusion. Include warning-code unions for stale input, missing/rejected/conflicted families, and no selected research. `validateEvidenceSelectionPolicy` must validate a copied policy before selection starts and return an immutable normalized policy; do not consult `process.env`.
 
-`scripts/generateEvidenceContract.ts` must:
+- [ ] **Step 4: Run focused verification**
 
-1. read the schema as bytes and parse it;
-2. compute lowercase SHA-256 of those exact bytes;
-3. call `compileFromFile` with deterministic `json-schema-to-typescript` options (`bannerComment: ""`, `style.singleQuote: false`, no timestamp-bearing output);
-4. prepend `// Generated from contracts/evidence-bundle/v1/evidence-bundle.schema.json (sha256: <digest>). Do not edit.`;
-5. render `schema.sha256` as `<digest>  contracts/evidence-bundle/v1/evidence-bundle.schema.json\n`;
-6. in `--write`, update only files whose bytes differ;
-7. in `--check`, compare expected bytes and exit nonzero with the exact stale paths, without writing.
+  Run: `pnpm exec vitest run src/engine/evidence/__tests__/selectionPolicy.test.ts`
 
-Reject missing or multiple modes. Resolve paths relative to the repository root derived from `import.meta.url`; do not depend on the caller's current directory.
+  Expected: PASS with all five named invariants.
 
-- [ ] **Step 5: Generate declarations and digest, then prove stability**
+  Run: `pnpm exec eslint src/engine/evidence/selectionPolicy.ts src/engine/evidence/__tests__/selectionPolicy.test.ts --max-warnings 0`
 
-Run: `pnpm run contract:evidence:generate`
+  Expected: PASS with zero warnings. The implement loop also runs its automatic workspace `pnpm -r typecheck` gate.
 
-Expected: creates `types.generated.ts` and `schema.sha256` with no timestamps.
+- [ ] **Step 5: Commit the independently usable policy unit**
 
-Run: `pnpm run contract:evidence:check`
-
-Expected: PASS without changing either generated file.
-
-Run: `pnpm vitest run src/contract/evidence/v1/__tests__/generation.test.ts`
-
-Expected: PASS.
-
-Run: `pnpm exec prettier --check package.json scripts/generateEvidenceContract.ts contracts/evidence-bundle/v1/evidence-bundle.schema.json src/contract/evidence/v1/types.generated.ts src/contract/evidence/v1/__tests__/generation.test.ts`
-
-Expected: PASS.
-
-- [ ] **Step 6: Commit the schema authority as one unit**
-
-```bash
-git add package.json pnpm-lock.yaml scripts/generateEvidenceContract.ts contracts/evidence-bundle/v1/evidence-bundle.schema.json contracts/evidence-bundle/v1/schema.sha256 src/contract/evidence/v1/types.generated.ts src/contract/evidence/v1/__tests__/generation.test.ts
-git commit -m "m58: publish EvidenceBundle v1 schema"
-```
+  ```bash
+  git add src/engine/evidence/selectionPolicy.ts src/engine/evidence/__tests__/selectionPolicy.test.ts
+  git commit -m "m60: define evidence selection policy"
+  ```
 
 ## Repository Targets
 
 ### Expected Files
-- contracts/evidence-bundle/v1/evidence-bundle.schema.json
-- contracts/evidence-bundle/v1/schema.sha256
-- scripts/generateEvidenceContract.ts
-- src/contract/evidence/v1/types.generated.ts
-- src/contract/evidence/v1/__tests__/generation.test.ts
-- package.json
-- pnpm-lock.yaml
+- src/engine/evidence/selectionPolicy.ts
+- src/engine/evidence/__tests__/selectionPolicy.test.ts
 
 ## Validation Commands
 
 ```bash
-pnpm run contract:evidence:check
-pnpm vitest run src/contract/evidence/v1/__tests__/generation.test.ts
-pnpm exec prettier --check package.json scripts/generateEvidenceContract.ts contracts/evidence-bundle/v1/evidence-bundle.schema.json src/contract/evidence/v1/types.generated.ts src/contract/evidence/v1/__tests__/generation.test.ts
+pnpm exec vitest run src/engine/evidence/__tests__/selectionPolicy.test.ts
+pnpm exec eslint src/engine/evidence/selectionPolicy.ts src/engine/evidence/__tests__/selectionPolicy.test.ts --max-warnings 0
 ```
 
 ## Behavioral Invariants
 
 You MUST implement the following behavioral invariants as named tests first (TDD):
 
-- **generated artifacts are reproducible**: Check mode derives the same declaration and digest bytes without modifying the worktree. (Test: `keeps generated types and schema digest reproducible`)
-- **schema digest has one authority**: The exact schema byte hash matches schema.sha256 and the generated declaration header. (Test: `records the exact schema byte hash in every generated authority marker`)
+- **v1 policy constants**: The shipped immutable policy uses the reviewed v1 version, threshold, stale weight, cap, default source quality, provenance weights, and no invented source override. (Test: `ships the conservative immutable v1 policy values`)
+- **collision-safe source identity**: Publisher and source ID are length-qualified so distinct identity pairs cannot map to the same policy lookup key. (Test: `qualifies source quality keys without publisher/source collisions`)
+- **basis-point validation**: Every policy bps value, including exact-source overrides, is a finite integer from zero through ten thousand. (Test: `rejects non-finite or out-of-range policy basis points`)
+- **version and limit validation**: The version is nonblank and the per-family limit is a positive integer. (Test: `rejects zero or non-integer family limits and blank versions`)
+- **shipped policy immutability**: One caller cannot mutate the shipped policy or its nested lookup tables for later selections. (Test: `does not permit mutation of the shipped policy`)
 

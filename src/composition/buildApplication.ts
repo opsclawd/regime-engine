@@ -15,6 +15,7 @@ import type { GetWeeklyReportUseCase } from "../application/use-cases/getWeeklyR
 import type { IngestEvidenceBundleUseCase } from "../application/use-cases/ingestEvidenceBundleUseCase.js";
 import type { GetCurrentEvidenceUseCase } from "../application/use-cases/getCurrentEvidenceUseCase.js";
 import type { GetEvidenceHistoryUseCase } from "../application/use-cases/getEvidenceHistoryUseCase.js";
+import type { SelectEvidenceForSynthesisUseCase } from "../application/use-cases/selectEvidenceForSynthesisUseCase.js";
 import { createIngestCandlesUseCase } from "../application/use-cases/ingestCandlesUseCase.js";
 import { createGetCurrentRegimeUseCase } from "../application/use-cases/getCurrentRegimeUseCase.js";
 import { createGeneratePlanUseCase } from "../application/use-cases/generatePlanUseCase.js";
@@ -24,6 +25,7 @@ import { createGetWeeklyReportUseCase } from "../application/use-cases/getWeekly
 import { createIngestEvidenceBundleUseCase } from "../application/use-cases/ingestEvidenceBundleUseCase.js";
 import { createGetCurrentEvidenceUseCase } from "../application/use-cases/getCurrentEvidenceUseCase.js";
 import { createGetEvidenceHistoryUseCase } from "../application/use-cases/getEvidenceHistoryUseCase.js";
+import { createSelectEvidenceForSynthesisUseCase } from "../application/use-cases/selectEvidenceForSynthesisUseCase.js";
 import { createSqliteCandleReadAdapter } from "../adapters/sqlite/sqliteCandleReadAdapter.js";
 import { createSqliteCandleRevisionUnitOfWork } from "../adapters/sqlite/sqliteCandleRevisionUnitOfWork.js";
 import { createPostgresCandleReadAdapter } from "../adapters/postgres/postgresCandleReadAdapter.js";
@@ -70,6 +72,7 @@ export interface ApplicationDependencies {
   ingestEvidenceBundle: IngestEvidenceBundleUseCase | null;
   getCurrentEvidence: GetCurrentEvidenceUseCase | null;
   getEvidenceHistory: GetEvidenceHistoryUseCase | null;
+  selectEvidenceForSynthesis: SelectEvidenceForSynthesisUseCase | null;
   ledgerStore: LedgerStore;
   insightsStore: InsightsStore | null;
   srThesesV2Store: SrThesesV2Store | null;
@@ -127,6 +130,9 @@ export const buildApplication = (ctx: RuntimeStoreContext): ApplicationDependenc
   const getEvidenceHistory = evidenceRepository
     ? createGetEvidenceHistoryUseCase({ repository: evidenceRepository, clock })
     : null;
+  const selectEvidenceForSynthesis = evidenceRepository
+    ? createSelectEvidenceForSynthesisUseCase({ repository: evidenceRepository, clock })
+    : null;
 
   const versionInfo: VersionInfo = {
     name: "regime-engine",
@@ -151,6 +157,7 @@ export const buildApplication = (ctx: RuntimeStoreContext): ApplicationDependenc
     ingestEvidenceBundle,
     getCurrentEvidence,
     getEvidenceHistory,
+    selectEvidenceForSynthesis,
     ledgerStore: ctx.ledger,
     insightsStore: ctx.insightsStore,
     srThesesV2Store: ctx.srThesesV2Store,

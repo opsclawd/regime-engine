@@ -33,15 +33,12 @@ export interface EvidenceScopeQuery {
   toUnixMs?: number;
 }
 
-export type EvidenceLifecycle = "FRESH" | "STALE" | "EXPIRED";
+import type {
+  EvidenceLifecycle,
+  EvidenceBundleRecord
+} from "../../engine/evidence/selectEvidence.js";
 
-export interface EvidenceBundleRecord {
-  readonly id: number;
-  readonly bundle: EvidenceBundleV1;
-  readonly evidenceHash: string;
-  readonly receivedAtUnixMs: number;
-  readonly lifecycle: EvidenceLifecycle;
-}
+export type { EvidenceLifecycle, EvidenceBundleRecord };
 
 export interface EvidenceHistoryCursor {
   receivedAtUnixMs: number;

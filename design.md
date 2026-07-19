@@ -1,662 +1,710 @@
-# EvidenceBundle v1 Contract and Persistence
+# Evidence Selection and Scoring for Policy Synthesis
 
-**Issue:** #58
+**Issue:** #60
 
 **Status:** Proposed design
 
-**Date:** 2026-07-17
+**Date:** 2026-07-18
 
 ## Problem and motivation
 
-The intelligence engine needs a durable way to publish what it observed and
-derived without becoming a second policy authority. The current external
-insight path accepts a final recommendation and stores it in `clmm_insights`.
-That makes Regime Engine a mailbox and allows an external research process,
-including an LLM, to author fields that should be controlled by Regime Engine's
-deterministic policy and safety rules.
+Regime Engine now accepts and stores strict `EvidenceBundle v1` records and can
+read the latest bundle for each source within an exact scope. That query surface
+is intentionally observational: it returns fresh, stale, and expired records in
+repository order and does not decide whether any record should influence policy.
+Passing those records directly to future PolicyInsight synthesis would make the
+newest publisher output an implicit policy input regardless of its age,
+confidence, provenance, coverage, or internal consistency.
 
-The replacement boundary is an immutable `EvidenceBundle`: the intelligence
-engine authors structured evidence; Regime Engine validates and stores the
-accepted bundle; later issues select evidence and synthesize `PolicyInsight`;
-`clmm-v2` retains execution authority. The contract must be usable by the first
-deterministic-only publisher. Context collectors and an LLM brief are useful
-enrichments, not prerequisites. Treating their absence as zero or success would
-fabricate evidence, while requiring them would block the deterministic vertical
-slice.
+The missing layer is a deterministic selector that converts current bundle
+records into a bounded, synthesis-ready summary. It must explain every inclusion
+and exclusion, retain source lineage, expose missing and conflicting evidence,
+and explicitly degrade when research is absent. It must remain advisory: the
+selector neither reads nor changes deterministic market state and cannot emit an
+action, allocation, CLMM permission, or hard-guard override.
 
-This issue also establishes the cross-repository compatibility surface. A prose
-shape or TypeScript-only validator is insufficient: the intelligence repository
-must be able to validate payloads and reproduce hashes without importing Regime
-Engine code.
+This matters because evidence includes contextual claims and an optional LLM
+brief. Those inputs can inform later synthesis, but they are less authoritative
+than candle-derived freshness and safety rules. An auditable selection boundary
+prevents low-quality or expired research from quietly becoming policy and gives
+the later synthesis issue a stable, testable input contract.
 
 ## Existing architecture and constraints
 
-The proposed design builds on these repository patterns:
+The design follows these repository facts:
 
-- `src/contract/v1/canonical.ts` recursively sorts object keys, preserves array
-  order, normalizes `-0`, rejects non-finite numbers, and produces compact JSON;
-  `src/contract/v1/hash.ts` computes lowercase SHA-256 hex.
-- The v1 insight and v2 S/R contracts use strict runtime validation, explicitly
-  distinguish unsupported schema versions, and reject unknown properties.
-- `InsightsStore` uses Postgres, stores the canonical payload and hash, and uses
-  a unique `(source, runId)` index plus `ON CONFLICT DO NOTHING` to make racing
-  identical writes idempotent and different writes deterministic conflicts.
-- Current reads use explicit ordering and history reads are bounded. Truth rows
-  are append-only.
-- New orchestration is moving behind application ports and use cases, with
-  Postgres/Drizzle as an outer adapter. New evidence persistence should follow
-  that boundary rather than exposing a concrete ledger store to future
-  selection code.
-- The repository currently has no normative standalone JSON Schema or schema
-  code-generation pipeline. Adding one is justified here because this contract
-  is explicitly consumed and reproduced by another repository.
+- `EvidenceBundle v1` structurally separates deterministic features, five
+  contextual families, an optional research brief, source references, bundle
+  assessment, and provenance. The accepted bundle is immutable and already
+  semantically validated.
+- `EvidenceBundleRepositoryPort.getLatest` returns the latest record per
+  `(source.publisher, source.sourceId)` for one exact pair/scope. It derives
+  `FRESH`, `STALE`, or `EXPIRED` at a caller-supplied instant and orders records
+  by source identity. It deliberately includes stale and expired records.
+- `GetCurrentEvidenceUseCase` captures the clock once and delegates to the
+  repository without filtering. The HTTP current-evidence route is an
+  observability surface and must retain those semantics.
+- Only `sol-usdc-clmm-intelligence` can publish v1 bundles, but `sourceId` is an
+  opaque pipeline identity. Publisher-owned `overallConfidenceBps` is not an
+  authoritative source-quality rating.
+- Individual deterministic features have status, confidence, and
+  `freshUntil`; contextual claims have confidence and an optional `expiresAt`;
+  research briefs have lineage but no independent confidence field.
+- Existing market-regime code independently computes candle freshness and
+  hard guards. `GeneratePlanUseCase` refuses hard-stale market data, while
+  `evaluateMarketClmmSuitability` owns deterministic `UNKNOWN`/`BLOCKED`
+  decisions. Evidence selection must not couple to or weaken that path.
+- The inner layers are environment-free and deterministic. Time arrives through
+  `ClockPort`, policy values are explicit versioned configuration, and tests are
+  co-located in `__tests__` directories.
+- There is no requirement to persist a selection result yet. The evidence table
+  has future-facing lineage metadata, but accepted evidence rows are append-only
+  and should not be mutated with clock-dependent selection state.
 
 ## Goals
 
-- Publish one strict, versioned, machine-readable `evidence-bundle.v1` wire
-  contract and derived TypeScript types.
-- Make deterministic-only bundles valid while representing absent context and
-  research explicitly.
-- Keep deterministic features, contextual claims, and an optional LLM research
-  brief structurally and semantically separate.
-- Define unambiguous source/run idempotency, pair/scope identity, timestamps,
-  units, status/value relationships, lineage, ordering, and canonical hashing.
-- Persist the complete accepted bundle atomically and append-only, separately
-  from `clmm_insights` and future synthesized policy records.
-- Support exact-scope latest reads and deterministic, bounded history reads for
-  pair-, Whirlpool-, wallet-, and position-scoped evidence.
-- Publish fixtures, negative cases, hash vectors, artifact paths, and the
-  schema's SHA-256 so downstream work can proceed independently.
+- Select usable evidence from the latest exact-scope bundle for every source.
+- Apply deterministic bundle, item, confidence, and source-quality rules.
+- Exclude expired, invalid, unavailable, unsupported, and under-threshold items
+  with stable reason codes.
+- Downweight stale-but-not-expired evidence rather than treating it as fresh.
+- Bound and deterministically order the material passed to synthesis.
+- Detect directional conflict without deleting either side of the conflict.
+- Derive coverage from what survived selection, not merely from the publisher's
+  claimed bundle coverage.
+- Preserve bundle identity, item identity, evidence hashes, source-reference
+  lineage, scores, and inclusion/exclusion reasons.
+- Return an explicit degraded result when no contextual research or brief is
+  selectable, including when no bundles exist.
+- Make the output advisory-only so future synthesis must combine it with a
+  separately supplied deterministic market state whose hard guards retain
+  precedence.
+- Produce byte-stable logical output for the same records, selection instant,
+  and policy version regardless of input ordering.
 
 ## Non-goals
 
-- HTTP routes, authentication, request handlers, or OpenAPI changes; those
-  belong to #59.
-- Evidence scoring, source ranking, family weighting, or selection policy; those
-  belong to #60.
-- `PolicyInsight` synthesis, recommendation fields, CLMM policy, or deterministic
-  guard evaluation; those belong to #61.
-- Removing the legacy final-insight write path; that is sequenced separately.
-- Implementing intelligence collectors, contextual packs, LLM prompts, or the
-  publisher client.
-- Changing `clmm-v2`, executing transactions, or handling wallet authority.
-- Migrating historical `clmm_insights` into evidence records or mutating an
-  accepted v1 record to a later contract version.
-- Generalizing application behavior beyond the defined pair. The identity shape
-  is future-compatible, but v1 accepts only `SOL/USDC`.
+- Adding or changing evidence ingest/current/history HTTP routes or OpenAPI.
+- Changing `EvidenceBundle v1`, generated contract types, canonical bundle
+  hashing, persistence schema, migrations, or append/replay semantics.
+- Persisting selection results or mutating `selectionLineage` on evidence rows.
+- Producing a final `PolicyInsight`, recommendation, risk decision, allocation,
+  CLMM posture, plan action, or execution request.
+- Changing market-regime classification, candle freshness, plan generation, or
+  any deterministic hard guard.
+- Fetching evidence from external services or looking behind source references.
+- Learning source quality from outcomes. The first version uses reviewed static
+  policy; feedback-driven calibration is separate work.
+- Combining pair, Whirlpool, wallet, and position scopes. One invocation selects
+  one exact scope, matching the repository boundary. Future synthesis may invoke
+  the selector for more than one scope under a separately designed precedence
+  rule.
+- Falling back through evidence history when a source's latest bundle is
+  unusable. Selection consumes the current-per-source view established by #59.
+- Treating the research brief as an independent source of facts.
 
 ## Design alternatives
 
-### 1. Zod as the source of truth with a separately maintained JSON Schema
+### 1. Filter bundles only, then pass accepted bundles through unchanged
 
-This follows the current contract style and minimizes runtime change. However,
-it creates two authoritative descriptions of a cross-repository contract.
-Conditional rules such as status/value compatibility and missing-family
-warnings are precisely where those descriptions would drift. Fixture tests can
-reduce, but not eliminate, that risk. This is not recommended.
+This is the smallest change: reject expired bundles, attach one bundle-level
+score, and pass all contents of the remaining bundles to synthesis. It fails to
+handle an expired claim inside a fresh bundle, unavailable or invalid features,
+briefs that cite excluded evidence, family-size bounds, and conflicts between
+items. It also makes publisher array order materially affect future synthesis.
+This approach is not recommended.
 
-### 2. Normalize every feature and contextual claim into relational tables
+### 2. Materialize scored evidence in new relational tables
 
-This would make ad hoc feature queries convenient, but it expands the migration
-and transaction surface, couples storage to every v1 evidence family, and makes
-it harder to prove that the accepted bundle can be reconstructed byte-for-byte.
-Selection consumes bundles atomically, not arbitrary joins. This is not
-recommended for v1.
+Persisting one row per selected item would make selection history and analytics
+easy to query. However, selection is clock- and policy-version-dependent, so
+materializing it introduces migrations, idempotency semantics, recomputation
+rules, and transactions before any consumer exists. It would also blur the
+append-only publisher truth record with Regime-owned derived state. This is a
+reasonable later audit feature, but it is outside this issue and not recommended
+for the first selector.
 
-### 3. Normative JSON Schema with generated types and atomic bundle storage
+### 3. Pure item-level selector with a thin application use case
 
-Check in one strict JSON Schema, generate TypeScript declarations from it, and
-validate at runtime with a JSON Schema 2020-12 validator. Store each accepted
-bundle as a complete JSONB value plus canonical text, hash, and indexed scalar
-identity columns. This adds a small validator/code-generation toolchain, but it
-provides one portable authority, supports JSON Schema conditional constraints,
-and matches the append-only unit used by later selection. This is the
-recommended approach.
+Add a pure selector that accepts validated `EvidenceBundleRecord` values, one
+selection instant, and a versioned Regime-owned policy. A use case captures the
+clock once and reads the existing exact-scope current view. The pure function
+scores and orders candidates, derives coverage/conflict, and returns a bounded
+advisory summary plus complete decision lineage. This preserves the current HTTP
+semantics, needs no persistence change, and can be exhaustively unit tested.
+This is the recommended approach.
 
-## Proposed contract
+## Proposed architecture
 
-### Normative artifact and strictness
+### Components
 
-`contracts/evidence-bundle/v1/evidence-bundle.schema.json` is the normative
-contract, using JSON Schema draft 2020-12 with a stable `$id`. Every object sets
-`additionalProperties: false`; every property is either required or explicitly
-nullable. There are no optional properties whose absence has ambiguous meaning.
-The root `schemaVersion` is the exact literal `evidence-bundle.v1`.
+The implementation should add three focused units:
 
-Use pinned `ajv` with its 2020-12 entry point and `ajv-formats` for runtime
-validation, and `json-schema-to-typescript` for declaration generation. The
-generator is a build tool only; Ajv plus the semantic pass is the acceptance
-authority. Both commands are exposed as deterministic package scripts and a
-check-mode script runs in the quality gate.
+1. `src/engine/evidence/selectionPolicy.ts` owns the immutable policy values,
+   reason/warning codes, and `EVIDENCE_SELECTION_POLICY_VERSION`. It has no
+   environment access. Changes to trust weights, thresholds, family limits, or
+   stale handling require a version change.
+2. `src/engine/evidence/selectEvidence.ts` is the pure policy kernel. It accepts
+   records, `selectedAtUnixMs`, and a policy; it does not perform I/O and does not
+   import application, adapter, ledger, HTTP, or market-regime modules.
+3. `src/application/use-cases/selectEvidenceForSynthesisUseCase.ts` captures
+   `ClockPort.nowUnixMs()` once, calls
+   `EvidenceBundleRepositoryPort.getLatest` for `SOL/USDC` and the requested
+   exact scope, then passes the records and same instant to the pure selector.
 
-`src/contract/evidence/v1/types.generated.ts` is generated from that schema and
-contains a header with the schema path and schema SHA-256. Runtime validation
-lives in `src/contract/evidence/v1/validate.ts` and compiles the same checked-in
-schema. Semantic checks that JSON Schema cannot express clearly—cross-array ID
-uniqueness, timestamp ordering, reference resolution, and coverage/warning
-agreement—run immediately after structural validation and return deterministically
-sorted field-path errors. Callers cannot construct persistence input without a
-successfully validated `EvidenceBundleV1`.
+`buildApplication` exposes this use case as nullable under the same Postgres
+availability rule as the three current evidence use cases. No route consumes it
+in this issue. A missing configured evidence repository therefore does not
+affect `getCurrentRegime`, `generatePlan`, or their deterministic dependencies.
 
-The root shape is conceptually:
+No repository-port method is added. In particular, the observational
+`GetCurrentEvidenceUseCase` is not changed to return selected evidence; raw
+current evidence and internal policy selection have different purposes.
+
+### Selection input
+
+The pure input is conceptually:
 
 ```ts
-interface EvidenceBundleV1 {
-  schemaVersion: "evidence-bundle.v1";
-  pair: "SOL/USDC";
-  scope: EvidenceScope;
-  source: SourceIdentity;
-  runId: string;
-  correlationId: string;
-  createdAt: CanonicalTimestamp;
-  asOf: CanonicalTimestamp;
-  freshUntil: CanonicalTimestamp;
-  expiresAt: CanonicalTimestamp;
-  deterministicFeatures: DeterministicFeature[];
-  contextualEvidence: ContextualEvidence;
-  researchBrief: ResearchBrief | null;
-  sourceReferences: SourceReference[];
-  assessment: BundleAssessment;
-  provenance: BundleProvenance;
+interface SelectEvidenceInput {
+  records: readonly EvidenceBundleRecord[];
+  selectedAtUnixMs: number;
+  scope: Scope;
+  policy: EvidenceSelectionPolicy;
 }
 ```
 
-Strings must already be trimmed, are non-empty and length-bounded, and use stable
-label syntax where they are identifiers. Leading or trailing whitespace is
-rejected rather than normalized. Arrays have explicit maximum sizes to bound
-validation and row size. Unknown enum values require a new schema version.
+All records are already contract-valid. The selector still treats inconsistent
+record metadata defensively: the record pair/scope must equal the invocation
+pair/scope and the record lifecycle must equal a lifecycle recomputed from the
+bundle timestamps at `selectedAtUnixMs`. A mismatch excludes the entire bundle
+with `RECORD_SCOPE_MISMATCH` or `RECORD_LIFECYCLE_MISMATCH`; it is not silently
+repaired.
 
-Global bounds are part of the schema, not implementation defaults:
+The application use case accepts `{ scope: Scope }` only. It intentionally does
+not accept the observational source filter: synthesis should consider all
+configured sources for the exact scope. Tests may call the pure selector with
+arbitrary records.
 
-- label, feature, evidence, reference, source, and brief IDs are 1–128 Unicode
-  code points; `runId` and `correlationId` are 1–256;
-- versions, model IDs, warning codes, and calculator names are 1–128;
-- addresses and `positionId` are 1–128 opaque characters;
-- locators are 1–2,048, claim/finding/warning text is 1–2,048, and the research
-  summary is 1–4,096;
-- deterministic features number 1–128; each contextual family 0–64; source
-  references 1–256; bundle warnings 0–64; feature warnings 0–16; feature input
-  lineage 1–64; brief findings and uncertainties 0–32 each; brief evidence IDs
-  1–256; and upstream run IDs 0–128.
+### Versioned selection policy
 
-Arrays are required even when their minimum is zero. Arrays described as sets
-reject duplicate scalar values or duplicate identity IDs. Their order remains
-part of the payload and hash; no validator or persistence adapter reorders them.
+The initial policy should use integer basis points throughout:
 
-### Identity and scope
-
-`source` contains `publisher` (literal
-`sol-usdc-clmm-intelligence` for v1), `sourceId` (stable logical pipeline ID),
-and `sourceVersion` (deployed producer version). `runId` identifies one immutable
-publisher run. `correlationId` traces the run across collection and publication
-and is not an idempotency key.
-
-The idempotency identity is the tuple
-`(schemaVersion, source.publisher, source.sourceId, runId)`. There is no separate
-free-form `idempotencyKey` field because it could disagree with the source/run
-identity. Documentation names this tuple the canonical idempotency key. An exact
-identity replay with the same recomputed payload hash is idempotent; the same
-identity with any different accepted field is a conflict. `correlationId` may be
-reused across deliberate reruns with different `runId` values.
-
-`scope` is a strict discriminated union:
-
-- `{ kind: "pair" }`
-- `{ kind: "whirlpool", network: "solana-mainnet", whirlpoolAddress }`
-- `{ kind: "wallet", network: "solana-mainnet", walletAddress }`
-- `{ kind: "position", network: "solana-mainnet", walletAddress,
-whirlpoolAddress, positionId }`
-
-Addresses and `positionId` are opaque, case-sensitive bounded strings; this
-contract does not perform RPC ownership checks. The persistence layer derives a
-canonical `scopeKey` from the validated discriminated union for indexing. Scope
-identity is never inferred from feature contents.
-
-### Time and lifecycle semantics
-
-All wire timestamps use one canonical UTC representation:
-`YYYY-MM-DDTHH:mm:ss.sssZ`. Offsets, missing milliseconds, leap-second strings,
-and invalid calendar dates are rejected rather than normalized after receipt.
-The semantic validator requires:
-
-```text
-asOf <= createdAt < freshUntil <= expiresAt
+```ts
+interface EvidenceSelectionPolicy {
+  version: string;
+  minimumEffectiveScoreBps: number;
+  staleWeightBps: number;
+  maxSelectedPerFamily: number;
+  defaultSourceQualityBps: number;
+  sourceQualityBps: Readonly<Record<string, number>>;
+  provenanceQualityBps: Readonly<Record<ProvenanceClass, number>>;
+}
 ```
 
-`asOf` is the evidence cutoff, `createdAt` is publisher assembly time,
-`freshUntil` is the publisher-declared end of normal freshness, and `expiresAt`
-is the hard usability boundary. Regime Engine adds `receivedAt` from its injected
-clock; it is storage metadata and is not part of the publisher payload or hash.
+The recommended v1 constants are:
 
-At query time, Regime Engine derives, without updating the truth row:
+- minimum effective score: `2_500` bps;
+- stale weight: `5_000` bps;
+- maximum selected items per family: `16`;
+- unreviewed source default quality: `5_000` bps;
+- reviewed exact-source override: `8_000` bps once its production identity is
+  explicitly configured;
+- deterministic calculator provenance: `10_000` bps;
+- contextual `derived`: `9_000`, `collected`: `8_000`, and
+  `human_authored`: `7_000` bps.
 
-- `FRESH` when `now <= freshUntil`;
-- `STALE` when `freshUntil < now <= expiresAt`;
-- `EXPIRED` when `now > expiresAt`.
+An exact `publisher + NUL + sourceId` lookup overrides the default. Using a
+length-safe or delimiter-safe key avoids identity collisions. The shipped
+policy must not invent a production `sourceId`; deployment configuration is
+changed in code alongside the policy version when a source is reviewed. Source
+quality is Regime-owned configuration; neither `assessment.quality` nor
+`assessment.overallConfidenceBps` can promote a source. Unknown identities use
+the conservative default rather than being silently trusted or unconditionally
+discarded.
 
-These inclusive boundaries are test vectors. A stale bundle remains observable;
-whether it is selectable is deferred to #60. Clock-derived lifecycle state is
-response metadata, never persisted into the accepted bundle.
+These initial values are intentionally conservative and simple. They are policy
+constants, not empirically calibrated claims. Keeping them named and versioned
+allows later outcome analysis to replace them without changing selection
+semantics invisibly.
+
+### Candidate identity and families
+
+Every candidate receives a fully qualified identity:
+
+```text
+<evidenceHash>/<kind>/<local evidence ID>
+```
+
+Kinds are `deterministic_feature`, `contextual_claim`, and `research_brief`.
+Contextual family is part of the decision record. IDs are unique only within a
+bundle, so the selector must never deduplicate different bundles by local ID
+alone.
+
+Selection families are:
+
+- deterministic feature families: `market_state`, `price_quality`,
+  `clmm_economics`, `position_state`, `liquidity`, and `risk`;
+- contextual families: `supportResistance`, `flows`, `derivatives`, `events`,
+  and `newsRegulatory`;
+- `researchBrief`.
+
+The output keeps deterministic and contextual evidence structurally separate.
+It must not flatten them into a single untyped list.
+
+## Scoring and selection rules
+
+### Bundle eligibility
+
+For each record:
+
+1. `EXPIRED` excludes the bundle and every contained candidate with
+   `BUNDLE_EXPIRED`. Expired evidence is never downweighted into usability.
+2. `FRESH` gives a bundle freshness weight of `10_000` bps.
+3. `STALE` gives a bundle freshness weight of `staleWeightBps` and adds
+   `STALE_EVIDENCE_DOWNWEIGHTED` to the result.
+4. A source-quality value of zero excludes the bundle as
+   `SOURCE_DISABLED_BY_POLICY`.
+5. Bundle assessment coverage and warnings are retained as publisher metadata,
+   but do not decide selected coverage. The selector recomputes coverage from
+   surviving items.
+
+Selection evaluates all supplied records after first sorting them by source
+publisher, source ID, bundle `asOf`, received time, row ID, and evidence hash,
+using explicit UTF-16 string comparison. It never relies on input, `Map`, or
+`Set` iteration order.
 
 ### Deterministic features
 
-`deterministicFeatures` contains at least one and at most 128 items. Each item is
-a strict discriminated union with:
+- `status: unavailable` is excluded as `FEATURE_UNAVAILABLE`.
+- `status: invalid` is excluded as `FEATURE_INVALID`.
+- An available feature whose `freshUntil` is before the selection instant is
+  stale, not expired, because the v1 feature has no item-level expiry. Its item
+  freshness weight becomes `staleWeightBps` until its bundle expires.
+- A fresh available feature has item freshness weight `10_000`.
+- If feature lineage names another feature in the same bundle, that dependency
+  must also survive selection. After preliminary score and family-limit
+  decisions, a fixed-point lineage pass excludes dependants of excluded
+  features as `FEATURE_DEPENDENCY_EXCLUDED` and records the dependency IDs. The
+  selector does not backfill a cap slot after this safety exclusion. Lineage
+  that resolves directly to a source reference remains valid.
+- Feature warnings are retained in the selected item and decision lineage; they
+  do not automatically exclude a contract-valid available feature.
 
-- `featureId`: unique within the bundle;
-- `family`: `market_state | price_quality | clmm_economics | position_state |
-liquidity | risk`;
-- `featureKind`: `number | boolean | category`;
-- `status`: `available | unavailable | invalid`;
-- `value` and `unit` linked to kind/status;
-- `observedAt`, `freshUntil`, and `confidenceBps`;
-- `calculator: { name, version }`;
-- non-empty `inputLineage`, containing referenced source-reference IDs or prior
-  deterministic feature IDs;
-- `warnings`, an ordered array of stable warning codes.
+### Contextual claims
 
-For `available`, number values are finite JSON numbers, booleans are JSON
-booleans, and categories are bounded snake-case strings. Numeric units are a
-closed enum: `usd | sol | usdc | percent | basis_points | ratio | seconds |
-milliseconds | count | price_usdc_per_sol`. Boolean and category values use
-`boolean` and `category` respectively. `count` values are non-negative integers;
-`seconds` and `milliseconds` are non-negative; ratios are dimensionless.
-Percentage and basis-point feature values may be signed because returns, funding,
-and deltas can be negative. Feature-specific ranges belong to the versioned
-calculator documentation and later selection policy.
+- A non-null claim `expiresAt` strictly before the selection instant excludes
+  the claim as `CLAIM_EXPIRED`. The existing inclusive contract boundary is
+  preserved: `now == expiresAt` remains usable.
+- A claim with `expiresAt: null` is bounded by its bundle lifecycle.
+- Claims inherit the bundle freshness weight. There is no invented soft-stale
+  window based on `observedAt` because v1 supplies no family-specific lifetime.
+- Provenance method contributes a policy-owned quality multiplier. Source
+  references and their locators do not create additional trust merely because
+  they exist.
+- Neutral, mixed, and unknown directions remain eligible. Direction affects
+  conflict summarization, not the evidence's inclusion score.
 
-For `unavailable` or `invalid`, both `value` and `unit` are exactly `null`,
-`confidenceBps` is 0, and at least one warning is required. An absent metric is
-therefore never encoded as numeric zero. `observedAt` and `freshUntil` are null
-for `unavailable`; `invalid` may retain the attempted observation timestamps.
-Available feature timestamps must satisfy `observedAt <= asOf <= freshUntil`.
+### Effective score
 
-`confidenceBps` is always an integer from 0 through 10,000. This bounded field is
-distinct from a signed feature whose unit is `basis_points`. Basis points avoid
-the ambiguity of a floating confidence fraction and make cross-language vectors
-stable.
+For a deterministic feature or contextual claim:
 
-### Contextual evidence
+```text
+effectiveScoreBps = floor(
+  confidenceBps
+  * sourceQualityBps
+  * provenanceQualityBps
+  * min(bundleFreshnessBps, itemFreshnessBps)
+  / 10_000^3
+)
+```
 
-`contextualEvidence` is always present and has exactly these array properties:
+All factors are integers in `[0, 10_000]`; the maximum intermediate value is
+`10^16`, which exceeds JavaScript's safe integer range. The implementation must
+therefore use stepwise integer multiplication/division with `bigint`, or an
+equivalent exact integer helper, and convert the final bounded result to number.
+Floating-point rounding is not permitted.
 
-- `supportResistance`
-- `flows`
-- `derivatives`
-- `events`
-- `newsRegulatory`
+Using `min` for bundle and item freshness avoids applying the same stale event
+twice. A score below `minimumEffectiveScoreBps` is excluded as
+`BELOW_MINIMUM_EFFECTIVE_SCORE`; its component factors and calculated score are
+still recorded.
 
-Every array may be empty and is bounded to 64 claims. A claim has a unique
-`evidenceId`, family-specific `kind` enum, bounded factual `claim`,
-`direction: bullish | bearish | neutral | mixed | unknown`, `confidenceBps`,
-`observedAt`, nullable `expiresAt`, one or more `sourceReferenceIds`, and
-`provenanceMethod: collected | derived | human_authored`. Claims cannot contain
-recommendation, action, allocation, range-width, or final-policy fields.
-
-Array order is publisher-significant and preserved in canonical JSON. Publishers
-must emit stable order, recommended as `evidenceId` ascending. Regime Engine does
-not reorder accepted payloads because doing so would make the stored payload
-differ from what the publisher signed or hashed.
+Publisher `overallConfidenceBps` is retained for audit but is not multiplied
+into item scores. It is a publisher self-assessment and would otherwise count
+confidence twice. Item `confidenceBps` is the only publisher confidence input to
+item scoring.
 
 ### Research brief
 
-`researchBrief` is either `null` or a strict object containing `briefId`,
-`generatedAt`, `summary`, bounded `keyFindings`, bounded `uncertainties`,
-`model: { provider, modelId, modelVersion }`, `promptVersion`, and non-empty
-`sourceEvidenceIds`. Every referenced ID must resolve to a deterministic feature
-or contextual claim in the same bundle.
+A brief cannot be treated as independent evidence because it has no confidence
+field and is derived from `sourceEvidenceIds`:
 
-The brief has no deterministic metric values, recommended action, risk decision,
-CLMM posture, allocation, or execution fields. It summarizes bounded evidence
-and can never be the only source of a deterministic feature.
+- `researchBrief: null` records `RESEARCH_BRIEF_UNAVAILABLE`.
+- Every cited evidence ID must correspond to an item from the same bundle that
+  survived final selection, including lineage and family-limit passes. If any
+  citation was excluded, the brief is excluded as
+  `BRIEF_REFERENCES_EXCLUDED_EVIDENCE` with the excluded IDs.
+- A surviving brief's effective score is the minimum of the bundle's
+  `assessment.overallConfidenceBps` and the floor of the cited selected items'
+  average effective score. This prevents a summary from becoming more trusted
+  than either its publisher assessment or its supporting material.
+- The same minimum score threshold applies. The brief does not add new source
+  references; it inherits the union from its cited selected items.
 
-### References, assessment, coverage, and provenance
+Brief evaluation occurs after all non-brief caps and exclusions so its lineage
+cannot point at material omitted from the synthesis summary.
 
-`sourceReferences` is an array of unique records containing `referenceId`,
-`sourceType` (closed enum including API, database, chain, document, and internal
-bundle), `locator`, nullable `publishedAt`, required `observedAt`, and nullable
-lowercase SHA-256 `contentHash`. All lineage/reference IDs used elsewhere must
-resolve within this array or, where explicitly allowed, to a feature in the same
-bundle. Extra unreferenced source records are allowed for audit completeness.
+### Family bounds and deterministic tie-breaking
 
-`assessment` contains:
+Eligible candidates in each non-brief family are ranked by:
 
-- `overallConfidenceBps`;
-- `quality: complete | partial | degraded`;
-- `coverage`, with exactly one status for `deterministic`, each of the five
-  contextual families, and `researchBrief`;
-- an ordered `warnings` array of strict objects `{ code, message,
-affectedFamilies }`.
+1. effective score descending;
+2. bundle `asOf` descending;
+3. item `observedAt` descending, with null last;
+4. source publisher ascending;
+5. source ID ascending;
+6. local evidence ID ascending;
+7. evidence hash ascending.
 
-Coverage values are `available | partial | unavailable | not_applicable`.
-`deterministic` cannot be `unavailable` because at least one deterministic
-feature is required. Each empty contextual array must have coverage
-`unavailable` or `not_applicable`; a non-empty family cannot be `unavailable`.
-`researchBrief: null` requires `coverage.researchBrief = "unavailable"` and a
-`RESEARCH_BRIEF_UNAVAILABLE` warning. Any unavailable contextual family requires
-an affected warning; a deterministic-only fixture uses the aggregate
-`CONTEXTUAL_EVIDENCE_UNAVAILABLE` warning. Quality cannot be `complete` if any
-required coverage entry is `unavailable`. These rules are semantic validation,
-not scoring policy.
+The first `maxSelectedPerFamily` candidates receive preliminary inclusion.
+Remaining eligible candidates are excluded as `FAMILY_SELECTION_LIMIT`, after
+which the deterministic-feature lineage fixed point runs. This is a synthesis
+input bound, not a statement that the omitted items are false. The complete
+decisions array retains scores and reasons, and brief evaluation runs only after
+these decisions are terminal.
 
-`provenance` contains publisher-owned `pipelineVersion`, `gitCommit`,
-`environment: production | staging | development | test`, and ordered
-`upstreamRunIds`. It describes how the payload was assembled without claiming
-Regime Engine accepted or selected it.
+An included item receives stable reason codes such as `FRESH_HIGH_ENOUGH_SCORE`
+or `STALE_HIGH_ENOUGH_SCORE`; prose messages are explanatory and must not be
+parsed by consumers.
 
-## Canonical serialization and hashing
+## Conflict and coverage summarization
 
-The canonical payload is the entire successfully validated publisher payload;
-there is no `payloadHash` field in the request, avoiding a circular hash. The
-algorithm is the repository's existing canonical JSON behavior:
+### Directional conflict
 
-1. Serialize objects with keys in ascending UTF-16 code-unit order, matching
-   JavaScript `Object.keys(value).sort()`.
-2. Preserve array order exactly.
-3. Use compact JSON with no insignificant whitespace.
-4. Serialize finite numbers using ECMAScript `JSON.stringify` semantics after
-   normalizing negative zero to zero.
-5. Serialize strings, booleans, and null as JSON primitives; reject unsupported
-   values.
-6. Compute SHA-256 over the UTF-8 bytes and encode lowercase hexadecimal.
+For each contextual family, sum effective scores into `bullish`, `bearish`,
+`neutral`, `mixed`, and `unknown` buckets. A family is `CONFLICTED` when both
+bullish and bearish buckets are non-zero. Both sides remain selected and a
+`CONFLICTING_<FAMILY>_EVIDENCE` warning is emitted.
 
-Because timestamps are already canonical on the wire, hashing performs no
-hidden timestamp transformation. Regime Engine computes `payloadHash` after
-validation and returns/persists it as Regime-owned receipt metadata. The
-publisher may precompute the same value for diagnostics but does not supply an
-authoritative hash.
-
-Arrays are never sorted by the canonicalizer. Arrays representing sets must be
-emitted in documented stable order: IDs ascending for features, claims, and
-references; warning code then message ascending; upstream run ID ascending.
-Semantic validation rejects duplicate IDs and duplicate set members, but does
-not silently reorder them. A different order is a different payload and hash.
-
-Hash vectors include the canonical payload string, UTF-8 byte length, expected
-SHA-256, schema SHA-256, and examples covering non-ASCII strings, negative zero,
-numeric exponent formatting, empty contextual arrays, and a null brief.
-
-## Persistence model
-
-### Table
-
-Add an append-only Postgres table `regime_engine.evidence_bundles` through a new
-Drizzle migration. One row represents one accepted bundle:
+The family summary exposes all direction totals plus:
 
 ```text
-id                         bigserial primary key
-schema_version             varchar not null
-pair                       varchar not null
-scope_kind                 varchar not null
-scope_key                  varchar not null
-source_publisher           varchar not null
-source_id                  varchar not null
-source_version             varchar not null
-run_id                     varchar not null
-correlation_id             varchar not null
-as_of_unix_ms              bigint not null
-created_at_unix_ms         bigint not null
-fresh_until_unix_ms        bigint not null
-expires_at_unix_ms         bigint not null
-received_at_unix_ms        bigint not null
-payload_json               jsonb not null
-payload_canonical          text not null
-payload_hash               char(64) not null
+directionalConsensusBps =
+  bullish + bearish == 0
+    ? 0
+    : floor(abs(bullish - bearish) * 10_000 / (bullish + bearish))
 ```
 
-`payload_json` is the complete validated publisher payload for efficient typed
-rehydration. `payload_canonical` is the exact canonical string used for the hash
-and cross-repository audit. Scalar columns are deliberately duplicated only for
-identity, lifecycle, and indexed query predicates; they are derived from the
-validated payload in one adapter operation. No feature or contextual child rows
-are required in v1.
+This metric describes agreement, not truth. Synthesis can see conflict without
+having the selector choose a narrative. Neutral, mixed, and unknown weights are
+reported separately and do not inflate directional consensus.
 
-The table has no update/delete repository method and no foreign key to
-`clmm_insights`. A future `policy_insights` record may store selected evidence
-hashes or IDs as lineage, but it must not reuse or overwrite the bundle's
-lineage.
+Deterministic feature values can have different kinds and units, so this issue
+does not invent generic value-conflict semantics. Multiple selected features in
+the same deterministic family are preserved. Semantic reconciliation by
+calculator/feature identity belongs to synthesis policy if needed.
 
-### Constraints and indexes
+### Derived coverage and mode
 
-- Unique idempotency index on
-  `(schema_version, source_publisher, source_id, run_id)`.
-- Current-read index on
-  `(pair, scope_key, source_publisher, source_id, as_of_unix_ms DESC, id DESC)`.
-- History index on
-  `(pair, scope_key, received_at_unix_ms DESC, id DESC)`.
-- Correlation lookup index on `(correlation_id, id DESC)` for diagnostics; it is
-  not unique.
-- Check constraints enforce timestamp ordering, 64 lowercase hex hash format,
-  and known v1 schema/pair values as defense in depth.
+Coverage is derived only after scoring, lineage checks, and family caps:
 
-Postgres is required for evidence persistence, consistent with current JSONB and
-concurrent-read features. This issue does not add a SQLite shadow or fallback;
-silently storing different evidence sets by environment would undermine a
-single policy authority.
+- a family with at least one selected item is `AVAILABLE`;
+- a contextual family with selected bullish and bearish evidence is
+  `CONFLICTED`;
+- a family with candidates but none selected is `REJECTED`;
+- a family with no candidates is `MISSING`.
 
-### Repository port and adapter behavior
+The synthesis mode is:
 
-Define an application-facing `EvidenceBundleRepositoryPort` using contract/domain
-types, with a Postgres adapter implementing:
+- `FULL` when all five contextual families and a research brief are available
+  and none is conflicted;
+- `PARTIAL` when at least one contextual claim or brief is selected but the
+  `FULL` condition is not met;
+- `DEGRADED_NO_RESEARCH` when no contextual claim and no brief is selected,
+  including zero records and deterministic-only bundles.
 
-- `append(bundle, canonical, hash, receivedAt)`;
-- `getLatest(exactScopeQuery, optionalSource)`;
-- `getHistory(exactScopeQuery, page)`.
+External deterministic features do not change `DEGRADED_NO_RESEARCH` to
+`PARTIAL`; the mode specifically describes research enrichment. A separate
+`deterministicEvidenceCoverage` summary reports selected external deterministic
+families. It must not be confused with Regime Engine's independently computed
+market state.
 
-`append` uses the existing race-safe pattern: insert with conflict-do-nothing,
-then load the conflicting identity. Equal stored and incoming payload hashes
-return `already_ingested`; different hashes return a typed
-`EVIDENCE_RUN_CONFLICT`. Hash equality is sufficient because SHA-256 is the
-contract identity, while canonical strings are also compared in tests and may
-be compared defensively in the adapter. A losing insert that cannot load the
-winner is an invariant error, not an idempotent response.
+Stable `MISSING_<FAMILY>`, `REJECTED_<FAMILY>`, conflict, stale, and
+`NO_RESEARCH_EVIDENCE_SELECTED` warnings are emitted in canonical family/code
+order. The selector trusts neither `assessment.coverage` nor
+`assessment.quality` as the selected result, though it retains both so a later
+audit can compare publisher claims with actual selection.
 
-The operation returns accepted row ID, hash, and original `receivedAt`. A replay
-does not replace receipt time or payload bytes. All persistence errors are
-atomic: no partial feature/context state exists because the bundle is one row.
+## Selection result
 
-### Current and history semantics
+The output is conceptually:
 
-Queries require `pair` and one exact validated scope; they never mix pair-level
-and position-level evidence implicitly. #60 may deliberately request multiple
-scopes and combine candidates.
+```ts
+interface SelectedEvidenceSummary {
+  selectionPolicyVersion: string;
+  selectedAtUnixMs: number;
+  pair: "SOL/USDC";
+  scope: Scope;
+  authority: "ADVISORY_ONLY";
+  mode: "FULL" | "PARTIAL" | "DEGRADED_NO_RESEARCH";
+  selected: {
+    deterministicFeatures: SelectedDeterministicFeature[];
+    contextualEvidence: SelectedContextualFamilies;
+    researchBrief: SelectedResearchBrief | null;
+  };
+  familyCoverage: FamilyCoverageSummary;
+  conflicts: ConflictSummary[];
+  warnings: SelectionWarning[];
+  sourceReferences: SelectedSourceReference[];
+  bundles: BundleSelectionLineage[];
+  decisions: EvidenceSelectionDecision[];
+}
+```
 
-`getLatest` partitions by publisher/source when no source filter is supplied and
-returns at most one latest row per source, ordered by `asOf DESC, receivedAt DESC,
-id DESC`. With a source filter it returns at most one row. Results include the
-derived `FRESH | STALE | EXPIRED` lifecycle so expired data remains auditable;
-selection eligibility is not decided here.
+Each selected item contains the original contract item plus its qualified ID,
+bundle hash/run/source identity, raw confidence, component weights, effective
+score, and inclusion reason codes. `decisions` contains one entry for every
+bundle and candidate considered, including expired bundle contents, with
+`INCLUDED` or `EXCLUDED`, stable reason codes, relevant timestamps, scores when
+calculable, and source-reference IDs.
 
-`getHistory` orders by `receivedAt DESC, id DESC`, uses a cursor containing both
-values, defaults to 30 items, and rejects limits outside 1 through 100. Cursor
-pagination avoids duplicates or skips when new rows arrive. History can filter
-by source but always uses exact pair/scope identity. It returns the original
-bundle, stored hash, receipt metadata, and derived lifecycle without mutation.
+`sourceReferences` is the deterministic union of references reachable from
+selected items and from excluded-item decisions. Each entry says whether it is
+`SELECTED_LINEAGE`, `AUDIT_ONLY`, or both and retains the originating bundle
+identity. References with the same local `referenceId` in different bundles
+remain distinct. This satisfies auditability without implying that an excluded
+reference influenced synthesis.
 
-## Ownership of fields and metadata
+`bundles` records row ID, hash, run/correlation/source identity, publisher
+assessment, lifecycle, source-quality lookup result, and bundle decision. Raw
+bundle payloads are not duplicated in the result because they remain available
+from immutable storage.
 
-The intelligence publisher supplies every field in `EvidenceBundleV1`, including
-source/run identity, scope, publisher timestamps, evidence, coverage, warnings,
-and publisher provenance. Regime Engine validates those claims but does not
-rewrite them.
+All result arrays have explicit comparators and are emitted in documented
+canonical order. The result does not need a public schema or persisted hash in
+this issue, but the same inputs, selection instant, and policy must produce
+deep-equal output and byte-identical canonical JSON.
 
-Regime Engine alone calculates and owns:
+## Hard-guard isolation
 
-- database row ID;
-- `receivedAt`;
-- `payloadCanonical` and `payloadHash` receipt metadata;
-- query-time `FRESH | STALE | EXPIRED` lifecycle;
-- ingest outcome (`created | already_ingested`) and conflict errors;
-- later selection lineage and synthesized policy lineage.
+The selector enforces the authority boundary structurally:
 
-Neither owner may place final recommendation or execution fields in the evidence
-payload.
+- it does not accept `RegimeCurrentResponse`, plan state, or guard state;
+- it does not return recommendation, action, allocation, `allowClmm`, or guard
+  override fields;
+- every result has the literal `authority: "ADVISORY_ONLY"`;
+- it is wired beside, not inside, `getCurrentRegime` and `generatePlan`;
+- an empty evidence read returns `DEGRADED_NO_RESEARCH` rather than modifying or
+  suppressing deterministic market state;
+- evidence-store unavailability remains an evidence error and cannot make the
+  deterministic market endpoints unavailable, because those use cases have no
+  evidence dependency.
 
-## Machine-readable artifacts
-
-Implementation publishes these stable paths:
+Issue #61 must accept deterministic market state and selected evidence as
+separate inputs and apply the established precedence:
 
 ```text
-contracts/evidence-bundle/v1/evidence-bundle.schema.json
-contracts/evidence-bundle/v1/schema.sha256
-contracts/evidence-bundle/v1/hash-vectors.json
-contracts/evidence-bundle/v1/fixtures/valid/deterministic-only.json
-contracts/evidence-bundle/v1/fixtures/valid/contextual.json
-contracts/evidence-bundle/v1/fixtures/invalid/*.json
-src/contract/evidence/v1/types.generated.ts
-src/contract/evidence/v1/validate.ts
-docs/contracts/evidence-bundle.v1.md
+deterministic hard guards
+  > deterministic market/evidence posture
+    > contextual and LLM evidence
 ```
 
-`schema.sha256` contains the lowercase SHA-256 of the schema file bytes followed
-by its relative path. The documentation repeats that value and explains how to
-recompute it; CI fails if it, the generated type header, or the recorded hash
-vectors differ from regeneration. Build asset copying includes the schema,
-fixtures, hash vectors, and schema hash under `dist/contracts/...` so a packaged
-build does not lose the cross-repository artifacts.
+That future synthesis boundary must test that `BLOCKED`, `UNKNOWN`, and
+hard-stale decisions cannot be promoted by even maximum-score research. This
+issue prepares that guarantee by ensuring selected evidence carries no policy
+authority. It does not duplicate final synthesis rules prematurely.
 
-Invalid fixtures cover at least: wrong/missing schema version, unknown fields,
-unsupported units, non-canonical/invalid timestamps, reversed lifecycle times,
-non-finite or out-of-range numeric values, status/value/unit mismatches,
-duplicate/unresolved lineage IDs, malformed contextual families, non-null brief
-with unresolved evidence, null brief with successful coverage, empty context
-without warnings, and a payload hash vector mismatch.
+## Error and degraded behavior
 
-## Validation and test strategy
+- No records is a successful selection with `DEGRADED_NO_RESEARCH`, empty
+  selected arrays, missing-family warnings, and no decisions. It is not 404.
+- Records containing only expired or rejected evidence also return a successful
+  degraded result with complete exclusion lineage.
+- A transient repository failure remains `EvidenceStoreUnavailableError` and is
+  not converted to an empty result; absence and infrastructure failure must be
+  distinguishable.
+- An invalid selection policy, non-finite selection instant, or impossible
+  internal score is a programmer/configuration error and fails fast before
+  partial output.
+- A record metadata mismatch is isolated as a bundle exclusion when the rest of
+  the records remain evaluable.
+- The use case calls the clock and repository once. It never retries or reads
+  history; adapter retry policy is outside the pure selector.
 
-### Contract tests
+## Testing strategy
 
-- The deterministic-only fixture validates with at least one available
-  deterministic feature, all five contextual arrays empty,
-  `researchBrief: null`, explicit unavailable coverage, and both contextual and
-  brief warnings.
-- The fuller fixture validates contextual claims and a research brief whose
-  references all resolve.
-- Every invalid fixture fails with stable, sorted error paths and expected codes.
-- Unknown properties fail at every object nesting level.
-- Boundary tests cover string/array limits, all enums and units, confidence 0 and
-  10,000, canonical timestamp precision, and all timestamp equality boundaries.
-- Conditional tests cover every feature kind/status/value/unit combination and
-  every coverage/absence relationship.
-- Generated types and runtime validator are regenerated in CI and produce no
-  diff.
+### Pure selector unit tests
 
-### Canonical/hash tests
+Co-locate tests under `src/engine/evidence/__tests__/`. Fixtures should use
+small contract-valid builders and a fixed instant. Required cases include:
 
-- Same semantic object-key order produces byte-identical canonical JSON and hash.
-- Array reorder changes the hash; exact replay does not.
-- The checked-in deterministic-only and contextual vectors reproduce in a clean
-  Node process using only published artifact rules.
-- Schema file SHA-256 matches `schema.sha256`, documentation, and generated type
-  header.
-- The existing canonical helper remains the implementation primitive; vectors
-  protect its cross-language contract rather than relying only on snapshots.
+- fresh high-confidence deterministic and contextual items are selected with
+  exact component and effective scores;
+- a stale bundle remains eligible, receives the exact stale multiplier, and
+  emits a warning;
+- an expired bundle and individually expired contextual claim are excluded at
+  the inclusive timestamp boundaries;
+- stale deterministic feature freshness uses the minimum freshness factor and
+  is not double-penalized with a stale bundle;
+- unavailable and invalid deterministic features are excluded with distinct
+  reasons;
+- low-confidence, unknown-source, and explicitly disabled-source cases;
+- exact source override wins over publisher/default quality;
+- derived, collected, and human-authored provenance produce the configured
+  score differences;
+- selected feature lineage closure and dependant exclusion;
+- null brief, valid brief, under-threshold brief, and brief referencing an
+  excluded/capped item;
+- partial family coverage is recomputed from selected items despite optimistic
+  publisher assessment;
+- deterministic-only and completely empty inputs return explicit
+  `DEGRADED_NO_RESEARCH` results;
+- bullish/bearish conflicts preserve both claims, emit the warning, and compute
+  exact directional totals and consensus;
+- neutral/mixed/unknown claims do not create false directional conflict;
+- family limit ranking and every tie-break level are deterministic;
+- duplicate local evidence/reference IDs across different bundles remain
+  qualified and distinct;
+- permutation tests show record order does not affect deep equality or
+  canonical JSON;
+- every candidate receives exactly one terminal decision and every selected
+  item has a matching `INCLUDED` decision;
+- selected and audit-only source-reference unions are complete and ordered;
+- mismatched scope/lifecycle records are excluded without corrupting valid
+  peers;
+- policy validation rejects out-of-range weights and limits.
 
-### Persistence tests
+The conflict fixture should include fresh, stale, and differently sourced claims
+so the test proves conflict uses effective scores rather than raw claim counts.
 
-- Create persists the complete payload, scalar identities, canonical text, hash,
-  and receipt time exactly once.
-- Sequential and concurrent identical replays return one create and one
-  idempotent result.
-- Sequential and concurrent different-payload replays for the same source/run
-  produce a deterministic typed conflict and retain exactly one truth row.
-- Different sources or run IDs may publish identical payload content.
-- Pair and every scope kind remain isolated in latest/history queries.
-- Latest ordering and tie-breakers are deterministic; multi-source current reads
-  return one row per source.
-- Fresh/stale/expired boundaries are derived without updating stored rows.
-- History limit and cursor behavior are bounded and stable under intervening
-  inserts.
-- Payload rehydration is validated against the v1 schema so corrupt JSONB fails
-  visibly rather than leaking malformed evidence to selection.
-- A migration test confirms evidence and policy tables are distinct and existing
-  insight rows are unchanged.
+### Application use-case tests
+
+Co-locate tests with existing application use-case tests. Verify that the use
+case:
+
+- captures the clock once;
+- calls `getLatest` once with `pair: "SOL/USDC"`, the exact scope, no source
+  filter, and the captured instant;
+- passes the same instant and configured policy to the selector;
+- returns degraded success for an empty repository result;
+- propagates `EvidenceStoreUnavailableError` unchanged;
+- does not invoke any candle, regime, plan, ledger-write, HTTP, or history path.
+
+### Composition and regression tests
+
+Add a small composition test showing that the selector use case is present when
+Postgres evidence storage is configured and null otherwise, matching existing
+evidence wiring. Existing regime and plan tests remain unchanged; they are
+regression evidence that selection is not inserted into deterministic paths.
+No HTTP end-to-end test is required because no route changes.
 
 ## Assumptions
 
-- `evidence-bundle.v1` is the canonical version identifier requested by the
-  issue; it does not reuse the service-wide `"1.0"` constant because the
-  resource has an independent lifecycle.
-- The first publisher is `sol-usdc-clmm-intelligence`, and v1 supports only
-  `SOL/USDC` on Solana mainnet. Later support requires a new compatible enum
-  expansion or a new schema version plus explicit policy.
-- The intelligence publisher can emit canonical millisecond UTC timestamps and
-  deterministic array ordering.
-- Postgres is the durable evidence authority in deployed environments. Local
-  contract tests do not require Postgres; adapter integration tests use the
-  repository's existing opt-in Postgres suite.
-- `freshUntil` and `expiresAt` are publisher claims validated by Regime Engine;
-  #60 decides whether source-specific policy shortens those windows.
-- Contextual claims may be absent for any run. A deterministic-only bundle must
-  not be rejected or withheld solely because context or an LLM brief is absent.
-- Source URLs and internal locators may be sensitive, but this issue defines
-  persistence rather than public read authorization. #59 must choose exposure
-  and redaction policy before adding routes.
-- Schema generation and validation dependencies are acceptable because the JSON
-  Schema is a required public artifact; dependency choice should support draft
-  2020-12 and deterministic generation in the pinned lockfile.
+- Issue #59's merged `getLatest` behavior is the intended candidate read model:
+  one latest bundle per source and exact scope, including its derived lifecycle.
+- Policy synthesis will initially request pair-scoped evidence. The selector is
+  exact-scope generic so position-scoped use can be added without changing its
+  internal rules.
+- The current v1 publisher may use multiple stable `sourceId` values. Source
+  quality therefore needs a conservative global default plus optional
+  exact-identity overrides qualified by publisher and source ID.
+- Regime Engine owns source-quality policy. Publisher assessment and provenance
+  are inputs/audit metadata, not permission to set trust.
+- Stale evidence is useful at half weight until hard expiry. This is a
+  conservative initial policy choice, not a learned optimum.
+- The minimum score and family cap proposed above are acceptable initial safety
+  bounds and will be versioned when calibrated.
+- A context claim with `expiresAt: null` intentionally inherits the bundle's
+  hard expiry; no undocumented family TTL is inferred.
+- An available deterministic feature past its own `freshUntil` can be
+  downweighted until bundle expiry because v1 provides no feature-level hard
+  expiry.
+- A research brief is usable only when all cited evidence survives selection;
+  partial citation support is too ambiguous for the first version.
+- The selection result is ephemeral in this issue. Final synthesized insight
+  persistence will own any durable selection snapshot/lineage required for
+  replay.
+- Empty evidence is normal degraded operation; evidence-store failure is not
+  equivalent to empty evidence.
+- No questions are required to resolve these choices; any later policy change
+  should update the version and its tests rather than silently changing values.
 
 ## Risks and concerns
 
-- **Canonical JSON is repository-defined, not RFC 8785.** ECMAScript number
-  formatting and Unicode key ordering must be implemented identically by the
-  intelligence publisher. Published vectors are load-bearing; calling the
-  algorithm merely “canonical JSON” is not sufficient.
-- **JSON Schema cannot express every graph invariant.** Reference resolution,
-  ID uniqueness, and some coverage relationships require a second semantic
-  pass. Keeping both passes behind one validator API prevents callers from
-  accidentally persisting structurally valid but semantically invalid bundles.
-- **Generated types can overstate conditional precision.** Runtime validation
-  remains authoritative. Code should narrow discriminated feature variants
-  after validation rather than trusting arbitrary casts.
-- **Large JSONB rows can become an abuse or performance vector.** Every string
-  and array needs a specified maximum, and #59 should enforce a request body
-  limit. The atomic model can be normalized later only if measured selection
-  queries require it.
-- **Publisher-declared freshness may be optimistic.** Storing both lifecycle
-  timestamps and Regime receipt time makes delays visible; #60 must cap or score
-  source freshness rather than blindly trusting it.
-- **Current semantics can be misunderstood as selection.** The repository returns
-  latest rows and lifecycle only. It must not silently discard conflicting,
-  stale, or lower-quality sources before #60 records explicit selection reasons.
-- **Scope fan-out can leak position identifiers.** Exact-scope indexes and query
-  APIs reduce accidental mixing, but HTTP authentication/redaction remains a
-  required #59 decision.
-- **Existing stores bypass newer application ports.** Reusing their SQL pattern
-  is appropriate, but exposing a new `EvidenceBundlesStore` directly through
-  HTTP dependencies would deepen architectural debt. The evidence adapter should
-  implement an application port from the outset.
-- **Append-only is an application convention today.** Database privileges do not
-  necessarily forbid updates/deletes. The migration, repository API, and tests
-  provide practical enforcement; stronger role-level controls are an operations
-  follow-up if required.
+### Source quality is not represented in EvidenceBundle v1
 
-## Resulting boundary
+The selector needs a Regime-owned lookup table because the contract does not
+carry an authoritative trust score. New `sourceId` values will receive the
+conservative default until reviewed. Operational rollout must therefore include
+a visible inventory of production source identities; otherwise good evidence
+may be unexpectedly downweighted. This is preferable to automatically trusting
+an opaque new source.
 
-```text
-sol-usdc-clmm-intelligence
-  -> validates against published evidence-bundle.v1 schema
-  -> POST is added later by #59
+### Static weights are policy, not measured truth
 
-Regime Engine contract/application
-  -> strict structural + semantic validation
-  -> canonical payload + SHA-256
-  -> EvidenceBundleRepositoryPort
+The proposed weights and threshold are explainable but uncalibrated. They could
+exclude useful low-confidence evidence or retain noisy evidence. Versioning,
+component-score lineage, and later outcome analysis are necessary before tuning.
 
-Postgres adapter
-  -> append-only evidence_bundles row
-  -> exact replay or deterministic source/run conflict
-  -> exact-scope latest and bounded history
+### Latest-per-source can hide an older still-usable bundle
 
-#60 / #61 (later)
-  -> select recorded evidence with explicit reasons
-  -> synthesize separate canonical PolicyInsight
+The repository selects latest by `asOf`, receipt time, and ID. A malformed
+publisher lifecycle could theoretically make a newer bundle expire before an
+older bundle. The contract allows differing expiry windows, and this design does
+not search history for fallback. Adding fallback would require a bounded
+candidate query and explicit anti-replay semantics; it should not be hidden in
+this issue.
 
-clmm-v2
-  -> consumes PolicyInsight and retains execution authority
-```
+### Candidate volume is bounded only after the database read
 
-This boundary allows the deterministic-only MVP to ship immediately, makes
-missing research visible rather than fabricated, and preserves a durable audit
-trail from publisher evidence to later Regime-owned policy without conflating
-the two records.
+Each bundle is schema-bounded, and output is family-capped, but the number of
+distinct source IDs returned by `getLatest` is not currently capped. A publisher
+creating unbounded source IDs could increase query and selection cost. The v1
+publisher identity restriction reduces but does not remove this risk. If source
+cardinality grows, the repository should gain a bounded configured-source read
+rather than truncating nondeterministically in the selector.
+
+### Contract lineage is local to a bundle
+
+Local evidence and reference IDs can repeat across bundles. All output identity,
+deduplication, and reference resolution must stay qualified by bundle hash.
+Using raw IDs as global `Map` keys would silently cross-wire lineage.
+
+### Brief confidence is derived indirectly
+
+The brief lacks its own confidence field. Deriving its score from cited evidence
+and publisher assessment is conservative but may reject useful summaries. It is
+safer than inventing a fixed LLM confidence or allowing the brief to outrank its
+supporting evidence.
+
+### Conflict is directional, not semantic
+
+The generic conflict calculation catches bullish-versus-bearish disagreement
+but cannot determine that two numerical support zones or two category features
+are logically incompatible. Adding semantic conflict rules requires
+feature/kind-specific policy and should happen only when synthesis needs it.
+
+### Clock-dependent output is not persisted
+
+Re-running selection later can yield a different result as evidence crosses
+freshness and expiry boundaries. Future synthesis persistence must store either
+the full selected summary or enough inputs—selection instant, policy version,
+bundle hashes, and deterministic algorithm version—to reproduce it.
+
+### The hard-guard guarantee completes in #61
+
+This selector prevents evidence from carrying authority and leaves current
+deterministic use cases untouched. The final proof that research cannot promote
+a hard-blocked state must live where market state and evidence are actually
+combined. Implementers must not interpret an `ADVISORY_ONLY` summary as
+sufficient authorization in the synthesis issue.
+
+## Scope summary
+
+In scope is a pure deterministic evidence selector, its versioned policy, a
+repository-backed internal application use case, composition wiring, and tests
+covering fresh, stale, expired, partial, conflicting, missing, and lineage-heavy
+cases. Explicitly out of scope are external APIs, contract/persistence changes,
+selection persistence, final policy synthesis, UI, and all modifications to
+deterministic market guards or execution behavior.
