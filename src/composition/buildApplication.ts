@@ -16,6 +16,9 @@ import type { IngestEvidenceBundleUseCase } from "../application/use-cases/inges
 import type { GetCurrentEvidenceUseCase } from "../application/use-cases/getCurrentEvidenceUseCase.js";
 import type { GetEvidenceHistoryUseCase } from "../application/use-cases/getEvidenceHistoryUseCase.js";
 import type { SelectEvidenceForSynthesisUseCase } from "../application/use-cases/selectEvidenceForSynthesisUseCase.js";
+import type { SynthesizePolicyInsightUseCase } from "../application/use-cases/synthesizePolicyInsightUseCase.js";
+import type { GetCurrentPolicyInsightUseCase } from "../application/use-cases/getCurrentPolicyInsightUseCase.js";
+import type { GetPolicyInsightHistoryUseCase } from "../application/use-cases/getPolicyInsightHistoryUseCase.js";
 import { createIngestCandlesUseCase } from "../application/use-cases/ingestCandlesUseCase.js";
 import { createGetCurrentRegimeUseCase } from "../application/use-cases/getCurrentRegimeUseCase.js";
 import { createGeneratePlanUseCase } from "../application/use-cases/generatePlanUseCase.js";
@@ -26,6 +29,9 @@ import { createIngestEvidenceBundleUseCase } from "../application/use-cases/inge
 import { createGetCurrentEvidenceUseCase } from "../application/use-cases/getCurrentEvidenceUseCase.js";
 import { createGetEvidenceHistoryUseCase } from "../application/use-cases/getEvidenceHistoryUseCase.js";
 import { createSelectEvidenceForSynthesisUseCase } from "../application/use-cases/selectEvidenceForSynthesisUseCase.js";
+import { createSynthesizePolicyInsightUseCase } from "../application/use-cases/synthesizePolicyInsightUseCase.js";
+import { createGetCurrentPolicyInsightUseCase } from "../application/use-cases/getCurrentPolicyInsightUseCase.js";
+import { createGetPolicyInsightHistoryUseCase } from "../application/use-cases/getPolicyInsightHistoryUseCase.js";
 import { createSqliteCandleReadAdapter } from "../adapters/sqlite/sqliteCandleReadAdapter.js";
 import { createSqliteCandleRevisionUnitOfWork } from "../adapters/sqlite/sqliteCandleRevisionUnitOfWork.js";
 import { createPostgresCandleReadAdapter } from "../adapters/postgres/postgresCandleReadAdapter.js";
@@ -37,6 +43,8 @@ import {
 } from "../adapters/sqlite/sqliteExecutionLedgerAdapter.js";
 import { createSqliteWeeklyReportReadAdapter } from "../adapters/sqlite/sqliteWeeklyReportReadAdapter.js";
 import { createPostgresEvidenceBundleRepository } from "../adapters/postgres/postgresEvidenceBundleRepository.js";
+import { createPostgresPolicyInsightRepository } from "../adapters/postgres/postgresPolicyInsightRepository.js";
+import { SOL_USDC_POLICY_V1 } from "../engine/policy/ruleset.js";
 import { checkPgHealth, checkSqliteHealth } from "../ledger/health.js";
 import type { RuntimeStoreContext } from "./buildStoreContext.js";
 import type { LedgerStore } from "../ledger/store.js";
@@ -73,6 +81,9 @@ export interface ApplicationDependencies {
   getCurrentEvidence: GetCurrentEvidenceUseCase | null;
   getEvidenceHistory: GetEvidenceHistoryUseCase | null;
   selectEvidenceForSynthesis: SelectEvidenceForSynthesisUseCase | null;
+  synthesizePolicyInsight: SynthesizePolicyInsightUseCase | null;
+  getCurrentPolicyInsight: GetCurrentPolicyInsightUseCase | null;
+  getPolicyInsightHistory: GetPolicyInsightHistoryUseCase | null;
   ledgerStore: LedgerStore;
   insightsStore: InsightsStore | null;
   srThesesV2Store: SrThesesV2Store | null;
@@ -134,6 +145,30 @@ export const buildApplication = (ctx: RuntimeStoreContext): ApplicationDependenc
     ? createSelectEvidenceForSynthesisUseCase({ repository: evidenceRepository, clock })
     : null;
 
+  const policyInsightRepository = ctx.pg ? createPostgresPolicyInsightRepository(ctx.pg) : null;
+  const synthesizePolicyInsight =
+    policyInsightRepository && selectEvidenceForSynthesis
+      ? createSynthesizePolicyInsightUseCase({
+          getCurrentRegime,
+          selectEvidence: selectEvidenceForSynthesis,
+          repository: policyInsightRepository,
+          clock,
+          ruleset: SOL_USDC_POLICY_V1
+        })
+      : null;
+  const getCurrentPolicyInsight = policyInsightRepository
+    ? createGetCurrentPolicyInsightUseCase({
+        repository: policyInsightRepository,
+        clock
+      })
+    : null;
+  const getPolicyInsightHistory = policyInsightRepository
+    ? createGetPolicyInsightHistoryUseCase({
+        repository: policyInsightRepository,
+        clock
+      })
+    : null;
+
   const versionInfo: VersionInfo = {
     name: "regime-engine",
     version: process.env.npm_package_version ?? "0.1.0",
@@ -158,6 +193,9 @@ export const buildApplication = (ctx: RuntimeStoreContext): ApplicationDependenc
     getCurrentEvidence,
     getEvidenceHistory,
     selectEvidenceForSynthesis,
+    synthesizePolicyInsight,
+    getCurrentPolicyInsight,
+    getPolicyInsightHistory,
     ledgerStore: ctx.ledger,
     insightsStore: ctx.insightsStore,
     srThesesV2Store: ctx.srThesesV2Store,
