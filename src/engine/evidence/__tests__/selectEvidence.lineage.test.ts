@@ -595,7 +595,7 @@ describe("Evidence lineage, capping, and brief resolution", () => {
     expect(r1).toBeDefined();
     // ref-1 is reached by selected feat-1 AND excluded feat-3, so it should report both roles
     expect(r1?.isSelectedLineage).toBe(true);
-    expect(r1?.isAuditOnly).toBe(false);
+    expect(r1?.isAuditOnly).toBe(true);
     expect(r1?.bundleHash).toBe("hash-1");
 
     expect(r2).toBeDefined();

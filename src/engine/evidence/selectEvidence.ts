@@ -1323,11 +1323,8 @@ export function selectEvidence(input: SelectEvidenceInput): SelectedEvidenceSumm
         if (entry) {
           if (dec.status === "SELECTED") {
             entry.isSelectedLineage = true;
-            entry.isAuditOnly = false;
           } else {
-            if (!entry.isSelectedLineage) {
-              entry.isAuditOnly = true;
-            }
+            entry.isAuditOnly = true;
           }
         }
       }
@@ -1352,11 +1349,8 @@ export function selectEvidence(input: SelectEvidenceInput): SelectedEvidenceSumm
         if (entry) {
           if (dec.status === "SELECTED") {
             entry.isSelectedLineage = true;
-            entry.isAuditOnly = false;
           } else {
-            if (!entry.isSelectedLineage) {
-              entry.isAuditOnly = true;
-            }
+            entry.isAuditOnly = true;
           }
         }
       }
