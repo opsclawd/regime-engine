@@ -1,6 +1,6 @@
 # Task Context: Task 2
 
-Title: Add fixtures and unified structural-semantic validation
+Title: Implement exact bundle and item scoring with terminal decisions
 ## Workspace & Scope Constraints
 
 ## WORKSPACE CONSTRAINTS
@@ -9,131 +9,140 @@ Your working directory is a dedicated git worktree with the repository's complet
 
 .ai-orchestrator.local.json, if one exists, lives only in the main checkout and is intentionally not copied into your worktree — it is operator-machine-specific and not part of your task. Do not search for it or read it outside this directory. Reason about configuration using only .ai-orchestrator.json in your own working directory; treat it as the effective config for your task.
 
-Working Directory: /home/gary/.openclaw/workspace/regime-engine/.ai-worktrees/issue-58
+Working Directory: /home/gary/.openclaw/workspace/regime-engine/.ai-worktrees/issue-60
 Repository: opsclawd/regime-engine
-Branch: ai/issue-58
-Start Commit: 7bd5b19db3afbf66e95e06ac273453030f5381fe
+Branch: ai/issue-60
+Start Commit: 6a6956b3c169a8146d22f1b8f77b7c27de35d1b5
 
 ## Task Requirements
 
 **Files:**
 
-- Create: `contracts/evidence-bundle/v1/fixtures/valid/deterministic-only.json`
-- Create: `contracts/evidence-bundle/v1/fixtures/valid/contextual.json`
-- Create: `contracts/evidence-bundle/v1/fixtures/invalid/wrong-schema-version.json`
-- Create: `contracts/evidence-bundle/v1/fixtures/invalid/unknown-field.json`
-- Create: `contracts/evidence-bundle/v1/fixtures/invalid/unsupported-unit.json`
-- Create: `contracts/evidence-bundle/v1/fixtures/invalid/noncanonical-timestamp.json`
-- Create: `contracts/evidence-bundle/v1/fixtures/invalid/reversed-lifecycle.json`
-- Create: `contracts/evidence-bundle/v1/fixtures/invalid/out-of-range-number.json`
-- Create: `contracts/evidence-bundle/v1/fixtures/invalid/status-value-mismatch.json`
-- Create: `contracts/evidence-bundle/v1/fixtures/invalid/duplicate-lineage.json`
-- Create: `contracts/evidence-bundle/v1/fixtures/invalid/unresolved-lineage.json`
-- Create: `contracts/evidence-bundle/v1/fixtures/invalid/malformed-contextual-family.json`
-- Create: `contracts/evidence-bundle/v1/fixtures/invalid/unresolved-brief-evidence.json`
-- Create: `contracts/evidence-bundle/v1/fixtures/invalid/null-brief-available-coverage.json`
-- Create: `contracts/evidence-bundle/v1/fixtures/invalid/empty-context-no-warning.json`
-- Create: `src/contract/evidence/v1/validate.ts`
-- Create: `src/contract/evidence/v1/__tests__/validation.test.ts`
+- Create: `src/engine/evidence/selectEvidence.ts`
+- Create: `src/engine/evidence/__tests__/evidenceSelectionFixtures.ts`
+- Create: `src/engine/evidence/__tests__/selectEvidence.scoring.test.ts`
 
-- [ ] **Step 1: Write the named contract tests first**
+**Exported API surface:** Add `SelectEvidenceInput`, `SelectedEvidenceSummary` and its named nested result/decision/lineage types, and `selectEvidence`. Keep the selector input limited to records, one instant, one exact scope, and policy; do not accept market state, plan state, or guards.
 
-Load JSON fixtures with `node:fs`, then add exact test names for the six contract invariants listed at the top of this plan. Add table-driven cases for every invalid fixture, asserting a stable result shape:
+**Behavioral invariants to write as tests first:**
 
-```ts
-type EvidenceValidationIssue = {
-  path: string;
-  code: "STRUCTURAL" | "SEMANTIC" | "UNSUPPORTED_SCHEMA_VERSION";
-  message: string;
-};
+- `selects fresh high-confidence features and claims with exact component scores`: exact formula uses confidence × source quality × provenance quality × minimum freshness divided by `10_000^3`, floors once with `bigint`, and returns a safe integer.
+- `downweights a stale bundle once and emits STALE_EVIDENCE_DOWNWEIGHTED`: stale bundle and stale feature use `min(bundle,item)` rather than multiplying stale twice.
+- `uses inclusive feature freshness and claim expiry boundaries`: equality is usable; strictly past feature freshness is stale and strictly past claim expiry is `CLAIM_EXPIRED`.
+- `excludes expired bundles and records every contained candidate as BUNDLE_EXPIRED`: expired evidence never reaches scoring or inclusion.
+- `excludes unavailable and invalid features with distinct terminal reasons`: unavailable and invalid candidates retain audit lineage but never score as selected.
+- `applies exact-source overrides before the conservative default and honors zero as disabled`: source keys are publisher+source qualified; publisher assessment cannot promote either path.
+- `applies calculator derived collected and human-authored provenance weights exactly`: deterministic features use calculator weight and each claim method uses its configured factor.
+- `excludes scores below threshold while retaining score components`: equality with the threshold is eligible; only lower scores are excluded.
+- `isolates scope and lifecycle metadata mismatches without corrupting valid peers`: mismatched records and their contents receive record mismatch reasons while valid records continue.
+- `rejects invalid input before returning partial output`: non-finite/non-integer/negative `selectedAtUnixMs`, invalid policy, or an impossible final score throws synchronously from the pure call.
 
-type EvidenceValidationResult =
-  | { ok: true; value: EvidenceBundleV1 }
-  | { ok: false; issues: EvidenceValidationIssue[] };
-```
+- [ ] **Step 1: Create contract-valid fixture builders and failing scoring tests**
 
-Also test canonical timestamp equality boundaries, invalid calendar dates despite regex match, confidence 0/10000, scalar and array min/max boundaries, every scope variant, all unit enums, all feature kind/status combinations, all contextual family coverage relationships, unknown fields at root and nested levels, duplicate feature/evidence/reference IDs, feature-to-feature and feature-to-reference lineage, and research-brief references. Programmatically pass `NaN`, infinities, and `-0` to the validator because they cannot be represented in JSON fixtures.
+  Builders must default to a fixed pair scope, source identity, canonical timestamps, at least one deterministic feature, at least one source reference, and internally consistent assessment/provenance. Expose overrides for source, lifecycle, feature/claim family, timestamps, confidence, provenance, brief, and references. Validate builder output with `parseEvidenceBundleV1` so tests cannot exercise impossible contract shapes accidentally.
 
-Run: `pnpm vitest run src/contract/evidence/v1/__tests__/validation.test.ts`
+  In the exact arithmetic test, use factors that expose premature division/float rounding and assert the formula through a helper equivalent to:
 
-Expected: FAIL because `validate.ts` and fixtures do not exist.
+  ```ts
+  const expected = Number(
+    (BigInt(confidenceBps) * BigInt(sourceBps) * BigInt(provenanceBps) * BigInt(freshnessBps)) /
+      10_000n ** 3n
+  );
+  ```
 
-- [ ] **Step 2: Create the two valid publisher fixtures**
+- [ ] **Step 2: Run the scoring test file and observe the missing selector failure**
 
-The deterministic fixture must use pair scope, one available numeric feature, one source reference, five empty contextual arrays, `researchBrief: null`, contextual and brief coverage `unavailable`, quality `partial` or `degraded`, and both `CONTEXTUAL_EVIDENCE_UNAVAILABLE` and `RESEARCH_BRIEF_UNAVAILABLE` warnings. The contextual fixture must use position scope, include at least one claim in each contextual family, and a non-null brief whose `sourceEvidenceIds` all resolve. Emit feature, claim, reference, warning, and upstream-run arrays in their documented stable order.
+  Run: `pnpm exec vitest run src/engine/evidence/__tests__/selectEvidence.scoring.test.ts`
 
-- [ ] **Step 3: Create one-purpose invalid fixtures**
+  Expected: FAIL because `selectEvidence` and result types do not exist.
 
-Derive every invalid file from `deterministic-only.json` and introduce only the defect named by its filename. `malformed-contextual-family.json` uses an invalid family-specific `kind`; `duplicate-lineage.json` repeats an ID; `unresolved-lineage.json` points at a missing reference/feature; `null-brief-available-coverage.json` reports brief coverage `available` with a null brief; `empty-context-no-warning.json` removes the contextual absence warning. Keep each file valid JSON so downstream consumers can use the same corpus.
+- [ ] **Step 3: Define the result model and selection stages**
 
-- [ ] **Step 4: Implement one acceptance API around Ajv and semantic checks**
+  Define qualified candidate identity as `<evidenceHash>/<kind>/<localId>` where kind is `deterministic_feature`, `contextual_claim`, or `research_brief`; use the literal local ID `<unavailable>` for a null brief decision. Each selected item and decision includes bundle hash/row/run/correlation/source identity, original item, raw confidence, source/provenance/freshness components, final score when calculable, source-reference IDs, status, and stable reasons.
 
-Use `Ajv2020` with `allErrors: true`, `strict: true`, and `ajv-formats`. Detect a non-literal `schemaVersion` first and return `UNSUPPORTED_SCHEMA_VERSION`; then run the compiled schema. Map Ajv errors to JSON-pointer-like paths and stable messages. Only after structural success, run pure semantic checks for:
+  The top-level shape must contain exactly the advisory selection concerns:
 
-- real calendar validity and exact round-trip canonical timestamps;
-- root and available-feature time ordering;
-- unique IDs across features, claims, and source references;
-- allowed feature input lineage resolution without self-reference or cycles;
-- contextual source-reference and brief evidence-reference resolution;
-- empty/present family coverage agreement;
-- required warning coverage for every unavailable family and null brief;
-- quality not `complete` when required coverage is unavailable.
+  ```ts
+  export interface SelectEvidenceInput {
+    readonly records: readonly EvidenceBundleRecord[];
+    readonly selectedAtUnixMs: number;
+    readonly scope: Scope;
+    readonly policy: EvidenceSelectionPolicy;
+  }
 
-Sort all issues by `path`, then `code`, then `message`; never mutate or reorder the input. Export `validateEvidenceBundleV1(input: unknown): EvidenceValidationResult` and `parseEvidenceBundleV1(input: unknown): EvidenceBundleV1`, where the parser throws an `EvidenceBundleValidationError` containing the same sorted issues.
+  export interface SelectedEvidenceSummary {
+    readonly selectionPolicyVersion: string;
+    readonly selectedAtUnixMs: number;
+    readonly pair: "SOL/USDC";
+    readonly scope: Scope;
+    readonly authority: "ADVISORY_ONLY";
+    readonly mode: "FULL" | "PARTIAL" | "DEGRADED_NO_RESEARCH";
+    readonly selected: {
+      readonly deterministicFeatures: readonly SelectedDeterministicFeature[];
+      readonly contextualEvidence: SelectedContextualFamilies;
+      readonly researchBrief: SelectedResearchBrief | null;
+    };
+    readonly familyCoverage: FamilyCoverageSummary;
+    readonly deterministicEvidenceCoverage: DeterministicCoverageSummary;
+    readonly conflicts: readonly ConflictSummary[];
+    readonly warnings: readonly SelectionWarning[];
+    readonly sourceReferences: readonly SelectedSourceReference[];
+    readonly bundles: readonly BundleSelectionLineage[];
+    readonly decisions: readonly EvidenceSelectionDecision[];
+  }
+  ```
 
-- [ ] **Step 5: Run focused contract verification**
+  Do not expose recommendation/action/allocation/CLMM/guard fields. Initialize summary fields through deterministic helper functions rather than mutable output shared between invocations.
 
-Run: `pnpm vitest run src/contract/evidence/v1/__tests__/validation.test.ts`
+- [ ] **Step 4: Implement exact lifecycle and score evaluation**
 
-Expected: PASS with every invalid fixture rejected for its intended path/code and both valid fixtures accepted.
+  Validate input first. Recompute lifecycle from bundle timestamps with `selectedAt <= freshUntil` → `FRESH`, else `selectedAt <= expiresAt` → `STALE`, else `EXPIRED`; reject record metadata disagreement instead of repairing it. Compare scope structurally through the existing deterministic `evidenceScopeKey` behavior (or an inner-layer equivalent that does not import the application port).
 
-Run: `pnpm exec eslint src/contract/evidence/v1/validate.ts src/contract/evidence/v1/__tests__/validation.test.ts`
+  Sort records explicitly by publisher, source ID, `asOf`, received time, row ID, then evidence hash using a comparator based on `<`, `>`, and numeric comparison (never locale-sensitive comparison). Resolve source quality by exact key then default. Evaluate bundle eligibility, feature status/freshness, claim expiry/provenance, and threshold. Use one `bigint` numerator and one denominator; assert the result lies in `[0, 10_000]` before converting to number.
 
-Expected: PASS with zero warnings.
+- [ ] **Step 5: Run focused verification**
 
-- [ ] **Step 6: Commit fixtures and acceptance authority**
+  Run: `pnpm exec vitest run src/engine/evidence/__tests__/selectEvidence.scoring.test.ts`
 
-```bash
-git add contracts/evidence-bundle/v1/fixtures src/contract/evidence/v1/validate.ts src/contract/evidence/v1/__tests__/validation.test.ts
-git commit -m "m58: validate EvidenceBundle v1 semantics"
-```
+  Expected: PASS with all ten scoring/lifecycle invariants.
+
+  Run: `pnpm exec eslint src/engine/evidence/selectEvidence.ts src/engine/evidence/__tests__/evidenceSelectionFixtures.ts src/engine/evidence/__tests__/selectEvidence.scoring.test.ts --max-warnings 0`
+
+  Expected: PASS with zero warnings. The automatic workspace typecheck gate must also pass before commit.
+
+- [ ] **Step 6: Commit the scoring kernel**
+
+  ```bash
+  git add src/engine/evidence/selectEvidence.ts src/engine/evidence/__tests__/evidenceSelectionFixtures.ts src/engine/evidence/__tests__/selectEvidence.scoring.test.ts
+  git commit -m "m60: score evidence candidates exactly"
+  ```
 
 ## Repository Targets
 
 ### Expected Files
-- contracts/evidence-bundle/v1/fixtures/valid/deterministic-only.json
-- contracts/evidence-bundle/v1/fixtures/valid/contextual.json
-- contracts/evidence-bundle/v1/fixtures/invalid/wrong-schema-version.json
-- contracts/evidence-bundle/v1/fixtures/invalid/unknown-field.json
-- contracts/evidence-bundle/v1/fixtures/invalid/unsupported-unit.json
-- contracts/evidence-bundle/v1/fixtures/invalid/noncanonical-timestamp.json
-- contracts/evidence-bundle/v1/fixtures/invalid/reversed-lifecycle.json
-- contracts/evidence-bundle/v1/fixtures/invalid/out-of-range-number.json
-- contracts/evidence-bundle/v1/fixtures/invalid/status-value-mismatch.json
-- contracts/evidence-bundle/v1/fixtures/invalid/duplicate-lineage.json
-- contracts/evidence-bundle/v1/fixtures/invalid/unresolved-lineage.json
-- contracts/evidence-bundle/v1/fixtures/invalid/malformed-contextual-family.json
-- contracts/evidence-bundle/v1/fixtures/invalid/unresolved-brief-evidence.json
-- contracts/evidence-bundle/v1/fixtures/invalid/null-brief-available-coverage.json
-- contracts/evidence-bundle/v1/fixtures/invalid/empty-context-no-warning.json
-- src/contract/evidence/v1/validate.ts
-- src/contract/evidence/v1/__tests__/validation.test.ts
+- src/engine/evidence/selectEvidence.ts
+- src/engine/evidence/__tests__/evidenceSelectionFixtures.ts
+- src/engine/evidence/__tests__/selectEvidence.scoring.test.ts
 
 ## Validation Commands
 
 ```bash
-pnpm vitest run src/contract/evidence/v1/__tests__/validation.test.ts
-pnpm exec eslint src/contract/evidence/v1/validate.ts src/contract/evidence/v1/__tests__/validation.test.ts
+pnpm exec vitest run src/engine/evidence/__tests__/selectEvidence.scoring.test.ts
+pnpm exec eslint src/engine/evidence/selectEvidence.ts src/engine/evidence/__tests__/evidenceSelectionFixtures.ts src/engine/evidence/__tests__/selectEvidence.scoring.test.ts --max-warnings 0
 ```
 
 ## Behavioral Invariants
 
 You MUST implement the following behavioral invariants as named tests first (TDD):
 
-- **deterministic-only acceptance**: A bundle with deterministic evidence, empty context, and a null brief is valid when absence coverage and warnings are explicit. (Test: `accepts deterministic-only evidence with explicit unavailable coverage`)
-- **available feature value-kind compatibility**: Available number, boolean, and category features accept only matching value primitives and unit relationships. (Test: `rejects available features whose value does not match featureKind`)
-- **missing metrics are not zero**: Unavailable or invalid features use null value/unit, zero confidence, and warnings instead of a fabricated numeric zero. (Test: `rejects unavailable features encoded as numeric zero`)
-- **publisher timestamp ordering**: Canonical millisecond UTC timestamps obey root and available-feature lifecycle ordering. (Test: `rejects noncanonical or reversed publisher timestamps`)
-- **lineage graph resolution**: Feature, contextual, source-reference, and brief IDs remain unique and every permitted reference resolves without cycles. (Test: `rejects duplicate or unresolved evidence lineage`)
-- **coverage reflects actual presence**: Empty context or null research cannot report successful coverage, while present evidence cannot report unavailable coverage. (Test: `rejects coverage that fabricates absent evidence`)
+- **exact fresh scoring**: Fresh candidates use exact bigint multiplication and one floored division with all score components preserved. (Test: `selects fresh high-confidence features and claims with exact component scores`)
+- **single stale penalty**: A stale bundle remains eligible at the stale factor and bundle/item staleness is combined with minimum rather than multiplied twice. (Test: `downweights a stale bundle once and emits STALE_EVIDENCE_DOWNWEIGHTED`)
+- **inclusive item boundaries**: Feature freshness and claim expiry accept equality and change behavior only when the selection instant is strictly later. (Test: `uses inclusive feature freshness and claim expiry boundaries`)
+- **expired bundle terminal exclusion**: An expired bundle and every candidate it contains are terminally excluded before scoring. (Test: `excludes expired bundles and records every contained candidate as BUNDLE_EXPIRED`)
+- **feature status exclusions**: Unavailable and invalid deterministic features receive distinct audit reasons and are never selected. (Test: `excludes unavailable and invalid features with distinct terminal reasons`)
+- **source policy precedence**: An exact qualified source override wins over default quality, zero disables the source, and publisher assessment never promotes it. (Test: `applies exact-source overrides before the conservative default and honors zero as disabled`)
+- **provenance weighting**: Calculator, derived, collected, and human-authored candidates receive their exact configured provenance factors. (Test: `applies calculator derived collected and human-authored provenance weights exactly`)
+- **threshold boundary**: A score equal to the minimum remains eligible while a lower score is excluded with components retained. (Test: `excludes scores below threshold while retaining score components`)
+- **record mismatch isolation**: Scope or recomputed-lifecycle mismatch excludes only the bad record and does not corrupt valid peers. (Test: `isolates scope and lifecycle metadata mismatches without corrupting valid peers`)
+- **fail-fast input validation**: Invalid time, policy, or internal score fails before any partial summary is returned. (Test: `rejects invalid input before returning partial output`)
 

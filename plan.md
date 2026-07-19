@@ -1,688 +1,527 @@
 <!-- plan-review-required -->
 
-# EvidenceBundle v1 Contract and Persistence Implementation Plan
+# Evidence Selection and Scoring Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Publish a strict, portable `evidence-bundle.v1` contract and persist validated bundles in an append-only Postgres repository with deterministic replay, exact-scope latest reads, bounded cursor history, and query-time lifecycle metadata.
+**Goal:** Add a deterministic, advisory-only evidence selector that scores the latest exact-scope EvidenceBundle records, preserves complete selection lineage, reports conflict and missing coverage, and degrades explicitly when research is absent.
 
-**Architecture:** A checked-in JSON Schema 2020-12 document is the normative publisher contract. Generated TypeScript declarations and an Ajv structural validator consume that schema, while a deterministic semantic pass enforces graph, timestamp, feature-status, and coverage invariants that JSON Schema cannot express cleanly. The application owns an `EvidenceBundleRepositoryPort`; a Drizzle/Postgres adapter stores the complete canonical payload plus indexed identity/lifecycle columns in one immutable row and derives `FRESH | STALE | EXPIRED` at read time.
+**Architecture:** Add an environment-free policy module and pure selector under `src/engine/evidence/`, then expose the selector through a clock-capturing application use case backed by the existing `EvidenceBundleRepositoryPort.getLatest` method. Wire that use case beside the existing evidence use cases only when PostgreSQL evidence storage exists; do not add an HTTP route or insert evidence into regime/plan generation.
 
-**Tech Stack:** TypeScript 5.8, Node 22, JSON Schema 2020-12, Ajv 8 with `ajv-formats`, `json-schema-to-typescript`, Drizzle ORM/drizzle-kit, Postgres, Vitest, pnpm.
-
-**Source documents:** `design.md`, `issue.md`, and the empty `issue-comments.md`.
+**Tech Stack:** TypeScript 5.8, Node.js 22, Vitest 3, existing canonical JSON helper, existing hexagonal application/port/composition structure.
 
 ---
 
-**Goals**
+**Goal details**
 
-- Make `contracts/evidence-bundle/v1/evidence-bundle.schema.json` the single machine-readable authority for the wire shape.
-- Accept deterministic-only bundles with five empty contextual collections and `researchBrief: null`, while requiring coverage and warning metadata that makes those absences explicit.
-- Preserve deterministic features, contextual claims, and research summaries as separate typed structures with no policy/recommendation fields.
-- Publish generated types, valid and invalid fixtures, canonical/hash vectors, the schema SHA-256, artifact documentation, and packaged build assets.
-- Store complete accepted bundles atomically and append-only, separately from `clmm_insights`.
-- Implement the source/run replay state machine and exact-scope latest/history reads, including stable ordering, bounded keyset pagination, payload revalidation, and lifecycle derivation.
+- Select and score deterministic features, contextual claims, and a lineage-supported research brief from the latest record for every source in one exact scope.
+- Use exact integer basis-point arithmetic and deterministic ordering so record permutations produce deep-equal and byte-identical canonical output.
+- Emit one terminal decision for every bundle/candidate considered, retain selected and audit-only source-reference lineage, and make every inclusion or exclusion explainable by stable codes.
+- Return `authority: "ADVISORY_ONLY"` and `DEGRADED_NO_RESEARCH` when contextual research is absent, leaving deterministic market state and hard guards independent.
 
 **Non-goals**
 
-- HTTP routes, handlers, authentication, request-body limits, OpenAPI, or public response redaction (#59).
-- Evidence selection, ranking, scoring, or source-family weighting (#60).
-- `PolicyInsight` synthesis, recommendations, allocation, CLMM policy, or guard evaluation (#61).
-- Removing or migrating the legacy `clmm_insights` path.
-- Intelligence collectors, prompts, publisher clients, Solana RPC validation, or changes to `clmm-v2`.
-- SQLite persistence or a local fallback for evidence bundles.
-- Supporting pairs other than `SOL/USDC` or networks other than `solana-mainnet` in v1.
+- Do not add or alter evidence HTTP routes, OpenAPI, external ingest, contract schemas/generated contract types, canonical evidence hashing, PostgreSQL schema/migrations, or append/replay behavior.
+- Do not add a repository-port method or change `getLatest`; selection consumes its existing fresh/stale/expired current-per-source view without history fallback or retry.
+- Do not persist selection results or mutate accepted evidence rows/`selectionLineage`.
+- Do not produce `PolicyInsight`, recommendations, actions, allocations, `allowClmm`, guard overrides, or execution requests.
+- Do not change candle freshness, market-regime classification, plan generation, deterministic hard guards, or any on-chain behavior.
+- Do not invent a reviewed production `sourceId`; the shipped v1 override map remains empty until a separately reviewed identity is configured with a policy-version bump.
 
-**Affected files**
+**Affected files (repository-relative full paths)**
 
-| Path from repository root                                                                                                                                                                                                                                                                                                                                                                                                                      | Responsibility                                                                                      |
-| ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------- |
-| `package.json`                                                                                                                                                                                                                                                                                                                                                                                                                                 | Pin contract tooling, add generation/check scripts, and include evidence PG tests in `test:pg`.     |
-| `pnpm-lock.yaml`                                                                                                                                                                                                                                                                                                                                                                                                                               | Lock Ajv, formats, and schema-to-TypeScript generator versions.                                     |
-| `scripts/generateEvidenceContract.ts`                                                                                                                                                                                                                                                                                                                                                                                                          | Generate declarations/schema digest and check checked-in artifacts without rewriting in check mode. |
-| `scripts/copyBuildAssets.mjs`                                                                                                                                                                                                                                                                                                                                                                                                                  | Copy the public contract tree into `dist/contracts/evidence-bundle/v1`.                             |
-| `contracts/evidence-bundle/v1/evidence-bundle.schema.json`                                                                                                                                                                                                                                                                                                                                                                                     | Normative strict JSON Schema 2020-12 contract.                                                      |
-| `contracts/evidence-bundle/v1/schema.sha256`                                                                                                                                                                                                                                                                                                                                                                                                   | Lowercase SHA-256 of the exact schema bytes and relative schema path.                               |
-| `contracts/evidence-bundle/v1/hash-vectors.json`                                                                                                                                                                                                                                                                                                                                                                                               | Cross-repository canonical JSON and SHA-256 vectors.                                                |
-| `contracts/evidence-bundle/v1/fixtures/valid/deterministic-only.json`                                                                                                                                                                                                                                                                                                                                                                          | Minimal valid deterministic-only bundle.                                                            |
-| `contracts/evidence-bundle/v1/fixtures/valid/contextual.json`                                                                                                                                                                                                                                                                                                                                                                                  | Valid contextual bundle with a resolved research brief.                                             |
-| `contracts/evidence-bundle/v1/fixtures/invalid/wrong-schema-version.json`, `unknown-field.json`, `unsupported-unit.json`, `noncanonical-timestamp.json`, `reversed-lifecycle.json`, `out-of-range-number.json`, `status-value-mismatch.json`, `duplicate-lineage.json`, `unresolved-lineage.json`, `malformed-contextual-family.json`, `unresolved-brief-evidence.json`, `null-brief-available-coverage.json`, `empty-context-no-warning.json` | One-purpose invalid payloads beneath `contracts/evidence-bundle/v1/fixtures/invalid/`.              |
-| `src/contract/evidence/v1/types.generated.ts`                                                                                                                                                                                                                                                                                                                                                                                                  | Generated wire declarations tied to schema path and digest.                                         |
-| `src/contract/evidence/v1/validate.ts`                                                                                                                                                                                                                                                                                                                                                                                                         | Unified Ajv structural and deterministic semantic validator.                                        |
-| `src/contract/evidence/v1/__tests__/generation.test.ts`                                                                                                                                                                                                                                                                                                                                                                                        | Schema/type/digest reproducibility tests.                                                           |
-| `src/contract/evidence/v1/__tests__/validation.test.ts`                                                                                                                                                                                                                                                                                                                                                                                        | Valid fixture, invalid fixture, boundary, conditional, and graph-invariant tests.                   |
-| `src/contract/evidence/v1/__tests__/canonicalHash.test.ts`                                                                                                                                                                                                                                                                                                                                                                                     | Published hash-vector reproduction and array/object ordering tests.                                 |
-| `src/application/ports/evidenceBundleRepositoryPort.ts`                                                                                                                                                                                                                                                                                                                                                                                        | Application-facing append/latest/history types and repository interface.                            |
-| `src/adapters/postgres/postgresEvidenceBundleRepository.ts`                                                                                                                                                                                                                                                                                                                                                                                    | Postgres implementation of every repository method.                                                 |
-| `src/adapters/postgres/__tests__/postgresEvidenceBundleRepository.append.test.ts`                                                                                                                                                                                                                                                                                                                                                              | PG-gated append/replay/conflict tests.                                                              |
-| `src/adapters/postgres/__tests__/postgresEvidenceBundleRepository.latest.test.ts`                                                                                                                                                                                                                                                                                                                                                              | PG-gated exact-scope latest/lifecycle/rehydration tests.                                            |
-| `src/adapters/postgres/__tests__/postgresEvidenceBundleRepository.history.test.ts`                                                                                                                                                                                                                                                                                                                                                             | PG-gated cursor/history/isolation tests.                                                            |
-| `src/ledger/pg/schema/evidenceBundles.ts`                                                                                                                                                                                                                                                                                                                                                                                                      | Drizzle table, constraints, indexes, row and insert types.                                          |
-| `src/ledger/pg/schema/index.ts`                                                                                                                                                                                                                                                                                                                                                                                                                | Re-export evidence schema symbols.                                                                  |
-| `src/ledger/pg/schema/__tests__/evidenceBundles.shape.test.ts`                                                                                                                                                                                                                                                                                                                                                                                 | Table and index shape smoke test.                                                                   |
-| `src/ledger/pg/__tests__/evidenceBundlesMigration.test.ts`                                                                                                                                                                                                                                                                                                                                                                                     | PG-gated migration separation/constraint test.                                                      |
-| `drizzle/0004_create_evidence_bundles.sql`                                                                                                                                                                                                                                                                                                                                                                                                     | Generated additive migration.                                                                       |
-| `drizzle/meta/0004_snapshot.json`                                                                                                                                                                                                                                                                                                                                                                                                              | Generated Drizzle schema snapshot.                                                                  |
-| `drizzle/meta/_journal.json`                                                                                                                                                                                                                                                                                                                                                                                                                   | Generated migration journal entry.                                                                  |
-| `docs/contracts/evidence-bundle.v1.md`                                                                                                                                                                                                                                                                                                                                                                                                         | Ownership, artifact, canonicalization, hash, lifecycle, idempotency, and query documentation.       |
+- Create `src/engine/evidence/selectionPolicy.ts` — policy types, stable codes, v1 values, exact source-key construction, and fail-fast policy validation.
+- Create `src/engine/evidence/selectEvidence.ts` — public selection types and pure scoring/selection kernel.
+- Create `src/engine/evidence/__tests__/evidenceSelectionFixtures.ts` — small, contract-valid record/item builders shared by selector tests.
+- Create `src/engine/evidence/__tests__/selectionPolicy.test.ts` — policy constants, key safety, immutability, and validation tests.
+- Create `src/engine/evidence/__tests__/selectEvidence.scoring.test.ts` — bundle/item lifecycle, source/provenance, and exact-score tests.
+- Create `src/engine/evidence/__tests__/selectEvidence.lineage.test.ts` — family cap, dependency closure, brief, qualified identity, and source-reference lineage tests.
+- Create `src/engine/evidence/__tests__/selectEvidence.summary.test.ts` — conflict, coverage/mode, ordering, permutation, and decision-integrity tests.
+- Create `src/application/use-cases/selectEvidenceForSynthesisUseCase.ts` — one-clock/one-read orchestration over the pure selector.
+- Create `src/application/use-cases/__tests__/selectEvidenceForSynthesisUseCase.test.ts` — repository-call, clock, degraded-success, and error-propagation tests.
+- Modify `src/composition/buildApplication.ts` — nullable use-case exposure using the existing PostgreSQL evidence repository.
+- Create `src/composition/__tests__/evidenceSelectionWiring.test.ts` — configured/unconfigured composition and deterministic-path isolation tests.
 
-**Behavioral invariants**
+**Cross-task behavioral invariants**
 
-The named cases below are written first in the task that owns the behavior and are also recorded in `task-manifest.json`.
+- Record order, object insertion order, `Map`/`Set` iteration order, and publisher array order must not affect selected output; every emitted array has an explicit comparator.
+- Lifecycle boundaries are inclusive: `selectedAt == freshUntil` is fresh and `selectedAt == expiresAt` remains usable; only a strictly later instant is stale/expired respectively.
+- Candidate decisions move monotonically from evaluation to exactly one terminal `INCLUDED` or `EXCLUDED` state. Family-cap exclusion and dependency exclusion are terminal; the selector never backfills a cap slot after dependency closure.
+- A research brief is evaluated only after all non-brief decisions are terminal and cannot survive if any cited same-bundle item is excluded.
+- No evidence result contains action, allocation, CLMM permission, deterministic guard, or hard-guard override fields; missing evidence changes only evidence mode/warnings.
 
-- `accepts deterministic-only evidence with explicit unavailable coverage`: empty contextual arrays plus `researchBrief: null` are valid only with unavailable/not-applicable family coverage, degraded/partial quality, and the required absence warnings.
-- `rejects available features whose value does not match featureKind`: available number/boolean/category features require their matching value primitive and unit relationship.
-- `rejects unavailable features encoded as numeric zero`: unavailable/invalid features require `value: null`, `unit: null`, zero confidence, and at least one warning.
-- `rejects noncanonical or reversed publisher timestamps`: timestamps must be exact millisecond UTC strings and obey `asOf <= createdAt < freshUntil <= expiresAt`; available feature times obey `observedAt <= asOf <= freshUntil`.
-- `rejects duplicate or unresolved evidence lineage`: IDs are unique in their namespace and every source/feature/brief reference resolves according to the contract.
-- `rejects coverage that fabricates absent evidence`: empty contextual families and a null brief cannot report successful coverage; present evidence cannot report unavailable coverage.
-- `creates one immutable row for a new source run`: a previously unseen idempotency tuple inserts once and returns `created` with the original receipt metadata.
-- `returns already_ingested for an identical source run replay`: a matching idempotency tuple and payload hash returns the stored row without replacing payload bytes or `receivedAt`.
-- `throws EVIDENCE_RUN_CONFLICT for a changed source run replay`: a matching tuple with a different payload hash fails deterministically and preserves the first truth row.
-- `fails when a losing append cannot load the winning row`: conflict-without-winner is an invariant failure, never an idempotent success.
-- `derives lifecycle at inclusive freshness and expiry boundaries`: `now <= freshUntil` is `FRESH`, `freshUntil < now <= expiresAt` is `STALE`, and `now > expiresAt` is `EXPIRED` without updating storage.
-- `returns latest evidence independently for each source`: unfiltered current reads partition by publisher/source ID and order each partition by `asOf DESC, receivedAt DESC, id DESC`; filtered reads return at most one row.
-- `never mixes exact evidence scopes`: pair, Whirlpool, wallet, and position scope keys are distinct and queries match both pair and the full validated scope.
-- `paginates history without duplicates across intervening inserts`: history uses `(receivedAtUnixMs, id)` descending as an exclusive cursor, so a new head insert cannot duplicate or skip rows on the next page.
-- `rejects history limits outside one through one hundred`: default is 30; explicit limits below 1 or above 100 fail before SQL executes.
-- `fails visibly when stored payload JSON is corrupt`: every row is revalidated during mapping; malformed JSONB never escapes as an `EvidenceBundleV1`.
-
-## Task 1: Establish the normative schema and reproducible type-generation toolchain
+## Task 1: Define and validate the versioned selection policy
 
 **Files:**
 
-- Create: `contracts/evidence-bundle/v1/evidence-bundle.schema.json`
-- Create: `contracts/evidence-bundle/v1/schema.sha256`
-- Create: `scripts/generateEvidenceContract.ts`
-- Create: `src/contract/evidence/v1/types.generated.ts`
-- Create: `src/contract/evidence/v1/__tests__/generation.test.ts`
-- Modify: `package.json`
-- Modify: `pnpm-lock.yaml`
+- Create: `src/engine/evidence/selectionPolicy.ts`
+- Create: `src/engine/evidence/__tests__/selectionPolicy.test.ts`
 
-- [ ] **Step 1: Write the failing reproducibility test**
+**Exported API surface:** Add `EvidenceSelectionPolicy`, `ProvenanceClass`, `EvidenceSelectionReasonCode`, `EvidenceSelectionWarningCode`, `EVIDENCE_SELECTION_POLICY_VERSION`, `EVIDENCE_SELECTION_POLICY_V1`, `evidenceSourceQualityKey`, and `validateEvidenceSelectionPolicy`. These declarations and their tests belong in this task; no port or adapter changes are involved.
 
-Create `src/contract/evidence/v1/__tests__/generation.test.ts`. It must spawn `pnpm run contract:evidence:check`, assert exit code zero after generation exists, independently hash the schema bytes, parse `schema.sha256` as `<hex>  <relative-path>`, and assert the generated declaration header contains both the schema path and digest. Name the cases exactly:
+**Behavioral invariants to write as tests first:**
 
-- `keeps generated types and schema digest reproducible` invokes check mode from a child process and asserts a zero exit code.
-- `records the exact schema byte hash in every generated authority marker` reads the schema, digest file, and generated declaration header, computes SHA-256 with `node:crypto`, and asserts all three lowercase digests are identical.
+- `ships the conservative immutable v1 policy values`: version is `evidence-selection.v1`, minimum score is `2_500`, stale weight is `5_000`, family cap is `16`, default source quality is `5_000`, provenance is calculator `10_000`, derived `9_000`, collected `8_000`, human-authored `7_000`, and the reviewed-source map is empty.
+- `qualifies source quality keys without publisher/source collisions`: publisher and source ID are encoded with length prefixes (for example `${publisher.length}:${publisher}${sourceId.length}:${sourceId}`), so delimiter-bearing identities cannot alias.
+- `rejects non-finite or out-of-range policy basis points`: every bps field and source override must be a finite integer in `[0, 10_000]`.
+- `rejects zero or non-integer family limits and blank versions`: `maxSelectedPerFamily` must be a positive integer and `version` must contain non-whitespace text.
+- `does not permit mutation of the shipped policy`: nested maps are copied/frozen (or otherwise exposed read-only without a mutable backing object) so one caller cannot alter later selections.
 
-Run: `pnpm vitest run src/contract/evidence/v1/__tests__/generation.test.ts`
+- [ ] **Step 1: Write the failing policy tests**
 
-Expected: FAIL because the schema, generator, and package scripts do not exist.
+  Create `selectionPolicy.test.ts` with the exact test names above. For collision safety, compare keys for identities such as `("ab", "c")` and `("a", "bc")`; for validation, table-drive every scalar boundary (`-1`, `10_001`, `1.5`, `NaN`, `Infinity`) plus an invalid per-source override. Assert `validateEvidenceSelectionPolicy` throws `TypeError` with a field-qualified message.
 
-- [ ] **Step 2: Add pinned tooling and deterministic scripts**
+- [ ] **Step 2: Run the focused tests and observe the missing module failure**
 
-Add `ajv` and `ajv-formats` to `dependencies`, and `json-schema-to-typescript` to `devDependencies`. Add these scripts:
+  Run: `pnpm exec vitest run src/engine/evidence/__tests__/selectionPolicy.test.ts`
 
-```json
-{
-  "contract:evidence:generate": "tsx scripts/generateEvidenceContract.ts --write",
-  "contract:evidence:check": "tsx scripts/generateEvidenceContract.ts --check"
-}
-```
+  Expected: FAIL because `selectionPolicy.ts` and its exports do not exist.
 
-Run `pnpm install` so `pnpm-lock.yaml` records the chosen exact resolution and the focused tests can load the new packages. Do not add a general schema code-generation framework.
+- [ ] **Step 3: Implement policy types, constants, keys, and validation**
 
-- [ ] **Step 3: Author the complete strict JSON Schema**
+  Use integer bps throughout and define the public shape explicitly:
 
-Create a draft 2020-12 schema with stable `$id`, root title `EvidenceBundleV1`, `additionalProperties: false` on every object, every root property required, explicit nullable unions, and these root properties:
+  ```ts
+  export type ProvenanceClass =
+    | "deterministic_calculator"
+    | "derived"
+    | "collected"
+    | "human_authored";
 
-```json
-{
-  "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://contracts.opsclawd.dev/regime-engine/evidence-bundle/v1/evidence-bundle.schema.json",
-  "title": "EvidenceBundleV1",
-  "type": "object",
-  "additionalProperties": false,
-  "required": [
-    "schemaVersion",
-    "pair",
-    "scope",
-    "source",
-    "runId",
-    "correlationId",
-    "createdAt",
-    "asOf",
-    "freshUntil",
-    "expiresAt",
-    "deterministicFeatures",
-    "contextualEvidence",
-    "researchBrief",
-    "sourceReferences",
-    "assessment",
-    "provenance"
-  ]
-}
-```
+  export interface EvidenceSelectionPolicy {
+    readonly version: string;
+    readonly minimumEffectiveScoreBps: number;
+    readonly staleWeightBps: number;
+    readonly maxSelectedPerFamily: number;
+    readonly defaultSourceQualityBps: number;
+    readonly sourceQualityBps: Readonly<Record<string, number>>;
+    readonly provenanceQualityBps: Readonly<Record<ProvenanceClass, number>>;
+  }
 
-Implement `$defs` for the four exact scope variants; source identity; three discriminated feature kinds crossed with `available | unavailable | invalid`; five contextual claim families; research brief/model; source reference; coverage, warning, assessment, and provenance. Encode all enumerations and bounds from `design.md`, including 1–128 identifiers, 1–256 run/correlation IDs, canonical timestamp regex `^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d{3}Z$`, lowercase 64-hex hashes, confidence integers 0–10000, finite JSON numeric bounds, array min/max/uniqueness, exact five contextual properties, and numeric units `usd | sol | usdc | percent | basis_points | ratio | seconds | milliseconds | count | price_usdc_per_sol` plus `boolean | category` for their matching feature kinds. Fix family-specific claim kinds to `support_zone | resistance_zone | breakout_level`, `spot_flow | stablecoin_flow | exchange_flow`, `funding | open_interest | liquidation | options_skew`, `scheduled_event | protocol_incident | network_incident`, and `ecosystem_news | regulatory_update`, respectively. Fix source types to `api | database | chain | document | internal_bundle`. Use `if`/`then` branches so feature kind/status determines `value`, `unit`, timestamps, confidence, and warning minima. Keep cross-record reference resolution and time ordering out of the schema for Task 2.
+  export const EVIDENCE_SELECTION_POLICY_VERSION = "evidence-selection.v1" as const;
+  ```
 
-- [ ] **Step 4: Implement write/check generation modes**
+  Include stable reason-code unions for record mismatch, bundle expiry/disablement, feature unavailable/invalid/dependency failure, claim expiry, score threshold, family cap, brief unavailable/citation failure, and fresh/stale inclusion. Include warning-code unions for stale input, missing/rejected/conflicted families, and no selected research. `validateEvidenceSelectionPolicy` must validate a copied policy before selection starts and return an immutable normalized policy; do not consult `process.env`.
 
-`scripts/generateEvidenceContract.ts` must:
+- [ ] **Step 4: Run focused verification**
 
-1. read the schema as bytes and parse it;
-2. compute lowercase SHA-256 of those exact bytes;
-3. call `compileFromFile` with deterministic `json-schema-to-typescript` options (`bannerComment: ""`, `style.singleQuote: false`, no timestamp-bearing output);
-4. prepend `// Generated from contracts/evidence-bundle/v1/evidence-bundle.schema.json (sha256: <digest>). Do not edit.`;
-5. render `schema.sha256` as `<digest>  contracts/evidence-bundle/v1/evidence-bundle.schema.json\n`;
-6. in `--write`, update only files whose bytes differ;
-7. in `--check`, compare expected bytes and exit nonzero with the exact stale paths, without writing.
+  Run: `pnpm exec vitest run src/engine/evidence/__tests__/selectionPolicy.test.ts`
 
-Reject missing or multiple modes. Resolve paths relative to the repository root derived from `import.meta.url`; do not depend on the caller's current directory.
+  Expected: PASS with all five named invariants.
 
-- [ ] **Step 5: Generate declarations and digest, then prove stability**
+  Run: `pnpm exec eslint src/engine/evidence/selectionPolicy.ts src/engine/evidence/__tests__/selectionPolicy.test.ts --max-warnings 0`
 
-Run: `pnpm run contract:evidence:generate`
+  Expected: PASS with zero warnings. The implement loop also runs its automatic workspace `pnpm -r typecheck` gate.
 
-Expected: creates `types.generated.ts` and `schema.sha256` with no timestamps.
+- [ ] **Step 5: Commit the independently usable policy unit**
 
-Run: `pnpm run contract:evidence:check`
+  ```bash
+  git add src/engine/evidence/selectionPolicy.ts src/engine/evidence/__tests__/selectionPolicy.test.ts
+  git commit -m "m60: define evidence selection policy"
+  ```
 
-Expected: PASS without changing either generated file.
-
-Run: `pnpm vitest run src/contract/evidence/v1/__tests__/generation.test.ts`
-
-Expected: PASS.
-
-Run: `pnpm exec prettier --check package.json scripts/generateEvidenceContract.ts contracts/evidence-bundle/v1/evidence-bundle.schema.json src/contract/evidence/v1/types.generated.ts src/contract/evidence/v1/__tests__/generation.test.ts`
-
-Expected: PASS.
-
-- [ ] **Step 6: Commit the schema authority as one unit**
-
-```bash
-git add package.json pnpm-lock.yaml scripts/generateEvidenceContract.ts contracts/evidence-bundle/v1/evidence-bundle.schema.json contracts/evidence-bundle/v1/schema.sha256 src/contract/evidence/v1/types.generated.ts src/contract/evidence/v1/__tests__/generation.test.ts
-git commit -m "m58: publish EvidenceBundle v1 schema"
-```
-
-## Task 2: Add fixtures and unified structural-semantic validation
+## Task 2: Implement exact bundle and item scoring with terminal decisions
 
 **Files:**
 
-- Create: `contracts/evidence-bundle/v1/fixtures/valid/deterministic-only.json`
-- Create: `contracts/evidence-bundle/v1/fixtures/valid/contextual.json`
-- Create: `contracts/evidence-bundle/v1/fixtures/invalid/wrong-schema-version.json`
-- Create: `contracts/evidence-bundle/v1/fixtures/invalid/unknown-field.json`
-- Create: `contracts/evidence-bundle/v1/fixtures/invalid/unsupported-unit.json`
-- Create: `contracts/evidence-bundle/v1/fixtures/invalid/noncanonical-timestamp.json`
-- Create: `contracts/evidence-bundle/v1/fixtures/invalid/reversed-lifecycle.json`
-- Create: `contracts/evidence-bundle/v1/fixtures/invalid/out-of-range-number.json`
-- Create: `contracts/evidence-bundle/v1/fixtures/invalid/status-value-mismatch.json`
-- Create: `contracts/evidence-bundle/v1/fixtures/invalid/duplicate-lineage.json`
-- Create: `contracts/evidence-bundle/v1/fixtures/invalid/unresolved-lineage.json`
-- Create: `contracts/evidence-bundle/v1/fixtures/invalid/malformed-contextual-family.json`
-- Create: `contracts/evidence-bundle/v1/fixtures/invalid/unresolved-brief-evidence.json`
-- Create: `contracts/evidence-bundle/v1/fixtures/invalid/null-brief-available-coverage.json`
-- Create: `contracts/evidence-bundle/v1/fixtures/invalid/empty-context-no-warning.json`
-- Create: `src/contract/evidence/v1/validate.ts`
-- Create: `src/contract/evidence/v1/__tests__/validation.test.ts`
+- Create: `src/engine/evidence/selectEvidence.ts`
+- Create: `src/engine/evidence/__tests__/evidenceSelectionFixtures.ts`
+- Create: `src/engine/evidence/__tests__/selectEvidence.scoring.test.ts`
 
-- [ ] **Step 1: Write the named contract tests first**
+**Exported API surface:** Add `SelectEvidenceInput`, `SelectedEvidenceSummary` and its named nested result/decision/lineage types, and `selectEvidence`. Keep the selector input limited to records, one instant, one exact scope, and policy; do not accept market state, plan state, or guards.
 
-Load JSON fixtures with `node:fs`, then add exact test names for the six contract invariants listed at the top of this plan. Add table-driven cases for every invalid fixture, asserting a stable result shape:
+**Behavioral invariants to write as tests first:**
 
-```ts
-type EvidenceValidationIssue = {
-  path: string;
-  code: "STRUCTURAL" | "SEMANTIC" | "UNSUPPORTED_SCHEMA_VERSION";
-  message: string;
-};
+- `selects fresh high-confidence features and claims with exact component scores`: exact formula uses confidence × source quality × provenance quality × minimum freshness divided by `10_000^3`, floors once with `bigint`, and returns a safe integer.
+- `downweights a stale bundle once and emits STALE_EVIDENCE_DOWNWEIGHTED`: stale bundle and stale feature use `min(bundle,item)` rather than multiplying stale twice.
+- `uses inclusive feature freshness and claim expiry boundaries`: equality is usable; strictly past feature freshness is stale and strictly past claim expiry is `CLAIM_EXPIRED`.
+- `excludes expired bundles and records every contained candidate as BUNDLE_EXPIRED`: expired evidence never reaches scoring or inclusion.
+- `excludes unavailable and invalid features with distinct terminal reasons`: unavailable and invalid candidates retain audit lineage but never score as selected.
+- `applies exact-source overrides before the conservative default and honors zero as disabled`: source keys are publisher+source qualified; publisher assessment cannot promote either path.
+- `applies calculator derived collected and human-authored provenance weights exactly`: deterministic features use calculator weight and each claim method uses its configured factor.
+- `excludes scores below threshold while retaining score components`: equality with the threshold is eligible; only lower scores are excluded.
+- `isolates scope and lifecycle metadata mismatches without corrupting valid peers`: mismatched records and their contents receive record mismatch reasons while valid records continue.
+- `rejects invalid input before returning partial output`: non-finite/non-integer/negative `selectedAtUnixMs`, invalid policy, or an impossible final score throws synchronously from the pure call.
 
-type EvidenceValidationResult =
-  | { ok: true; value: EvidenceBundleV1 }
-  | { ok: false; issues: EvidenceValidationIssue[] };
-```
+- [ ] **Step 1: Create contract-valid fixture builders and failing scoring tests**
 
-Also test canonical timestamp equality boundaries, invalid calendar dates despite regex match, confidence 0/10000, scalar and array min/max boundaries, every scope variant, all unit enums, all feature kind/status combinations, all contextual family coverage relationships, unknown fields at root and nested levels, duplicate feature/evidence/reference IDs, feature-to-feature and feature-to-reference lineage, and research-brief references. Programmatically pass `NaN`, infinities, and `-0` to the validator because they cannot be represented in JSON fixtures.
+  Builders must default to a fixed pair scope, source identity, canonical timestamps, at least one deterministic feature, at least one source reference, and internally consistent assessment/provenance. Expose overrides for source, lifecycle, feature/claim family, timestamps, confidence, provenance, brief, and references. Validate builder output with `parseEvidenceBundleV1` so tests cannot exercise impossible contract shapes accidentally.
 
-Run: `pnpm vitest run src/contract/evidence/v1/__tests__/validation.test.ts`
+  In the exact arithmetic test, use factors that expose premature division/float rounding and assert the formula through a helper equivalent to:
 
-Expected: FAIL because `validate.ts` and fixtures do not exist.
+  ```ts
+  const expected = Number(
+    (BigInt(confidenceBps) * BigInt(sourceBps) * BigInt(provenanceBps) * BigInt(freshnessBps)) /
+      10_000n ** 3n
+  );
+  ```
 
-- [ ] **Step 2: Create the two valid publisher fixtures**
+- [ ] **Step 2: Run the scoring test file and observe the missing selector failure**
 
-The deterministic fixture must use pair scope, one available numeric feature, one source reference, five empty contextual arrays, `researchBrief: null`, contextual and brief coverage `unavailable`, quality `partial` or `degraded`, and both `CONTEXTUAL_EVIDENCE_UNAVAILABLE` and `RESEARCH_BRIEF_UNAVAILABLE` warnings. The contextual fixture must use position scope, include at least one claim in each contextual family, and a non-null brief whose `sourceEvidenceIds` all resolve. Emit feature, claim, reference, warning, and upstream-run arrays in their documented stable order.
+  Run: `pnpm exec vitest run src/engine/evidence/__tests__/selectEvidence.scoring.test.ts`
 
-- [ ] **Step 3: Create one-purpose invalid fixtures**
+  Expected: FAIL because `selectEvidence` and result types do not exist.
 
-Derive every invalid file from `deterministic-only.json` and introduce only the defect named by its filename. `malformed-contextual-family.json` uses an invalid family-specific `kind`; `duplicate-lineage.json` repeats an ID; `unresolved-lineage.json` points at a missing reference/feature; `null-brief-available-coverage.json` reports brief coverage `available` with a null brief; `empty-context-no-warning.json` removes the contextual absence warning. Keep each file valid JSON so downstream consumers can use the same corpus.
+- [ ] **Step 3: Define the result model and selection stages**
 
-- [ ] **Step 4: Implement one acceptance API around Ajv and semantic checks**
+  Define qualified candidate identity as `<evidenceHash>/<kind>/<localId>` where kind is `deterministic_feature`, `contextual_claim`, or `research_brief`; use the literal local ID `<unavailable>` for a null brief decision. Each selected item and decision includes bundle hash/row/run/correlation/source identity, original item, raw confidence, source/provenance/freshness components, final score when calculable, source-reference IDs, status, and stable reasons.
 
-Use `Ajv2020` with `allErrors: true`, `strict: true`, and `ajv-formats`. Detect a non-literal `schemaVersion` first and return `UNSUPPORTED_SCHEMA_VERSION`; then run the compiled schema. Map Ajv errors to JSON-pointer-like paths and stable messages. Only after structural success, run pure semantic checks for:
+  The top-level shape must contain exactly the advisory selection concerns:
 
-- real calendar validity and exact round-trip canonical timestamps;
-- root and available-feature time ordering;
-- unique IDs across features, claims, and source references;
-- allowed feature input lineage resolution without self-reference or cycles;
-- contextual source-reference and brief evidence-reference resolution;
-- empty/present family coverage agreement;
-- required warning coverage for every unavailable family and null brief;
-- quality not `complete` when required coverage is unavailable.
+  ```ts
+  export interface SelectEvidenceInput {
+    readonly records: readonly EvidenceBundleRecord[];
+    readonly selectedAtUnixMs: number;
+    readonly scope: Scope;
+    readonly policy: EvidenceSelectionPolicy;
+  }
 
-Sort all issues by `path`, then `code`, then `message`; never mutate or reorder the input. Export `validateEvidenceBundleV1(input: unknown): EvidenceValidationResult` and `parseEvidenceBundleV1(input: unknown): EvidenceBundleV1`, where the parser throws an `EvidenceBundleValidationError` containing the same sorted issues.
+  export interface SelectedEvidenceSummary {
+    readonly selectionPolicyVersion: string;
+    readonly selectedAtUnixMs: number;
+    readonly pair: "SOL/USDC";
+    readonly scope: Scope;
+    readonly authority: "ADVISORY_ONLY";
+    readonly mode: "FULL" | "PARTIAL" | "DEGRADED_NO_RESEARCH";
+    readonly selected: {
+      readonly deterministicFeatures: readonly SelectedDeterministicFeature[];
+      readonly contextualEvidence: SelectedContextualFamilies;
+      readonly researchBrief: SelectedResearchBrief | null;
+    };
+    readonly familyCoverage: FamilyCoverageSummary;
+    readonly deterministicEvidenceCoverage: DeterministicCoverageSummary;
+    readonly conflicts: readonly ConflictSummary[];
+    readonly warnings: readonly SelectionWarning[];
+    readonly sourceReferences: readonly SelectedSourceReference[];
+    readonly bundles: readonly BundleSelectionLineage[];
+    readonly decisions: readonly EvidenceSelectionDecision[];
+  }
+  ```
 
-- [ ] **Step 5: Run focused contract verification**
+  Do not expose recommendation/action/allocation/CLMM/guard fields. Initialize summary fields through deterministic helper functions rather than mutable output shared between invocations.
 
-Run: `pnpm vitest run src/contract/evidence/v1/__tests__/validation.test.ts`
+- [ ] **Step 4: Implement exact lifecycle and score evaluation**
 
-Expected: PASS with every invalid fixture rejected for its intended path/code and both valid fixtures accepted.
+  Validate input first. Recompute lifecycle from bundle timestamps with `selectedAt <= freshUntil` → `FRESH`, else `selectedAt <= expiresAt` → `STALE`, else `EXPIRED`; reject record metadata disagreement instead of repairing it. Compare scope structurally through the existing deterministic `evidenceScopeKey` behavior (or an inner-layer equivalent that does not import the application port).
 
-Run: `pnpm exec eslint src/contract/evidence/v1/validate.ts src/contract/evidence/v1/__tests__/validation.test.ts`
+  Sort records explicitly by publisher, source ID, `asOf`, received time, row ID, then evidence hash using a comparator based on `<`, `>`, and numeric comparison (never locale-sensitive comparison). Resolve source quality by exact key then default. Evaluate bundle eligibility, feature status/freshness, claim expiry/provenance, and threshold. Use one `bigint` numerator and one denominator; assert the result lies in `[0, 10_000]` before converting to number.
 
-Expected: PASS with zero warnings.
+- [ ] **Step 5: Run focused verification**
 
-- [ ] **Step 6: Commit fixtures and acceptance authority**
+  Run: `pnpm exec vitest run src/engine/evidence/__tests__/selectEvidence.scoring.test.ts`
 
-```bash
-git add contracts/evidence-bundle/v1/fixtures src/contract/evidence/v1/validate.ts src/contract/evidence/v1/__tests__/validation.test.ts
-git commit -m "m58: validate EvidenceBundle v1 semantics"
-```
+  Expected: PASS with all ten scoring/lifecycle invariants.
 
-## Task 3: Publish cross-repository canonical JSON and hash vectors
+  Run: `pnpm exec eslint src/engine/evidence/selectEvidence.ts src/engine/evidence/__tests__/evidenceSelectionFixtures.ts src/engine/evidence/__tests__/selectEvidence.scoring.test.ts --max-warnings 0`
 
-**Files:**
+  Expected: PASS with zero warnings. The automatic workspace typecheck gate must also pass before commit.
 
-- Create: `contracts/evidence-bundle/v1/hash-vectors.json`
-- Create: `src/contract/evidence/v1/__tests__/canonicalHash.test.ts`
-- Modify: `scripts/generateEvidenceContract.ts`
+- [ ] **Step 6: Commit the scoring kernel**
 
-- [ ] **Step 1: Write failing published-vector tests**
+  ```bash
+  git add src/engine/evidence/selectEvidence.ts src/engine/evidence/__tests__/evidenceSelectionFixtures.ts src/engine/evidence/__tests__/selectEvidence.scoring.test.ts
+  git commit -m "m60: score evidence candidates exactly"
+  ```
 
-Use `canonicalJson` and `sha256Hex` from `src/contract/v1`. Define the vector file shape explicitly:
-
-```ts
-interface EvidenceHashVector {
-  name: string;
-  payload: unknown;
-  canonical: string;
-  utf8ByteLength: number;
-  sha256: string;
-  schemaSha256: string;
-}
-```
-
-Name tests `reproduces every published EvidenceBundle hash vector`, `ignores object insertion order but preserves array order`, `normalizes negative zero and preserves ECMAScript exponent formatting`, and `detects a deliberately mismatched published hash`. Validate each payload first, except focused primitive canonicalizer vectors. Assert the schema digest on every vector.
-
-Run: `pnpm vitest run src/contract/evidence/v1/__tests__/canonicalHash.test.ts`
-
-Expected: FAIL because `hash-vectors.json` is absent.
-
-- [ ] **Step 2: Generate deterministic vectors**
-
-Extend the generator to derive vectors from the two valid fixtures plus focused non-ASCII, negative-zero, exponent, empty-context, null-brief, and array-reorder inputs. For every vector, compute canonical text, UTF-8 byte length, SHA-256, and current schema SHA-256. `--write` writes stable pretty JSON with a final newline; `--check` compares bytes and reports the vector path as stale. Do not accept a publisher-supplied `payloadHash` field.
-
-- [ ] **Step 3: Prove vectors and regeneration are stable**
-
-Run: `pnpm run contract:evidence:generate`
-
-Run: `pnpm run contract:evidence:check`
-
-Expected: PASS without rewriting published vectors.
-
-Run: `pnpm vitest run src/contract/evidence/v1/__tests__/canonicalHash.test.ts src/contract/evidence/v1/__tests__/generation.test.ts`
-
-Expected: PASS.
-
-Run: `pnpm exec prettier --check scripts/generateEvidenceContract.ts contracts/evidence-bundle/v1/hash-vectors.json src/contract/evidence/v1/__tests__/canonicalHash.test.ts`
-
-Expected: PASS.
-
-- [ ] **Step 4: Commit portable hash vectors**
-
-```bash
-git add scripts/generateEvidenceContract.ts contracts/evidence-bundle/v1/hash-vectors.json src/contract/evidence/v1/__tests__/canonicalHash.test.ts
-git commit -m "m58: publish EvidenceBundle hash vectors"
-```
-
-## Task 4: Add the append-only evidence table and migration
+## Task 3: Enforce family bounds, feature closure, brief support, and reference lineage
 
 **Files:**
 
-- Create: `src/ledger/pg/schema/evidenceBundles.ts`
-- Modify: `src/ledger/pg/schema/index.ts`
-- Create: `src/ledger/pg/schema/__tests__/evidenceBundles.shape.test.ts`
-- Create: `drizzle/0004_create_evidence_bundles.sql`
-- Create: `drizzle/meta/0004_snapshot.json`
-- Modify: `drizzle/meta/_journal.json`
-- Create: `src/ledger/pg/__tests__/evidenceBundlesMigration.test.ts`
+- Modify: `src/engine/evidence/selectEvidence.ts` (candidate ranking, dependency fixed point, brief evaluation, reference union)
+- Modify: `src/engine/evidence/__tests__/evidenceSelectionFixtures.ts` (only builders needed for multi-item lineage cases)
+- Create: `src/engine/evidence/__tests__/selectEvidence.lineage.test.ts`
 
-- [ ] **Step 1: Write failing schema and migration tests**
+**Behavioral invariants to write as tests first:**
 
-The shape test must assert the exact 18 columns, unique idempotency tuple, current/history/correlation indexes, and the absence of update/delete helpers. The PG-gated migration cases are named `keeps evidence bundles separate from final insight rows` and `rejects invalid evidence scalar invariants at the database boundary`; they assert `regime_engine.evidence_bundles` and `regime_engine.clmm_insights` are distinct tables, existing insight rows remain untouched, and invalid timestamp ordering/hash/schema/pair rows fail database checks.
+- `ranks each non-brief family by every documented tie-break and excludes overflow as FAMILY_SELECTION_LIMIT`: compare score descending, bundle `asOf` descending, item `observedAt` descending with null last, publisher/source/local ID/hash ascending.
+- `excludes feature dependants to a fixed point and never backfills capped slots`: if A depends on excluded B and C depends on A, B is terminal first, then A and C become `FEATURE_DEPENDENCY_EXCLUDED`; a rank-17 candidate does not replace them.
+- `keeps source-reference lineage valid when feature lineage resolves directly to a reference`: local lineage IDs are resolved within the same qualified bundle only.
+- `keeps duplicate local evidence and reference IDs distinct across bundle hashes`: maps and decision joins always use qualified identity, never raw local ID globally.
+- `records RESEARCH_BRIEF_UNAVAILABLE for a null brief`: the synthetic unavailable decision is terminal and no brief is selected.
+- `selects a fully supported brief at the minimum of assessment and cited-average score`: cited average is floor(sum/count), brief score is `min(overallConfidenceBps, average)`, and reference lineage is the cited-item union.
+- `excludes a brief when any cited item was rejected capped or dependency-excluded`: terminal reason is `BRIEF_REFERENCES_EXCLUDED_EVIDENCE` with canonically ordered excluded IDs; no partial brief support is allowed.
+- `excludes an under-threshold otherwise-supported brief with its computed score`: the common minimum threshold applies after support resolution.
+- `marks references selected lineage audit only or both and preserves originating bundle identity`: the union includes references reached from selected items and excluded decisions, with deterministic role flags/order.
 
-Run: `pnpm vitest run src/ledger/pg/schema/__tests__/evidenceBundles.shape.test.ts src/ledger/pg/__tests__/evidenceBundlesMigration.test.ts`
+- [ ] **Step 1: Write the failing cap/lineage/brief/reference tests**
 
-Expected: FAIL because the table is not defined or migrated.
+  Build small fixtures for each state transition. Use a test-only policy with cap `1` to prove ranking without creating 17 claims. For fixed-point closure, explicitly assert the terminal reason and dependency list for each feature and assert no duplicate decision IDs. For references, include the same `referenceId` under two evidence hashes and assert two qualified output entries.
 
-- [ ] **Step 2: Define the Drizzle table and exports**
+- [ ] **Step 2: Run the focused lineage tests and observe the missing behavior**
 
-Create `evidenceBundles` with `bigserial`/`serial` ID consistent with repository support, varchar identity columns, bigint `{ mode: "number" }` timestamps, `jsonb` full payload, canonical text, and 64-character hash. Export `EvidenceBundleRow` and `EvidenceBundleInsert`. Add:
+  Run: `pnpm exec vitest run src/engine/evidence/__tests__/selectEvidence.lineage.test.ts`
 
-```ts
-uniqueIndex("uniq_evidence_bundles_source_run").on(
-  t.schemaVersion,
-  t.sourcePublisher,
-  t.sourceId,
-  t.runId
-);
-index("idx_evidence_bundles_current").on(
-  t.pair,
-  t.scopeKey,
-  t.sourcePublisher,
-  t.sourceId,
-  t.asOfUnixMs,
-  t.id
-);
-index("idx_evidence_bundles_history").on(t.pair, t.scopeKey, t.receivedAtUnixMs, t.id);
-index("idx_evidence_bundles_correlation").on(t.correlationId, t.id);
-```
+  Expected: FAIL on cap ordering, dependency closure, brief, and/or reference-union assertions.
 
-Add check constraints for `evidence-bundle.v1`, `SOL/USDC`, `as_of <= created_at < fresh_until <= expires_at`, and lowercase `[0-9a-f]{64}` hash. Re-export table and row/insert types from `schema/index.ts`.
+- [ ] **Step 3: Implement preliminary family decisions and monotonic dependency closure**
 
-- [ ] **Step 3: Generate and inspect migration 0004**
+  Group only preliminarily eligible candidates by their declared family. Sort a copied array with the full comparator, mark the first `maxSelectedPerFamily` as preliminary inclusion, and terminally exclude the rest. Then repeatedly scan deterministic features in canonical qualified-ID order until a pass makes no changes; transition a preliminary feature to terminal exclusion when any same-bundle feature dependency is terminally excluded. Source-reference IDs satisfy lineage but are not feature dependencies. Never transition an excluded decision back to included and never refill a family slot.
 
-Run: `pnpm exec drizzle-kit generate --name create_evidence_bundles`
+- [ ] **Step 4: Evaluate briefs after non-brief decisions are terminal**
 
-Expected: writes `drizzle/0004_create_evidence_bundles.sql`, `drizzle/meta/0004_snapshot.json`, and journal index 4. Confirm the generated SQL creates only the additive evidence table, constraints, and four indexes; it must not alter `clmm_insights`.
+  Resolve every `sourceEvidenceId` against same-bundle feature/claim identities. If any does not have a terminal included decision, exclude the brief and list those local IDs in explicit string order. Otherwise calculate the floor average exactly with integer sum/division, cap it by publisher overall confidence, apply the common threshold, and inherit the deterministic union of cited selected-item references. A brief does not contribute independent facts or references.
 
-- [ ] **Step 4: Run focused schema verification**
+- [ ] **Step 5: Build the qualified source-reference union**
 
-Run: `pnpm vitest run src/ledger/pg/schema/__tests__/evidenceBundles.shape.test.ts src/ledger/pg/__tests__/evidenceBundlesMigration.test.ts`
+  Resolve every referenced local ID within its bundle. Emit one entry per `<evidenceHash>/<referenceId>` with origin metadata and booleans/roles for selected lineage and audit-only use. A reference reached by both selected and excluded decisions reports both; unreferenced bundle references do not appear. Sort by bundle/source identity and local reference ID with explicit comparators.
 
-Expected: shape test PASS; PG test PASS when `DATABASE_URL` is configured and SKIP otherwise.
+- [ ] **Step 6: Run focused verification**
 
-Run: `pnpm exec prettier --check src/ledger/pg/schema/evidenceBundles.ts src/ledger/pg/schema/index.ts src/ledger/pg/schema/__tests__/evidenceBundles.shape.test.ts src/ledger/pg/__tests__/evidenceBundlesMigration.test.ts drizzle/meta/_journal.json drizzle/meta/0004_snapshot.json`
+  Run: `pnpm exec vitest run src/engine/evidence/__tests__/selectEvidence.lineage.test.ts`
 
-Expected: PASS.
+  Expected: PASS with all nine lineage invariants. Earlier scoring behavior is covered again by the dedicated validation phase.
 
-- [ ] **Step 5: Commit schema and migration together**
+  Run: `pnpm exec eslint src/engine/evidence/selectEvidence.ts src/engine/evidence/__tests__/evidenceSelectionFixtures.ts src/engine/evidence/__tests__/selectEvidence.lineage.test.ts --max-warnings 0`
 
-```bash
-git add src/ledger/pg/schema/evidenceBundles.ts src/ledger/pg/schema/index.ts src/ledger/pg/schema/__tests__/evidenceBundles.shape.test.ts src/ledger/pg/__tests__/evidenceBundlesMigration.test.ts drizzle/0004_create_evidence_bundles.sql drizzle/meta/0004_snapshot.json drizzle/meta/_journal.json
-git commit -m "m58: add evidence bundle persistence schema"
-```
+  Expected: PASS with zero warnings. The automatic workspace typecheck gate must pass.
 
-## Task 5: Implement append, replay, and conflict through the repository port
+- [ ] **Step 7: Commit the terminal-decision pipeline**
+
+  ```bash
+  git add src/engine/evidence/selectEvidence.ts src/engine/evidence/__tests__/evidenceSelectionFixtures.ts src/engine/evidence/__tests__/selectEvidence.lineage.test.ts
+  git commit -m "m60: preserve evidence selection lineage"
+  ```
+
+## Task 4: Derive conflict, coverage, warnings, and canonical output
 
 **Files:**
 
-- Create: `src/application/ports/evidenceBundleRepositoryPort.ts`
-- Create: `src/adapters/postgres/postgresEvidenceBundleRepository.ts`
-- Create: `src/adapters/postgres/__tests__/postgresEvidenceBundleRepository.append.test.ts`
+- Modify: `src/engine/evidence/selectEvidence.ts` (summaries and final canonical sorting only)
+- Modify: `src/engine/evidence/__tests__/evidenceSelectionFixtures.ts` (only conflict/permutation helpers)
+- Create: `src/engine/evidence/__tests__/selectEvidence.summary.test.ts`
 
-- [ ] **Step 1: Write the append state-machine tests first**
+**Behavioral invariants to write as tests first:**
 
-Write exact named cases `creates one immutable row for a new source run`, `returns already_ingested for an identical source run replay`, `throws EVIDENCE_RUN_CONFLICT for a changed source run replay`, and `fails when a losing append cannot load the winning row`. Add sequential and concurrent identical/different replay cases, different run/source acceptance, full JSON/canonical/scalar persistence, and original `receivedAt` retention.
+- `preserves bullish and bearish claims and computes conflict from effective scores`: both sides remain selected, direction totals use effective scores, consensus is `floor(abs(bullish-bearish)*10_000/(bullish+bearish))`, and the stable family conflict warning is emitted.
+- `does not create conflict from neutral mixed or unknown claims`: those buckets are reported separately and do not enter directional consensus.
+- `derives AVAILABLE CONFLICTED REJECTED and MISSING from terminal decisions`: publisher-declared coverage/quality is retained only in bundle lineage and never controls selected coverage.
+- `returns FULL only for all five contextual families plus a brief with no conflict`: any missing/rejected/conflicted family or missing brief prevents full mode.
+- `returns PARTIAL when at least one contextual claim or brief survives`: selected deterministic features alone do not cause partial mode.
+- `returns DEGRADED_NO_RESEARCH for empty deterministic-only expired and fully-rejected inputs`: output is successful, advisory-only, and includes ordered missing/rejected/no-research warnings as applicable.
+- `emits warnings in canonical family and code order without duplicates`: stale, conflict, missing/rejected, and no-research codes have stable ordering independent of discovery order.
+- `produces deep-equal and byte-identical canonical JSON for every record permutation`: compare `toCanonicalJson` results for reversed and shuffled records/items.
+- `gives every candidate exactly one terminal decision and every selected item one matching INCLUDED decision`: expired/rejected contents remain auditable and no terminal state is duplicated.
+- `never exposes policy authority fields`: recursively assert the result has no keys named `action`, `allocation`, `allowClmm`, `guard`, or `override` and always has literal `ADVISORY_ONLY`.
 
-Run: `pnpm vitest run src/adapters/postgres/__tests__/postgresEvidenceBundleRepository.append.test.ts`
+- [ ] **Step 1: Write the failing summary and permutation tests**
 
-Expected: FAIL because the port and adapter do not exist.
+  The conflict fixture must combine fresh and stale claims from different source IDs so totals prove weighting rather than claim counting. Cover every contextual family and every deterministic family in table-driven coverage checks. For permutations, permute records and reverse feature, claim, citation, warning, and reference arrays in cloned valid bundles, then compare both deep equality and `toCanonicalJson` bytes.
 
-- [ ] **Step 2: Define the append contract and exact scope-key derivation**
+- [ ] **Step 2: Run the summary test file and observe the missing summary behavior**
 
-In the application port, export `EvidenceScopeQuery`, `EvidenceSourceFilter`, receipt/result types, `EvidenceRunConflictError` with `errorCode = "EVIDENCE_RUN_CONFLICT"`, and:
+  Run: `pnpm exec vitest run src/engine/evidence/__tests__/selectEvidence.summary.test.ts`
 
-```ts
-export interface EvidenceBundleRepositoryPort {
-  append(input: {
-    bundle: EvidenceBundleV1;
-    payloadCanonical: string;
-    payloadHash: string;
-    receivedAtUnixMs: number;
-  }): Promise<
-    | { status: "created"; receipt: EvidenceBundleReceipt }
-    | { status: "already_ingested"; receipt: EvidenceBundleReceipt }
-  >;
-}
-```
+  Expected: FAIL on conflict totals, mode/coverage, ordering, or decision-integrity assertions.
 
-Export a pure `evidenceScopeKey(scope)` helper using unambiguous tagged length-prefixed components, for example `pair`, `whirlpool:<address>`, `wallet:<address>`, and `position:<wallet-length>:<wallet><pool-length>:<pool><position-length>:<position>`. Scope values remain case-sensitive and are never inferred from features.
+- [ ] **Step 3: Implement directional summaries and derived coverage**
 
-- [ ] **Step 3: Implement append in the Postgres adapter in the same task**
+  For contextual families in the fixed order `supportResistance`, `flows`, `derivatives`, `events`, `newsRegulatory`, sum selected score by all five direction buckets. Mark a family `CONFLICTED` iff both bullish and bearish are non-zero. For every family, derive `AVAILABLE`/`CONFLICTED` from selected items, `REJECTED` from candidates with none selected, and `MISSING` from no candidates. Derive deterministic family coverage separately and do not let it alter research mode.
 
-Create `createPostgresEvidenceBundleRepository(db): EvidenceBundleRepositoryPort`. Derive every scalar column from the already-validated bundle. Insert with conflict-do-nothing on `(schemaVersion, source.publisher, source.sourceId, runId)`, returning the row. When no row is returned, read the winning identity: equal hash (and defensively equal canonical text) returns `already_ingested`; different bytes throw `EvidenceRunConflictError`; missing winner throws the append-only invariant error. Return row ID, stored hash, and stored original receipt time. Expose no update or delete operation.
+- [ ] **Step 4: Derive mode and canonical warnings**
 
-- [ ] **Step 4: Run focused append verification**
+  Set `FULL` only when all contextual families are available, none is conflicted, and the brief is selected. Set `PARTIAL` when any contextual claim or brief is selected otherwise. Set `DEGRADED_NO_RESEARCH` when neither contextual claims nor brief survive. Produce stable missing/rejected/conflict/stale/no-research warnings from final state, deduplicate by code plus qualified subject, and sort with a constant family/code rank followed by explicit string keys.
 
-Run: `pnpm vitest run src/adapters/postgres/__tests__/postgresEvidenceBundleRepository.append.test.ts`
+- [ ] **Step 5: Canonically sort the complete result and assert integrity**
 
-Expected: PASS when Postgres is configured and SKIP otherwise.
+  Sort selected features/claims, bundles, decisions, conflicts, warnings, and references from copied arrays. Before returning, assert every candidate has one terminal decision, every selected qualified ID maps to exactly one `INCLUDED` decision, and every numeric score is a safe integer in range. Do not sort publisher-owned arrays inside the original item objects in place; clone and normalize them so inputs are never mutated.
 
-Run: `pnpm exec eslint src/application/ports/evidenceBundleRepositoryPort.ts src/adapters/postgres/postgresEvidenceBundleRepository.ts src/adapters/postgres/__tests__/postgresEvidenceBundleRepository.append.test.ts`
+- [ ] **Step 6: Run focused verification**
 
-Expected: PASS with zero warnings.
+  Run: `pnpm exec vitest run src/engine/evidence/__tests__/selectEvidence.summary.test.ts`
 
-- [ ] **Step 5: Commit the append port and its only adapter atomically**
+  Expected: PASS with all ten summary/determinism invariants. The complete selector suite runs in the dedicated validation phase.
 
-```bash
-git add src/application/ports/evidenceBundleRepositoryPort.ts src/adapters/postgres/postgresEvidenceBundleRepository.ts src/adapters/postgres/__tests__/postgresEvidenceBundleRepository.append.test.ts
-git commit -m "m58: append immutable evidence bundles"
-```
+  Run: `pnpm exec eslint src/engine/evidence/selectEvidence.ts src/engine/evidence/__tests__/evidenceSelectionFixtures.ts src/engine/evidence/__tests__/selectEvidence.summary.test.ts --max-warnings 0`
 
-## Task 6: Add exact-scope latest reads and lifecycle derivation
+  Expected: PASS with zero warnings. The automatic workspace typecheck gate must pass.
 
-**Files:**
+- [ ] **Step 7: Commit the deterministic summary behavior**
 
-- Modify: `src/application/ports/evidenceBundleRepositoryPort.ts`
-- Modify: `src/adapters/postgres/postgresEvidenceBundleRepository.ts`
-- Create: `src/adapters/postgres/__tests__/postgresEvidenceBundleRepository.latest.test.ts`
+  ```bash
+  git add src/engine/evidence/selectEvidence.ts src/engine/evidence/__tests__/evidenceSelectionFixtures.ts src/engine/evidence/__tests__/selectEvidence.summary.test.ts
+  git commit -m "m60: summarize selected evidence deterministically"
+  ```
 
-- [ ] **Step 1: Write latest-read invariants first**
-
-Add exact named cases `derives lifecycle at inclusive freshness and expiry boundaries`, `returns latest evidence independently for each source`, `never mixes exact evidence scopes`, and `fails visibly when stored payload JSON is corrupt`. Cover all four scope kinds, source-filtered and unfiltered reads, ties on as-of/receipt/id, expired rows remaining observable, and no row returning an empty list rather than falling back to another scope.
-
-Run: `pnpm vitest run src/adapters/postgres/__tests__/postgresEvidenceBundleRepository.latest.test.ts`
-
-Expected: FAIL because `getLatest` is absent.
-
-- [ ] **Step 2: Add the method to the port and adapter together**
-
-Extend the same exported interface and implementation with:
-
-```ts
-getLatest(input: {
-  pair: "SOL/USDC";
-  scope: EvidenceScope;
-  source: EvidenceSourceFilter | null;
-  nowUnixMs: number;
-}): Promise<EvidenceBundleRecord[]>;
-```
-
-Define `EvidenceBundleRecord` as validated `bundle`, row ID, payload hash, received time, and `lifecycle: "FRESH" | "STALE" | "EXPIRED"`. Use `row_number() over (partition by source_publisher, source_id order by as_of_unix_ms desc, received_at_unix_ms desc, id desc)` for unfiltered reads and the same ordering with `limit 1` for a filter. Match pair and derived exact `scopeKey` in every query.
-
-Map rows by calling `parseEvidenceBundleV1(row.payloadJson)` before returning. Derive lifecycle with the inclusive transition table from the invariant; do not update the row and do not decide selection eligibility.
-
-- [ ] **Step 3: Run focused latest verification**
-
-Run: `pnpm vitest run src/adapters/postgres/__tests__/postgresEvidenceBundleRepository.latest.test.ts src/adapters/postgres/__tests__/postgresEvidenceBundleRepository.append.test.ts`
-
-Expected: PASS when Postgres is configured and SKIP otherwise.
-
-Run: `pnpm exec eslint src/application/ports/evidenceBundleRepositoryPort.ts src/adapters/postgres/postgresEvidenceBundleRepository.ts src/adapters/postgres/__tests__/postgresEvidenceBundleRepository.latest.test.ts`
-
-Expected: PASS.
-
-- [ ] **Step 4: Commit the method with all implementation changes**
-
-```bash
-git add src/application/ports/evidenceBundleRepositoryPort.ts src/adapters/postgres/postgresEvidenceBundleRepository.ts src/adapters/postgres/__tests__/postgresEvidenceBundleRepository.latest.test.ts
-git commit -m "m58: query latest evidence by exact scope"
-```
-
-## Task 7: Add bounded cursor history without scope mixing
+## Task 5: Add the repository-backed selection use case
 
 **Files:**
 
-- Modify: `src/application/ports/evidenceBundleRepositoryPort.ts`
-- Modify: `src/adapters/postgres/postgresEvidenceBundleRepository.ts`
-- Create: `src/adapters/postgres/__tests__/postgresEvidenceBundleRepository.history.test.ts`
+- Create: `src/application/use-cases/selectEvidenceForSynthesisUseCase.ts`
+- Create: `src/application/use-cases/__tests__/selectEvidenceForSynthesisUseCase.test.ts`
 
-- [ ] **Step 1: Write cursor and limit invariants first**
+**Exported API surface:** Add `SelectEvidenceForSynthesisUseCase`, `SelectEvidenceForSynthesisUseCaseDeps`, and `createSelectEvidenceForSynthesisUseCase`. The dependency type accepts the existing repository and clock plus an optional injected policy/selector for focused tests; production defaults are the shipped v1 policy and pure `selectEvidence` function. No method is added to `EvidenceBundleRepositoryPort`, so no adapter change is required.
 
-Add exact named cases `paginates history without duplicates across intervening inserts`, `rejects history limits outside one through one hundred`, `never mixes exact evidence scopes in history`, and `orders evidence history by receipt time and id descending`. Cover default 30, explicit 1 and 100, source filtering, `(receivedAt DESC, id DESC)` tie-breaking, empty history, cursor exclusivity, new rows inserted between pages, lifecycle derivation, and corrupt stored payload rejection.
+**Behavioral invariants to write as tests first:**
 
-Run: `pnpm vitest run src/adapters/postgres/__tests__/postgresEvidenceBundleRepository.history.test.ts`
+- `captures the clock once and reads all current sources for the exact scope`: call `nowUnixMs()` once, then `getLatest` once with pair `SOL/USDC`, exact input scope, `source: null`, and that same instant.
+- `passes the same records instant scope and configured policy to the selector`: no second clock read or observational source filter is introduced.
+- `returns degraded success when the repository returns no records`: delegate empty arrays to the selector; do not convert absence to 404/error.
+- `propagates EvidenceStoreUnavailableError unchanged without retry`: repository failure remains distinguishable from empty evidence and the selector is not called.
+- `does not invoke history writes candles regime plan ledger or HTTP dependencies`: the dependency surface contains only repository, clock, selector, and policy.
 
-Expected: FAIL because `getHistory` is absent.
+- [ ] **Step 1: Write the failing application tests with focused fakes**
 
-- [ ] **Step 2: Add history to the port and adapter together**
+  Use a fake repository that implements the existing three port methods, records only `getLatest` calls, and can return records or throw a shared `EvidenceStoreUnavailableError` instance. Use a clock fake that increments a call counter and a selector spy that records its exact input. Assert object identity for propagated errors.
 
-Extend both with:
+- [ ] **Step 2: Run the use-case test and observe the missing module failure**
 
-```ts
-export interface EvidenceHistoryCursor {
-  receivedAtUnixMs: number;
-  id: number;
-}
+  Run: `pnpm exec vitest run src/application/use-cases/__tests__/selectEvidenceForSynthesisUseCase.test.ts`
 
-getHistory(input: {
-  pair: "SOL/USDC";
-  scope: EvidenceScope;
-  source: EvidenceSourceFilter | null;
-  limit?: number;
-  cursor: EvidenceHistoryCursor | null;
-  nowUnixMs: number;
-}): Promise<{
-  records: EvidenceBundleRecord[];
-  nextCursor: EvidenceHistoryCursor | null;
-}>;
-```
+  Expected: FAIL because the use-case module does not exist.
 
-Validate limit before SQL. Query `limit + 1` rows to determine continuation, ordered by receipt and ID descending. For a cursor, add the exclusive predicate `received_at_unix_ms < cursor.receivedAtUnixMs OR (received_at_unix_ms = cursor.receivedAtUnixMs AND id < cursor.id)`. Return a cursor from the last emitted record only when an extra row exists. Reuse exact scope-key mapping, payload revalidation, and lifecycle derivation.
+- [ ] **Step 3: Implement the one-clock/one-read orchestration**
 
-- [ ] **Step 3: Run focused history and regression verification**
+  Use this public shape and keep the returned value equal to the selector result:
 
-Run: `pnpm vitest run src/adapters/postgres/__tests__/postgresEvidenceBundleRepository.history.test.ts src/adapters/postgres/__tests__/postgresEvidenceBundleRepository.latest.test.ts src/adapters/postgres/__tests__/postgresEvidenceBundleRepository.append.test.ts`
+  ```ts
+  export type SelectEvidenceForSynthesisUseCase = (input: {
+    readonly scope: Scope;
+  }) => Promise<SelectedEvidenceSummary>;
 
-Expected: PASS when Postgres is configured and SKIP otherwise.
+  export const createSelectEvidenceForSynthesisUseCase =
+    (deps: SelectEvidenceForSynthesisUseCaseDeps): SelectEvidenceForSynthesisUseCase =>
+    async ({ scope }) => {
+      const selectedAtUnixMs = deps.clock.nowUnixMs();
+      const records = await deps.repository.getLatest({
+        pair: "SOL/USDC",
+        scope,
+        source: null,
+        nowUnixMs: selectedAtUnixMs
+      });
+      return (deps.selector ?? selectEvidence)({
+        records,
+        selectedAtUnixMs,
+        scope,
+        policy: deps.policy ?? EVIDENCE_SELECTION_POLICY_V1
+      });
+    };
+  ```
 
-Run: `pnpm exec eslint src/application/ports/evidenceBundleRepositoryPort.ts src/adapters/postgres/postgresEvidenceBundleRepository.ts src/adapters/postgres/__tests__/postgresEvidenceBundleRepository.history.test.ts`
+  Do not catch repository errors, retry, call history, or reference deterministic market use cases.
 
-Expected: PASS.
+- [ ] **Step 4: Run focused verification**
 
-- [ ] **Step 4: Commit the method with its adapter implementation**
+  Run: `pnpm exec vitest run src/application/use-cases/__tests__/selectEvidenceForSynthesisUseCase.test.ts`
 
-```bash
-git add src/application/ports/evidenceBundleRepositoryPort.ts src/adapters/postgres/postgresEvidenceBundleRepository.ts src/adapters/postgres/__tests__/postgresEvidenceBundleRepository.history.test.ts
-git commit -m "m58: paginate evidence bundle history"
-```
+  Expected: PASS with all five orchestration invariants.
 
-## Task 8: Package and document the public compatibility surface
+  Run: `pnpm exec eslint src/application/use-cases/selectEvidenceForSynthesisUseCase.ts src/application/use-cases/__tests__/selectEvidenceForSynthesisUseCase.test.ts --max-warnings 0`
+
+  Expected: PASS with zero warnings. The automatic workspace typecheck gate must pass.
+
+- [ ] **Step 5: Commit the internal use case**
+
+  ```bash
+  git add src/application/use-cases/selectEvidenceForSynthesisUseCase.ts src/application/use-cases/__tests__/selectEvidenceForSynthesisUseCase.test.ts
+  git commit -m "m60: expose evidence selection use case"
+  ```
+
+## Task 6: Wire nullable evidence selection without changing deterministic paths
 
 **Files:**
 
-- Create: `docs/contracts/evidence-bundle.v1.md`
-- Modify: `scripts/copyBuildAssets.mjs`
-- Modify: `scripts/generateEvidenceContract.ts`
-- Modify: `src/contract/evidence/v1/__tests__/generation.test.ts`
-- Modify: `package.json`
+- Modify: `src/composition/buildApplication.ts` (imports, `ApplicationDependencies` required member, construction, and returned object)
+- Create: `src/composition/__tests__/evidenceSelectionWiring.test.ts`
 
-- [ ] **Step 1: Write failing documentation and packaging checks**
+**Exported API surface:** Add required member `selectEvidenceForSynthesis: SelectEvidenceForSynthesisUseCase | null` to `ApplicationDependencies` and return it from `buildApplication`. The interface change and all production construction/return updates are deliberately in this same task so the automatic workspace typecheck gate never sees an interface-only state.
 
-Extend generation check mode to require the documentation to contain the exact current schema digest and every stable artifact path. Add focused cases to `generation.test.ts` named `publishes every EvidenceBundle artifact with the documented schema digest` and `rejects stale EvidenceBundle documentation metadata`. The first runs a build into the normal `dist` path, then asserts the schema, digest, vectors, and fixture directories exist beneath `dist/contracts/evidence-bundle/v1` with byte-identical contents. The second invokes check logic against a temporary stale documentation copy and asserts a non-writing failure that names the documentation path.
+**Behavioral invariants to write as tests first:**
 
-Run: `pnpm vitest run src/contract/evidence/v1/__tests__/generation.test.ts`
+- `exposes null selection when PostgreSQL evidence storage is not configured`: SQLite-only construction leaves deterministic use cases available and selection null.
+- `exposes selection beside existing evidence use cases when PostgreSQL is configured`: one shared PostgreSQL evidence repository backs ingest/current/history/selection construction.
+- `does not wire selection into regime or plan generation`: existing `getCurrentRegime` and `generatePlan` are constructed solely from their current candle/plan dependencies and remain callable when selection is null.
+- `does not register a selection HTTP route`: composition exposes the internal use case only; route/OpenAPI files remain unchanged.
 
-Expected: FAIL until documentation and build copying are implemented.
+- [ ] **Step 1: Write the failing composition tests**
 
-- [ ] **Step 2: Document ownership and exact portable algorithms**
+  Build a minimal `RuntimeStoreContext` with the existing in-memory ledger helper and `pg: null` for the first case. For the configured case, use a typed inert `Db` test double sufficient for construction (do not execute a query) and assert the four evidence use-case properties are non-null. Verify existing regime/plan property presence in the null case. For the internal-only invariant, start `buildApp()` with the SQLite-only context, inspect `/v1/openapi.json`, and assert no path contains `selection` or `synthesis`; this proves no route without modifying route/OpenAPI files.
 
-Create `docs/contracts/evidence-bundle.v1.md` with:
+- [ ] **Step 2: Run the wiring test and observe the missing property failure**
 
-- artifact paths and the literal generated schema SHA-256;
-- commands `pnpm run contract:evidence:generate` and `pnpm run contract:evidence:check`;
-- the exact UTF-16 key ordering, array preservation, compact ECMAScript JSON, negative-zero normalization, UTF-8 SHA-256 algorithm;
-- all publisher-owned fields versus Regime-owned row ID, receipt time, canonical/hash metadata, lifecycle, ingest outcome, and future selection lineage;
-- canonical source/run idempotency tuple and replay/conflict behavior;
-- scope-key/query isolation, latest ordering, cursor format, limits, and lifecycle boundary table;
-- deterministic-only semantics and the rule that missing context/brief is unavailable evidence, never zero/success;
-- explicit statement that evidence cannot author policy, allocation, recommendations, or execution.
+  Run: `pnpm exec vitest run src/composition/__tests__/evidenceSelectionWiring.test.ts`
 
-Teach the generator to replace/check a single `<!-- schema-sha256:... -->` marker so digest drift cannot be hand-maintained.
+  Expected: FAIL because `ApplicationDependencies` does not expose `selectEvidenceForSynthesis`.
 
-- [ ] **Step 3: Copy the entire public artifact tree during build**
+- [ ] **Step 3: Update the interface and its production construction atomically**
 
-Extend `copyBuildAssets.mjs` with a recursive, deterministic directory copy from `contracts/evidence-bundle/v1` to `dist/contracts/evidence-bundle/v1`, preserving file bytes and creating parent directories. Keep the existing `schema.sql` copy. Add the three evidence PG test paths to `test:pg`; do not add any HTTP tests.
+  Import the type and factory, add the nullable required member next to the existing evidence use cases, construct it from the already-created `evidenceRepository` and shared `clock`, and include it in the returned object:
 
-- [ ] **Step 4: Run focused artifact verification**
+  ```ts
+  const selectEvidenceForSynthesis = evidenceRepository
+    ? createSelectEvidenceForSynthesisUseCase({ repository: evidenceRepository, clock })
+    : null;
+  ```
 
-Run: `pnpm run contract:evidence:generate`
+  Do not pass it into `createGetCurrentRegimeUseCase`, `createGeneratePlanUseCase`, `registerRoutes`, or any handler.
 
-Run: `pnpm run contract:evidence:check`
+- [ ] **Step 4: Run focused verification**
 
-Expected: PASS without rewriting documentation or generated artifacts.
+  Run: `pnpm exec vitest run src/composition/__tests__/evidenceSelectionWiring.test.ts`
 
-Run: `pnpm vitest run src/contract/evidence/v1/__tests__/generation.test.ts`
+  Expected: PASS for configured/unconfigured wiring and deterministic-path isolation. The use-case contract runs again in the dedicated validation phase.
 
-Expected: PASS and all packaged artifacts byte-match their source files.
+  Run: `pnpm exec eslint src/composition/buildApplication.ts src/composition/__tests__/evidenceSelectionWiring.test.ts --max-warnings 0`
 
-Run: `pnpm exec prettier --check docs/contracts/evidence-bundle.v1.md scripts/copyBuildAssets.mjs scripts/generateEvidenceContract.ts package.json`
+  Expected: PASS with zero warnings. The automatic workspace typecheck gate proves every `ApplicationDependencies` producer/consumer was updated in the same task.
 
-Expected: PASS.
+- [ ] **Step 5: Commit composition wiring**
 
-- [ ] **Step 5: Commit documentation and packaged artifacts**
-
-```bash
-git add docs/contracts/evidence-bundle.v1.md scripts/copyBuildAssets.mjs scripts/generateEvidenceContract.ts src/contract/evidence/v1/__tests__/generation.test.ts package.json
-git commit -m "m58: document and package EvidenceBundle artifacts"
-```
+  ```bash
+  git add src/composition/buildApplication.ts src/composition/__tests__/evidenceSelectionWiring.test.ts
+  git commit -m "m60: wire internal evidence selection"
+  ```
 
 **Tests to add or update**
 
-- New schema generation/digest test: `src/contract/evidence/v1/__tests__/generation.test.ts`.
-- New structural/semantic validation matrix: `src/contract/evidence/v1/__tests__/validation.test.ts`.
-- New cross-language canonical/hash vector test: `src/contract/evidence/v1/__tests__/canonicalHash.test.ts`.
-- New Drizzle shape and migration tests: `src/ledger/pg/schema/__tests__/evidenceBundles.shape.test.ts`, `src/ledger/pg/__tests__/evidenceBundlesMigration.test.ts`.
-- Three focused PG adapter suites, split by port method: append, latest, and history. These are new files, so the existing-test-file >500 line/>10 case splitting rule is not triggered; nevertheless, keep each suite restricted to one repository method.
-- Update `package.json` `test:pg` to include all three adapter suites and the migration test. Contract tests remain in the default `pnpm test` discovery.
+- Add the four focused engine test files/builders listed above; keep scoring, lineage/state transitions, and summary/determinism in separate files so failures identify the policy stage.
+- Add one application use-case test file for one-clock/one-read/error behavior.
+- Add one composition test file for nullable wiring and deterministic-path isolation.
+- Do not update existing raw evidence route/repository tests: their observational behavior is intentionally unchanged.
+- Every behavioral invariant named in this plan and manifest is an exact `it(...)` test name and must be written before its implementation step.
 
-**Validation commands after all implementation tasks**
+**Dedicated validation phase (after all implementation tasks, not a standalone task)**
 
-The dedicated validate phase, not a standalone implementation task, runs:
+Run these exact repository commands after Task 6. They are the final cross-cutting gate; task-local acceptance commands above remain scoped to each task's changed paths.
 
 ```bash
-pnpm run contract:evidence:check
 pnpm run typecheck
 pnpm run test
-pnpm run test:pg
 pnpm run lint
 pnpm run boundaries
 pnpm run build
 pnpm run format
-git diff --exit-code -- contracts/evidence-bundle/v1/schema.sha256 contracts/evidence-bundle/v1/hash-vectors.json src/contract/evidence/v1/types.generated.ts docs/contracts/evidence-bundle.v1.md
+git diff --check
 ```
 
-Expected: every command exits 0; PG suites may only be skipped in the non-PG default test command, not in `test:pg`; the final diff check proves generation/check mode left published outputs unchanged.
+Expected: every command exits `0`; Vitest reports no failed tests, ESLint reports zero warnings, dependency-cruiser reports no engine/application boundary violations, build emits successfully, Prettier reports all files formatted, and `git diff --check` emits no output.
 
 **Risk areas**
 
-- The canonicalizer is repository-defined rather than RFC 8785; ECMAScript number rendering, UTF-16 object-key sorting, Unicode byte encoding, negative zero, and array order are compatibility-critical.
-- JSON Schema and semantic validation can drift. One public validation API and fixture-driven generation checks must prevent structural-only acceptance.
-- Generated TypeScript unions may be less precise than runtime conditionals. Runtime validation remains authoritative; persistence never accepts casts as proof.
-- JSONB rows are bounded only if every string and array constraint is present. Missing a nested maximum creates a storage/validation abuse path for #59.
-- Replay correctness is concurrency-sensitive. Conflict-do-nothing followed by winner lookup must retain the first payload/receipt and distinguish a missing winner from idempotency.
-- Exact scope keys contain sensitive opaque identifiers. Their encoding must be collision-free and case-preserving; no route is added in this issue.
-- JavaScript numeric timestamps are safe for the specified dates but database bigint mapping and cursor equality must remain exact integers.
-- Generated Drizzle metadata is coupled to current migration history. If `0004` is no longer the next index when implementation starts, stop and re-plan rather than overwriting another migration.
+- Exact scoring can silently drift if multiplication/division is performed stepwise with `number`; require a single `bigint` numerator and test values that distinguish exact flooring from premature division.
+- Candidate/reference IDs are only local to a bundle. Any raw-ID global map can cross-wire independent sources; all joins must include evidence hash/bundle identity.
+- The family-cap → dependency fixed-point → brief sequence is stateful. Reordering stages, backfilling cap slots, or reviving an excluded decision changes safety semantics and canonical output.
+- Lifecycle boundaries are easy to invert. Tests must pin equality at both bundle and item boundaries.
+- Sorting with `localeCompare`, input mutation, or insertion-order iteration can make output environment/input-order dependent. Use explicit primitive comparators and cloned arrays.
+- Static source/provenance weights are policy, not truth. Never read publisher `assessment.quality` or overall confidence as source quality; only brief scoring may use overall confidence as a ceiling.
+- A configured PostgreSQL context switches candle adapters as well as evidence storage. The composition test should test construction only and avoid pretending an inert DB double can execute regime queries.
+- The selector output is clock-dependent and ephemeral. Do not add persistence or a hash in this issue.
+- Hard-guard precedence is completed by issue #61. This issue proves isolation structurally and must not add premature synthesis rules.
 
 **Stop conditions**
 
-- Abort if `design.md` or issue acceptance criteria change the wire shape, ownership boundary, or idempotency tuple before implementation completes; regenerate the plan and artifacts from the new authority.
-- Abort if migration index `0004` already exists or the current Drizzle snapshot no longer matches the inspected repository; never overwrite or renumber an unrelated migration.
-- Abort if Ajv/json-schema-to-typescript cannot support draft 2020-12 and deterministic checked-in output under Node 22 with pinned versions; choose and document a compatible toolchain before proceeding.
-- Abort if the schema cannot express the promised deterministic-only fixture without weakening strict unknown-field rejection or allowing fabricated zero values.
-- Abort if the append method cannot atomically distinguish identical replay from different-payload conflict under concurrent Postgres transactions; do not substitute a read-before-write race.
-- Abort if exact scope-key derivation is ambiguous/collision-prone or a query would implicitly combine pair, wallet, Whirlpool, and position scopes.
-- Abort if implementation requires HTTP, selection, policy synthesis, SQLite fallback, legacy insight mutation, or any other non-goal; split that work into its owning issue.
-- Abort on evidence of user-owned overlapping edits in any expected file; preserve those edits and request coordination rather than overwriting them.
+- Stop and abort rather than continuing if `EvidenceBundleRepositoryPort.getLatest` no longer returns exact-scope latest-per-source records with caller-derived lifecycle; that invalidates the selector input contract and requires redesign.
+- Stop if implementing the plan would require changing generated `src/contract/evidence/v1/types.generated.ts`, the evidence schema/migrations, HTTP/OpenAPI, or any deterministic regime/plan/hard-guard module. Those are explicit scope expansions.
+- Stop if production asks for a non-empty reviewed `sourceQualityBps` override but cannot provide the exact publisher/source ID and policy-version approval; do not guess an identity.
+- Stop if contract-valid lineage permits an identifier to resolve simultaneously to a feature and source reference within one bundle and existing semantic validation does not disambiguate it. Resolve that contract ambiguity before choosing precedence.
+- Stop if exact score arithmetic can exceed the documented `0..10_000` result or a safe integer after validated factors; treat it as an invariant/configuration defect, not a clamped value.
+- Stop if the interface change in Task 6 cannot be committed together with every `ApplicationDependencies` construction/consumer update; never leave a required-member surface change without its implementations under the automatic typecheck gate.
 
-**Assumptions**
+**Assumptions recorded for implementation**
 
-- `evidence-bundle.v1`, `SOL/USDC`, `sol-usdc-clmm-intelligence`, and `solana-mainnet` are the v1 literal identities.
-- Postgres is the sole durable evidence authority; default contract tests require no database, while `test:pg` runs migrations against the configured test database.
-- Publisher arrays are ordered deliberately and remain hash-significant; validation rejects duplicates but never sorts accepted payloads.
-- `receivedAtUnixMs` and query `nowUnixMs` are supplied by future use cases/clock ports; this issue defines repository behavior without adding an ingest use case or composition wiring.
-- Existing canonical JSON and SHA-256 helpers remain the implementation primitive and are extended by vectors, not replaced.
-- Because the design names contextual families but not their closed `kind` literals, v1 uses the explicit family-specific enums fixed in Task 1; changing those enums after publication requires an intentional compatibility review.
+- Issue #59 is merged and its `getLatest` behavior is the source of candidates; no history fallback is desired.
+- Equality with `expiresAt` is usable and equality with `freshUntil` is fresh, matching current repository lifecycle derivation.
+- Unknown exact source identities receive `5_000` bps; the initial reviewed override map is empty.
+- Null-expiry contextual claims inherit the bundle lifecycle; stale deterministic features remain eligible at stale weight until bundle expiry.
+- A brief requires every cited same-bundle item to survive final selection, and its cited average floors before the publisher-confidence ceiling is applied.
+- Missing evidence is normal degraded success, while repository unavailability propagates as infrastructure failure.
+- The first-line review marker is required because Tasks 2–4 implement explicit candidate decision transitions and a fixed-point dependency pass.

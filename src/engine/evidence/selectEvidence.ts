@@ -87,7 +87,7 @@ export interface SelectedResearchBrief {
   readonly provenanceQuality: number;
   readonly freshnessWeight: number;
   readonly score: number | null;
-  readonly sourceReferenceIds: readonly string[];
+  readonly sourceEvidenceIds: readonly string[];
   readonly status: "SELECTED";
   readonly reasons: readonly string[];
 }
@@ -1186,7 +1186,7 @@ export function selectEvidence(input: SelectEvidenceInput): SelectedEvidenceSumm
           provenanceQuality: c.provenanceQuality,
           freshnessWeight: c.freshnessWeight,
           score: dec.score,
-          sourceReferenceIds: c.sourceReferenceIds,
+          sourceEvidenceIds: c.sourceReferenceIds,
           status: "SELECTED",
           reasons: dec.reasons
         };
@@ -1323,8 +1323,11 @@ export function selectEvidence(input: SelectEvidenceInput): SelectedEvidenceSumm
         if (entry) {
           if (dec.status === "SELECTED") {
             entry.isSelectedLineage = true;
+            entry.isAuditOnly = false;
           } else {
-            entry.isAuditOnly = true;
+            if (!entry.isSelectedLineage) {
+              entry.isAuditOnly = true;
+            }
           }
         }
       }
@@ -1349,8 +1352,11 @@ export function selectEvidence(input: SelectEvidenceInput): SelectedEvidenceSumm
         if (entry) {
           if (dec.status === "SELECTED") {
             entry.isSelectedLineage = true;
+            entry.isAuditOnly = false;
           } else {
-            entry.isAuditOnly = true;
+            if (!entry.isSelectedLineage) {
+              entry.isAuditOnly = true;
+            }
           }
         }
       }
