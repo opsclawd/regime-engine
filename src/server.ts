@@ -30,6 +30,7 @@ const start = async (): Promise<void> => {
       await verifyClmmInsightsTable(pg);
       await verifySrThesesV2Table(pg);
       await verifyEvidenceBundlesTable(pg);
+      // Verify new canonical policy insights schema table
       await verifyPolicyInsightsTable(pg);
     } catch (error) {
       console.error("FATAL: Postgres connection failed at startup.", {

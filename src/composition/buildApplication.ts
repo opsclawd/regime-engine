@@ -162,6 +162,7 @@ export const buildApplication = (ctx: RuntimeStoreContext): ApplicationDependenc
         clock
       })
     : null;
+  // Use case to fetch historical policy insights with stable cursor-based pagination
   const getPolicyInsightHistory = policyInsightRepository
     ? createGetPolicyInsightHistoryUseCase({
         repository: policyInsightRepository,

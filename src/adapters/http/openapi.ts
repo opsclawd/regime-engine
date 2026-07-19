@@ -244,6 +244,88 @@ export const buildOpenApiDocument = () => {
               }
             }
           }
+        },
+        InsightHistoryItem: {
+          type: "object",
+          additionalProperties: false,
+          required: [
+            "schemaVersion",
+            "pair",
+            "asOf",
+            "source",
+            "runId",
+            "marketRegime",
+            "fundamentalRegime",
+            "recommendedAction",
+            "confidence",
+            "riskLevel",
+            "dataQuality",
+            "clmmPolicy",
+            "levels",
+            "reasoning",
+            "sourceRefs",
+            "expiresAt",
+            "payloadHash",
+            "receivedAtIso"
+          ],
+          properties: {
+            schemaVersion: { type: "string" },
+            pair: { type: "string", enum: ["SOL/USDC"] },
+            asOf: { type: "string", format: "date-time" },
+            source: { type: "string", enum: ["openclaw"] },
+            runId: { type: "string" },
+            marketRegime: { type: "string" },
+            fundamentalRegime: { type: "string" },
+            recommendedAction: { type: "string", enum: RECOMMENDED_ACTIONS },
+            confidence: { type: "string", enum: CONFIDENCES },
+            riskLevel: { type: "string", enum: RISK_LEVELS },
+            dataQuality: { type: "string", enum: DATA_QUALITIES },
+            clmmPolicy: {
+              type: "object",
+              additionalProperties: false,
+              required: [
+                "posture",
+                "rangeBias",
+                "rebalanceSensitivity",
+                "maxCapitalDeploymentPercent"
+              ],
+              properties: {
+                posture: { type: "string", enum: POSTURES },
+                rangeBias: { type: "string", enum: RANGE_BIASES },
+                rebalanceSensitivity: { type: "string", enum: REBALANCE_SENSITIVITIES },
+                maxCapitalDeploymentPercent: { type: "number", minimum: 0, maximum: 100 }
+              }
+            },
+            levels: {
+              type: "object",
+              additionalProperties: false,
+              required: ["support", "resistance"],
+              properties: {
+                support: { type: "array", items: { type: "number" } },
+                resistance: { type: "array", items: { type: "number" } }
+              }
+            },
+            reasoning: { type: "array", items: { type: "string" } },
+            sourceRefs: { type: "array", items: { type: "string" } },
+            expiresAt: { type: "string", format: "date-time" },
+            payloadHash: { type: "string" },
+            receivedAtIso: { type: "string", format: "date-time" }
+          }
+        },
+        InsightHistoryResponse: {
+          type: "object",
+          additionalProperties: false,
+          required: ["schemaVersion", "pair", "limit", "items", "nextCursor"],
+          properties: {
+            schemaVersion: { type: "string" },
+            pair: { type: "string", enum: ["SOL/USDC"] },
+            limit: { type: "integer" },
+            items: {
+              type: "array",
+              items: { $ref: "#/components/schemas/InsightHistoryItem" }
+            },
+            nextCursor: { type: "string", nullable: true }
+          }
         }
       }
     },
@@ -768,21 +850,66 @@ export const buildOpenApiDocument = () => {
           summary: "Get historical CLMM insights for SOL/USDC",
           parameters: [
             {
+              name: "scope",
+              in: "query",
+              required: false,
+              schema: { type: "string", enum: ["pair", "position"] }
+            },
+            {
+              name: "whirlpoolAddress",
+              in: "query",
+              required: false,
+              schema: { type: "string", minLength: 1, maxLength: 128 }
+            },
+            {
+              name: "walletAddress",
+              in: "query",
+              required: false,
+              schema: { type: "string", minLength: 1, maxLength: 128 }
+            },
+            {
+              name: "positionId",
+              in: "query",
+              required: false,
+              schema: { type: "string", minLength: 1, maxLength: 128 }
+            },
+            {
               name: "limit",
               in: "query",
               required: false,
               schema: { type: "integer", minimum: 1, maximum: 200, default: 50 }
+            },
+            {
+              name: "cursor",
+              in: "query",
+              required: false,
+              schema: { type: "string" }
             }
           ],
           responses: {
             "200": {
-              description: "List of insights ordered by receivedAt descending"
+              description: "List of insights with pagination support",
+              content: {
+                "application/json": {
+                  schema: { $ref: "#/components/schemas/InsightHistoryResponse" }
+                }
+              }
             },
             "400": {
-              description: "Invalid limit parameter"
+              description: "Validation error",
+              content: {
+                "application/json": {
+                  schema: { $ref: "#/components/schemas/InsightError" }
+                }
+              }
             },
             "503": {
-              description: "Insights store not available (no DATABASE_URL configured)"
+              description: "Insights store not available (no DATABASE_URL configured)",
+              content: {
+                "application/json": {
+                  schema: { $ref: "#/components/schemas/InsightError" }
+                }
+              }
             }
           }
         }
