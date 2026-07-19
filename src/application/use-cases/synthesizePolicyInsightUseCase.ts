@@ -96,6 +96,11 @@ export const createSynthesizePolicyInsightUseCase = (
       ) {
         throw new PolicyInsightValidationError("walletId mismatch between scope and position");
       }
+      if (scope.whirlpoolAddress !== input.marketSelector.poolAddress) {
+        throw new PolicyInsightValidationError(
+          "poolAddress mismatch between position scope and marketSelector"
+        );
+      }
     } else {
       if (positionPlan) {
         throw new PolicyInsightValidationError(
