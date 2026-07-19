@@ -210,3 +210,39 @@ export function buildEvidenceRecord(
     lifecycle: overrides.lifecycle ?? "FRESH"
   };
 }
+
+export function cloneAndPermuteBundle(bundle: EvidenceBundleV1): EvidenceBundleV1 {
+  const cloned = JSON.parse(JSON.stringify(bundle)) as EvidenceBundleV1;
+  cloned.deterministicFeatures.reverse();
+  cloned.sourceReferences.reverse();
+  if (cloned.assessment.warnings) {
+    cloned.assessment.warnings = [...cloned.assessment.warnings].reverse();
+  }
+  const ctx = cloned.contextualEvidence;
+  ctx.supportResistance.reverse();
+  ctx.flows.reverse();
+  ctx.derivatives.reverse();
+  ctx.events.reverse();
+  ctx.newsRegulatory.reverse();
+
+  for (const f of cloned.deterministicFeatures) {
+    f.inputLineage = [...f.inputLineage].reverse() as [string, ...string[]];
+    if (f.warnings) f.warnings = [...f.warnings].reverse() as unknown as typeof f.warnings;
+  }
+  const allClaims = [
+    ...ctx.supportResistance,
+    ...ctx.flows,
+    ...ctx.derivatives,
+    ...ctx.events,
+    ...ctx.newsRegulatory
+  ];
+  for (const c of allClaims) {
+    c.sourceReferenceIds = [...c.sourceReferenceIds].reverse() as [string, ...string[]];
+  }
+  if (cloned.researchBrief) {
+    cloned.researchBrief.sourceEvidenceIds = [
+      ...cloned.researchBrief.sourceEvidenceIds
+    ].reverse() as [string, ...string[]];
+  }
+  return cloned;
+}

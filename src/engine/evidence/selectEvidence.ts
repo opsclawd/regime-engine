@@ -1201,33 +1201,105 @@ export function selectEvidence(input: SelectEvidenceInput): SelectedEvidenceSumm
   // Sort decisions by candidateId ascending to keep deterministic
   decisions.sort((a, b) => (a.candidateId < b.candidateId ? -1 : 1));
 
-  // Determine mode
-  let mode: "FULL" | "PARTIAL" | "DEGRADED_NO_RESEARCH" = "FULL";
-  const hasDeterministic = countForCoverage.deterministic > 0;
-  const hasSR = countForCoverage.supportResistance > 0;
-  const hasFlows = countForCoverage.flows > 0;
-  const hasDerivatives = countForCoverage.derivatives > 0;
-  const hasEvents = countForCoverage.events > 0;
-  const hasNews = countForCoverage.newsRegulatory > 0;
-  const hasBrief = selectedBrief !== null;
+  // 5. Derive coverage, modes, warnings, conflicts, and canonically sort the result
 
-  if (!hasBrief) {
-    mode = "DEGRADED_NO_RESEARCH";
-  } else if (
-    !hasDeterministic ||
-    !hasSR ||
-    !hasFlows ||
-    !hasDerivatives ||
-    !hasEvents ||
-    !hasNews
-  ) {
-    mode = "PARTIAL";
+  const contextualFamilies = [
+    "supportResistance",
+    "flows",
+    "derivatives",
+    "events",
+    "newsRegulatory"
+  ] as const;
+
+  const familyClaimsMap = {
+    supportResistance: selectedSR,
+    flows: selectedFlows,
+    derivatives: selectedDerivatives,
+    events: selectedEvents,
+    newsRegulatory: selectedNews
+  };
+
+  const familyStatus: Record<string, "MISSING" | "REJECTED" | "CONFLICTED" | "AVAILABLE"> = {};
+
+  // For every contextual family, derive AVAILABLE/CONFLICTED, REJECTED, and MISSING
+  for (const fam of contextualFamilies) {
+    const candidates = candidatesByFamily.get(fam) || [];
+    if (candidates.length === 0) {
+      familyStatus[fam] = "MISSING";
+    } else {
+      const selectedList = familyClaimsMap[fam];
+      if (selectedList.length === 0) {
+        familyStatus[fam] = "REJECTED";
+      } else {
+        const hasBullish = selectedList.some((c) => c.direction.toLowerCase() === "bullish");
+        const hasBearish = selectedList.some((c) => c.direction.toLowerCase() === "bearish");
+        if (hasBullish && hasBearish) {
+          familyStatus[fam] = "CONFLICTED";
+        } else {
+          familyStatus[fam] = "AVAILABLE";
+        }
+      }
+    }
   }
 
-  // Warnings
-  const warnings: SelectionWarning[] = [];
-  let hasStaleInput = false;
+  // Derive deterministic family coverage status separately
+  let deterministicStatus: "MISSING" | "REJECTED" | "AVAILABLE" = "AVAILABLE";
+  const detCandidates = candidatesByFamily.get("deterministic") || [];
+  if (detCandidates.length === 0) {
+    deterministicStatus = "MISSING";
+  } else if (selectedDeterministic.length === 0) {
+    deterministicStatus = "REJECTED";
+  }
 
+  // Determine mode
+  // FULL: all five contextual families are AVAILABLE, and brief is selected
+  // PARTIAL: not FULL, and at least one contextual claim or brief is selected
+  // DEGRADED_NO_RESEARCH: neither contextual claims nor brief survive
+  const allContextualAvailable = contextualFamilies.every(
+    (fam) => familyStatus[fam] === "AVAILABLE"
+  );
+  const briefSelected = selectedBrief !== null;
+
+  let mode: "FULL" | "PARTIAL" | "DEGRADED_NO_RESEARCH";
+  if (allContextualAvailable && briefSelected) {
+    mode = "FULL";
+  } else {
+    const hasAnySelectedContextual = contextualFamilies.some(
+      (fam) => familyClaimsMap[fam].length > 0
+    );
+    if (hasAnySelectedContextual || briefSelected) {
+      mode = "PARTIAL";
+    } else {
+      mode = "DEGRADED_NO_RESEARCH";
+    }
+  }
+
+  // Conflicts
+  const conflicts: ConflictSummary[] = [];
+  for (const fam of contextualFamilies) {
+    if (familyStatus[fam] === "CONFLICTED") {
+      const selectedList = familyClaimsMap[fam];
+      const affectedCandidates = selectedList
+        .filter(
+          (c) => c.direction.toLowerCase() === "bullish" || c.direction.toLowerCase() === "bearish"
+        )
+        .map((c) => c.candidateId)
+        .sort();
+
+      conflicts.push({
+        conflictType: "family_conflict",
+        message: `Family ${fam} has conflicting bullish and bearish claims`,
+        affectedCandidates
+      });
+    }
+  }
+  conflicts.sort((a, b) => a.message.localeCompare(b.message));
+
+  // Warnings
+  const rawWarnings: SelectionWarning[] = [];
+
+  // 1. stale_input
+  let hasStaleInput = false;
   const checkStale = (s: { freshnessWeight: number }) => {
     if (s.freshnessWeight === validatedPolicy.staleWeightBps) {
       hasStaleInput = true;
@@ -1239,33 +1311,115 @@ export function selectEvidence(input: SelectEvidenceInput): SelectedEvidenceSumm
   selectedDerivatives.forEach(checkStale);
   selectedEvents.forEach(checkStale);
   selectedNews.forEach(checkStale);
+  if (selectedBrief) checkStale(selectedBrief);
 
   if (hasStaleInput) {
-    warnings.push({
+    rawWarnings.push({
       code: "stale_input",
       message: "Stale input evidence was selected and downweighted"
     });
   }
-  if (!hasBrief) {
-    warnings.push({ code: "no_selected_research", message: "No research brief was selected" });
-  }
 
-  const expectedFamilies = [
-    "deterministic",
-    "supportResistance",
-    "flows",
-    "derivatives",
-    "events",
-    "newsRegulatory"
-  ];
-  for (const fam of expectedFamilies) {
-    if (countForCoverage[fam] === 0) {
-      warnings.push({
-        code: "missing_family",
-        message: `Family ${fam} is missing from selected evidence`
+  // 2. conflicted_family
+  for (const fam of contextualFamilies) {
+    if (familyStatus[fam] === "CONFLICTED") {
+      rawWarnings.push({
+        code: "conflicted_family",
+        message: `Family ${fam} has conflicting bullish and bearish claims`
       });
     }
   }
+
+  // 3. missing_family / rejected_family
+  // Include deterministic family in warnings
+  if (deterministicStatus === "MISSING") {
+    rawWarnings.push({
+      code: "missing_family",
+      message: "Family deterministic is missing from selected evidence"
+    });
+  } else if (deterministicStatus === "REJECTED") {
+    rawWarnings.push({
+      code: "rejected_family",
+      message: "Family deterministic has candidates but none were selected"
+    });
+  }
+
+  for (const fam of contextualFamilies) {
+    if (familyStatus[fam] === "MISSING") {
+      rawWarnings.push({
+        code: "missing_family",
+        message: `Family ${fam} is missing from selected evidence`
+      });
+    } else if (familyStatus[fam] === "REJECTED") {
+      rawWarnings.push({
+        code: "rejected_family",
+        message: `Family ${fam} has candidates but none were selected`
+      });
+    }
+  }
+
+  // 4. no_selected_research
+  if (!briefSelected) {
+    rawWarnings.push({
+      code: "no_selected_research",
+      message: "No research brief was selected"
+    });
+  }
+
+  // Deduplicate warnings by code plus message
+  const seenWarnings = new Set<string>();
+  const warnings: SelectionWarning[] = [];
+  for (const w of rawWarnings) {
+    const key = `${w.code}:${w.message}`;
+    if (!seenWarnings.has(key)) {
+      seenWarnings.add(key);
+      warnings.push(w);
+    }
+  }
+
+  // Sort warnings: code rank, family rank, message string
+  const CODE_RANK: Record<string, number> = {
+    stale_input: 1,
+    conflicted_family: 2,
+    missing_family: 3,
+    rejected_family: 4,
+    no_selected_research: 5
+  };
+
+  const FAMILY_RANK: Record<string, number> = {
+    deterministic: 1,
+    supportResistance: 2,
+    flows: 3,
+    derivatives: 4,
+    events: 5,
+    newsRegulatory: 6,
+    researchBrief: 7
+  };
+
+  function getFamilyFromWarning(w: SelectionWarning): string {
+    if (w.message.includes("deterministic")) return "deterministic";
+    if (w.message.includes("supportResistance")) return "supportResistance";
+    if (w.message.includes("flows")) return "flows";
+    if (w.message.includes("derivatives")) return "derivatives";
+    if (w.message.includes("events")) return "events";
+    if (w.message.includes("newsRegulatory")) return "newsRegulatory";
+    if (w.code === "no_selected_research") return "researchBrief";
+    return "";
+  }
+
+  warnings.sort((a, b) => {
+    const codeRankA = CODE_RANK[a.code] ?? 999;
+    const codeRankB = CODE_RANK[b.code] ?? 999;
+    if (codeRankA !== codeRankB) return codeRankA - codeRankB;
+
+    const famA = getFamilyFromWarning(a);
+    const famB = getFamilyFromWarning(b);
+    const famRankA = FAMILY_RANK[famA] ?? 999;
+    const famRankB = FAMILY_RANK[famB] ?? 999;
+    if (famRankA !== famRankB) return famRankA - famRankB;
+
+    return a.message.localeCompare(b.message);
+  });
 
   // 6. Build the qualified source-reference union
   interface MutableSelectedSourceReference {
@@ -1285,32 +1439,37 @@ export function selectEvidence(input: SelectEvidenceInput): SelectedEvidenceSumm
 
   const referenceUnion = new Map<string, MutableSelectedSourceReference>();
 
+  const getRefEntry = (
+    refId: string,
+    record: EvidenceBundleRecord
+  ): MutableSelectedSourceReference | null => {
+    const bundle = record.bundle;
+    const bundleHash = record.evidenceHash;
+    const key = `${bundleHash}/${refId}`;
+    if (!referenceUnion.has(key)) {
+      const ref = bundle.sourceReferences.find((r) => r.referenceId === refId);
+      if (!ref) return null;
+      referenceUnion.set(key, {
+        referenceId: ref.referenceId,
+        sourceType: ref.sourceType,
+        locator: ref.locator,
+        observedAt: ref.observedAt,
+        bundleHash,
+        publisher: bundle.source.publisher,
+        sourceId: bundle.source.sourceId,
+        runId: bundle.runId,
+        correlationId: bundle.correlationId,
+        receivedAtUnixMs: record.receivedAtUnixMs,
+        isSelectedLineage: false,
+        isAuditOnly: false
+      });
+    }
+    return referenceUnion.get(key)!;
+  };
+
   for (const record of sortedRecords) {
     const bundle = record.bundle;
     const bundleHash = record.evidenceHash;
-
-    const getRefEntry = (refId: string): MutableSelectedSourceReference | null => {
-      const key = `${bundleHash}/${refId}`;
-      if (!referenceUnion.has(key)) {
-        const ref = bundle.sourceReferences.find((r) => r.referenceId === refId);
-        if (!ref) return null;
-        referenceUnion.set(key, {
-          referenceId: ref.referenceId,
-          sourceType: ref.sourceType,
-          locator: ref.locator,
-          observedAt: ref.observedAt,
-          bundleHash,
-          publisher: bundle.source.publisher,
-          sourceId: bundle.source.sourceId,
-          runId: bundle.runId,
-          correlationId: bundle.correlationId,
-          receivedAtUnixMs: record.receivedAtUnixMs,
-          isSelectedLineage: false,
-          isAuditOnly: false
-        });
-      }
-      return referenceUnion.get(key)!;
-    };
 
     // Scan all deterministic features in this bundle
     for (const feature of bundle.deterministicFeatures) {
@@ -1319,7 +1478,7 @@ export function selectEvidence(input: SelectEvidenceInput): SelectedEvidenceSumm
       if (!dec) continue;
 
       for (const refId of feature.inputLineage) {
-        const entry = getRefEntry(refId);
+        const entry = getRefEntry(refId, record);
         if (entry) {
           if (dec.status === "SELECTED") {
             entry.isSelectedLineage = true;
@@ -1345,7 +1504,7 @@ export function selectEvidence(input: SelectEvidenceInput): SelectedEvidenceSumm
       if (!dec) continue;
 
       for (const refId of claim.sourceReferenceIds) {
-        const entry = getRefEntry(refId);
+        const entry = getRefEntry(refId, record);
         if (entry) {
           if (dec.status === "SELECTED") {
             entry.isSelectedLineage = true;
@@ -1365,6 +1524,129 @@ export function selectEvidence(input: SelectEvidenceInput): SelectedEvidenceSumm
     return 0;
   });
 
+  // Canonically normalize and sort the arrays
+  // Do not sort publisher-owned arrays inside original item objects in place; clone them.
+  const finalDeterministic = selectedDeterministic
+    .map((f) => {
+      const originalItem = {
+        ...f.originalItem,
+        inputLineage: [...f.originalItem.inputLineage].sort() as [string, ...string[]],
+        warnings: f.originalItem.warnings
+          ? [...f.originalItem.warnings].sort((a, b) => a.localeCompare(b))
+          : undefined
+      };
+      return {
+        ...f,
+        sourceReferenceIds: [...f.sourceReferenceIds].sort(),
+        originalItem: originalItem as unknown as SelectedDeterministicFeature["originalItem"]
+      };
+    })
+    .sort((a, b) => a.candidateId.localeCompare(b.candidateId));
+
+  const normalizeContextualClaim = (c: SelectedContextualClaim) => {
+    const originalItem = {
+      ...c.originalItem,
+      sourceReferenceIds: [...c.originalItem.sourceReferenceIds].sort() as [string, ...string[]]
+    };
+    return {
+      ...c,
+      sourceReferenceIds: [...c.sourceReferenceIds].sort(),
+      originalItem: originalItem as unknown as SelectedContextualClaim["originalItem"]
+    };
+  };
+
+  const finalSR = selectedSR
+    .map(normalizeContextualClaim)
+    .sort((a, b) => a.candidateId.localeCompare(b.candidateId));
+  const finalFlows = selectedFlows
+    .map(normalizeContextualClaim)
+    .sort((a, b) => a.candidateId.localeCompare(b.candidateId));
+  const finalDerivatives = selectedDerivatives
+    .map(normalizeContextualClaim)
+    .sort((a, b) => a.candidateId.localeCompare(b.candidateId));
+  const finalEvents = selectedEvents
+    .map(normalizeContextualClaim)
+    .sort((a, b) => a.candidateId.localeCompare(b.candidateId));
+  const finalNews = selectedNews
+    .map(normalizeContextualClaim)
+    .sort((a, b) => a.candidateId.localeCompare(b.candidateId));
+
+  let finalBrief: SelectedResearchBrief | null = null;
+  if (selectedBrief) {
+    const originalItem = {
+      ...selectedBrief.originalItem,
+      sourceEvidenceIds: [...selectedBrief.originalItem.sourceEvidenceIds].sort() as [
+        string,
+        ...string[]
+      ],
+      keyFindings: selectedBrief.originalItem.keyFindings
+        ? [...selectedBrief.originalItem.keyFindings].sort()
+        : [],
+      uncertainties: selectedBrief.originalItem.uncertainties
+        ? [...selectedBrief.originalItem.uncertainties].sort()
+        : []
+    };
+    finalBrief = {
+      ...selectedBrief,
+      sourceEvidenceIds: [...selectedBrief.sourceEvidenceIds].sort(),
+      originalItem: originalItem as unknown as SelectedResearchBrief["originalItem"]
+    };
+  }
+
+  const sortedBundles = [...bundles].sort((a, b) => {
+    if (a.publisher !== b.publisher) return a.publisher.localeCompare(b.publisher);
+    if (a.sourceId !== b.sourceId) return a.sourceId.localeCompare(b.sourceId);
+    return a.bundleHash.localeCompare(b.bundleHash);
+  });
+
+  const finalDecisions = [...decisions].sort((a, b) => a.candidateId.localeCompare(b.candidateId));
+
+  // Assertions for integrity
+  for (const candidateId of allRegisteredCandidates.keys()) {
+    const decs = finalDecisions.filter((d) => d.candidateId === candidateId);
+    if (decs.length !== 1) {
+      throw new Error(
+        `Candidate ${candidateId} must have exactly one decision, found ${decs.length}`
+      );
+    }
+    const dec = decs[0];
+    if (dec.status !== "SELECTED" && dec.status !== "EXCLUDED") {
+      throw new Error(`Decision for ${candidateId} has non-terminal status ${dec.status}`);
+    }
+  }
+
+  const allSelectedCandidateIds = [
+    ...finalDeterministic.map((f) => f.candidateId),
+    ...finalSR.map((c) => c.candidateId),
+    ...finalFlows.map((c) => c.candidateId),
+    ...finalDerivatives.map((c) => c.candidateId),
+    ...finalEvents.map((c) => c.candidateId),
+    ...finalNews.map((c) => c.candidateId),
+    ...(finalBrief ? [finalBrief.candidateId] : [])
+  ];
+  for (const candId of allSelectedCandidateIds) {
+    const dec = finalDecisions.find((d) => d.candidateId === candId);
+    if (!dec || dec.status !== "SELECTED") {
+      throw new Error(`Selected candidate ${candId} must map to a SELECTED decision`);
+    }
+  }
+
+  const allScores = [
+    ...finalDeterministic.map((f) => f.score),
+    ...finalSR.map((c) => c.score),
+    ...finalFlows.map((c) => c.score),
+    ...finalDerivatives.map((c) => c.score),
+    ...finalEvents.map((c) => c.score),
+    ...finalNews.map((c) => c.score),
+    ...(finalBrief && finalBrief.score !== null ? [finalBrief.score] : []),
+    ...finalDecisions.map((d) => d.score).filter((s): s is number => s !== null)
+  ];
+  for (const score of allScores) {
+    if (!Number.isSafeInteger(score) || score < 0 || score > 10000) {
+      throw new RangeError(`Score ${score} must be a safe integer in [0, 10000]`);
+    }
+  }
+
   return {
     selectionPolicyVersion: validatedPolicy.version,
     selectedAtUnixMs,
@@ -1373,15 +1655,15 @@ export function selectEvidence(input: SelectEvidenceInput): SelectedEvidenceSumm
     authority: "ADVISORY_ONLY",
     mode,
     selected: {
-      deterministicFeatures: selectedDeterministic,
+      deterministicFeatures: finalDeterministic,
       contextualEvidence: {
-        supportResistance: selectedSR,
-        flows: selectedFlows,
-        derivatives: selectedDerivatives,
-        events: selectedEvents,
-        newsRegulatory: selectedNews
+        supportResistance: finalSR,
+        flows: finalFlows,
+        derivatives: finalDerivatives,
+        events: finalEvents,
+        newsRegulatory: finalNews
       },
-      researchBrief: selectedBrief
+      researchBrief: finalBrief
     },
     familyCoverage: {
       deterministicCount: countForCoverage.deterministic,
@@ -1397,10 +1679,10 @@ export function selectEvidence(input: SelectEvidenceInput): SelectedEvidenceSumm
       unavailableCount: detUnavailable,
       invalidCount: detInvalid
     },
-    conflicts: [],
+    conflicts,
     warnings,
     sourceReferences: sortedSourceRefs,
-    bundles,
-    decisions
+    bundles: sortedBundles,
+    decisions: finalDecisions
   };
 }
