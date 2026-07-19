@@ -3,18 +3,20 @@ import type {
   PolicyInsightHistoryCursor
 } from "../ports/policyInsightRepositoryPort.js";
 import type { ClockPort } from "../ports/clock.js";
-import type { InsightHistoryItem } from "../../contract/v1/insights.js";
+import type { InsightHistoryItem, InsightHistoryResponse } from "../../contract/v1/insights.js";
+import { SCHEMA_VERSION } from "../../contract/v1/types.js";
 
 export type GetPolicyInsightHistoryUseCase = (input: {
   readonly pair: "SOL/USDC";
   readonly scopeKey: string;
   readonly limit: number;
   readonly cursor: PolicyInsightHistoryCursor | null;
-}) => Promise<{
-  readonly queriedAtUnixMs: number;
-  readonly items: readonly InsightHistoryItem[];
-  readonly nextCursor: PolicyInsightHistoryCursor | null;
-}>;
+}) => Promise<
+  InsightHistoryResponse & {
+    readonly queriedAtUnixMs: number;
+    readonly nextCursor: PolicyInsightHistoryCursor | null;
+  }
+>;
 
 export interface GetPolicyInsightHistoryUseCaseDeps {
   readonly repository: PolicyInsightRepositoryPort;
@@ -35,8 +37,11 @@ export const createGetPolicyInsightHistoryUseCase = (
       })
     );
     return {
-      queriedAtUnixMs,
+      schemaVersion: SCHEMA_VERSION,
+      pair: input.pair,
+      limit: input.limit,
       items,
+      queriedAtUnixMs,
       nextCursor: result.nextCursor
     };
   };

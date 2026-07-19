@@ -298,4 +298,61 @@ describe.skipIf(!process.env.DATABASE_URL)("postgresPolicyInsightRepository.hist
 
     expect(history.records).toHaveLength(0);
   });
+
+  it("cursor encode/decode round-trip", () => {
+    const originalCursor = {
+      generatedAtUnixMs: 1700000000000,
+      id: 42
+    };
+
+    const encodeCursor = (cursor: typeof originalCursor): string => {
+      const obj = {
+        v: 1,
+        generatedAtUnixMs: cursor.generatedAtUnixMs,
+        id: cursor.id
+      };
+      return Buffer.from(JSON.stringify(obj), "utf8").toString("base64url");
+    };
+
+    const decodeCursor = (encoded: string): typeof originalCursor => {
+      const json = Buffer.from(encoded, "base64url").toString("utf8");
+      const obj = JSON.parse(json);
+      if (obj.v !== 1 || typeof obj.generatedAtUnixMs !== "number" || typeof obj.id !== "number") {
+        throw new Error("Invalid cursor");
+      }
+      return {
+        generatedAtUnixMs: obj.generatedAtUnixMs,
+        id: obj.id
+      };
+    };
+
+    const encoded = encodeCursor(originalCursor);
+    const decoded = decodeCursor(encoded);
+    expect(decoded).toEqual(originalCursor);
+  });
+
+  it("canonical JSON round-trip", async () => {
+    const record = createTestRecord({
+      insightId: "3".repeat(64),
+      synthesisInputHash: "3".repeat(64)
+    });
+
+    const res = await repository.insertOrGet(record);
+    expect(res.status).toBe("created");
+
+    const history = await repository.getHistory({
+      pair: TEST_PAIR,
+      scopeKey: "pair",
+      limit: 1,
+      cursor: null
+    });
+
+    expect(history.records).toHaveLength(1);
+    const retrieved = history.records[0];
+
+    expect(retrieved.synthesisOutputJson).toEqual(record.synthesisOutputJson);
+    expect(retrieved.synthesisInputJson).toEqual(record.synthesisInputJson);
+    expect(retrieved.payloadCanonical).toBe(record.payloadCanonical);
+    expect(retrieved.payloadHash).toBe(record.payloadHash);
+  });
 });

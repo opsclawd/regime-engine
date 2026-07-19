@@ -339,17 +339,14 @@ export const createPostgresPolicyInsightRepository = (db: Db): PolicyInsightRepo
 
     getHistory: async ({ pair, scopeKey, limit, cursor }) => {
       try {
-        const DEFAULT_LIMIT = 30;
         const MIN_LIMIT = 1;
         const MAX_LIMIT = 100;
 
-        const effectiveLimit = limit === undefined ? DEFAULT_LIMIT : limit;
-
-        if (effectiveLimit < MIN_LIMIT || effectiveLimit > MAX_LIMIT) {
+        if (limit < MIN_LIMIT || limit > MAX_LIMIT) {
           throw new Error(`History limit must be between ${MIN_LIMIT} and ${MAX_LIMIT}`);
         }
 
-        const queryLimit = effectiveLimit + 1;
+        const queryLimit = limit + 1;
 
         const conditions = [eq(policyInsights.pair, pair), eq(policyInsights.scopeKey, scopeKey)];
 
@@ -372,8 +369,8 @@ export const createPostgresPolicyInsightRepository = (db: Db): PolicyInsightRepo
           .orderBy(desc(policyInsights.generatedAtUnixMs), desc(policyInsights.id))
           .limit(queryLimit);
 
-        const hasMore = rows.length > effectiveLimit;
-        const resultRows = rows.slice(0, effectiveLimit);
+        const hasMore = rows.length > limit;
+        const resultRows = rows.slice(0, limit);
         const records = resultRows.map(mapRowToStoredInsight);
 
         let nextCursor: PolicyInsightHistoryCursor | null = null;

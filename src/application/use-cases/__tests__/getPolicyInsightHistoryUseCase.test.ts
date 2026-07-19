@@ -98,6 +98,9 @@ describe("GetPolicyInsightHistoryUseCase", () => {
       cursor: null
     });
 
+    expect(result.schemaVersion).toBe("1.0");
+    expect(result.pair).toBe("SOL/USDC");
+    expect(result.limit).toBe(10);
     expect(result.queriedAtUnixMs).toBe(CLOCK_TIME);
     expect(result.items).toHaveLength(2);
     expect(result.items[0].payloadHash).toBe("hash");
