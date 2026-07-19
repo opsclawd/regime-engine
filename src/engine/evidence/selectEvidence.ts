@@ -1201,7 +1201,9 @@ export function selectEvidence(input: SelectEvidenceInput): SelectedEvidenceSumm
 
   // Clear and rebuild decisions array to ensure it matches decisionMap
   decisions.length = 0;
-  decisions.push(...decisionMap.values());
+  for (const dec of decisionMap.values()) {
+    decisions.push(dec);
+  }
 
   // Sort decisions by candidateId ascending to keep deterministic
   decisions.sort((a, b) => (a.candidateId < b.candidateId ? -1 : 1));
@@ -1300,7 +1302,8 @@ export function selectEvidence(input: SelectEvidenceInput): SelectedEvidenceSumm
           bearish += c.score;
         }
       }
-      const consensus = Math.floor((Math.abs(bullish - bearish) * 10000) / (bullish + bearish));
+      const total = bullish + bearish;
+      const consensus = total === 0 ? 0 : Math.floor((Math.abs(bullish - bearish) * 10000) / total);
 
       conflicts.push({
         conflictType: "family_conflict",
