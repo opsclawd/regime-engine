@@ -1,9 +1,9 @@
 import type {
   PolicyInsightRepositoryPort,
-  PolicyInsightHistoryCursor,
-  StoredPolicyInsight
+  PolicyInsightHistoryCursor
 } from "../ports/policyInsightRepositoryPort.js";
 import type { ClockPort } from "../ports/clock.js";
+import type { InsightHistoryItem } from "../../contract/v1/insights.js";
 
 export type GetPolicyInsightHistoryUseCase = (input: {
   readonly pair: "SOL/USDC";
@@ -12,7 +12,7 @@ export type GetPolicyInsightHistoryUseCase = (input: {
   readonly cursor: PolicyInsightHistoryCursor | null;
 }) => Promise<{
   readonly queriedAtUnixMs: number;
-  readonly records: readonly StoredPolicyInsight[];
+  readonly items: readonly InsightHistoryItem[];
   readonly nextCursor: PolicyInsightHistoryCursor | null;
 }>;
 
@@ -27,9 +27,16 @@ export const createGetPolicyInsightHistoryUseCase = (
   return async (input) => {
     const queriedAtUnixMs = deps.clock.nowUnixMs();
     const result = await deps.repository.getHistory(input);
+    const items = result.records.map(
+      (record): InsightHistoryItem => ({
+        ...record.synthesisOutputJson,
+        payloadHash: record.payloadHash,
+        receivedAtIso: new Date(record.persistedAtUnixMs).toISOString()
+      })
+    );
     return {
       queriedAtUnixMs,
-      records: result.records,
+      items,
       nextCursor: result.nextCursor
     };
   };

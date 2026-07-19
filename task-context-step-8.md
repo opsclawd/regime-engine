@@ -1,6 +1,6 @@
 # Task Context: Task 8
 
-Title: Implement current evidence handler
+Title: Add stable cursor history through the port and adapter
 ## Workspace & Scope Constraints
 
 ## WORKSPACE CONSTRAINTS
@@ -9,65 +9,91 @@ Your working directory is a dedicated git worktree with the repository's complet
 
 .ai-orchestrator.local.json, if one exists, lives only in the main checkout and is intentionally not copied into your worktree — it is operator-machine-specific and not part of your task. Do not search for it or read it outside this directory. Reason about configuration using only .ai-orchestrator.json in your own working directory; treat it as the effective config for your task.
 
-Working Directory: /home/gary/.openclaw/workspace/regime-engine/.ai-worktrees/issue-59
+Working Directory: /home/gary/.openclaw/workspace/regime-engine/.ai-worktrees/issue-61
 Repository: opsclawd/regime-engine
-Branch: ai/issue-59
-Start Commit: 90e95da66c50bf9c462dfa0d552e3b13bce9a965
+Branch: ai/issue-61
+Start Commit: 8eb83b2403a525df9fbb640f75379bc56dc7bc3c
 
 ## Task Requirements
 
 **Files:**
 
-- Create: `src/adapters/http/handlers/evidenceCurrent.ts`
-- Create: `src/adapters/http/handlers/__tests__/evidenceCurrent.test.ts`
+- Modify: `src/application/ports/policyInsightRepositoryPort.ts`
+- Modify: `src/adapters/postgres/postgresPolicyInsightRepository.ts`
+- Create: `src/adapters/postgres/__tests__/postgresPolicyInsightRepository.history.test.ts`
+- Create: `src/application/use-cases/getPolicyInsightHistoryUseCase.ts`
+- Create: `src/application/use-cases/__tests__/getPolicyInsightHistoryUseCase.test.ts`
 
-- [ ] **Step 1: Write failing current-response tests**
+**Port/interface rule:** Add `getHistory` and its PostgreSQL implementation in this same task.
 
-Cover every parsed scope, independent source filters, strict validation details, null/typed unavailable `503`, empty `404`, multiple publisher/source items in returned order, stale/expired visibility, complete bundle provenance, one `queriedAt` ISO, and redacted unknown `500`.
+**Invariants implemented first:**
 
-Run: `pnpm vitest run src/adapters/http/handlers/__tests__/evidenceCurrent.test.ts`
+- `history pagination is stable across equal generation timestamps`
+- `history returns changed canonical inputs as distinct rows`
+- `history never returns legacy externally authored rows`
 
-Expected: FAIL because the handler does not exist.
+- [ ] **Step 1: Write failing history tests**
 
-- [ ] **Step 2: Implement current mapping**
+  Cover empty history, default/max limit, invalid limits, exact scope filtering, equal-timestamp tie-breaking, cursor encode/decode round-trip, no duplicates or gaps across pages, and canonical JSON round-trip.
 
-`createEvidenceCurrentHandler(useCase: GetCurrentEvidenceUseCase | null)` parses with `parseEvidenceCurrentQuery`, calls the use case, and sends:
+- [ ] **Step 2: Confirm RED**
 
-```ts
-{
-  schemaVersion: EVIDENCE_SCHEMA_VERSION,
-  pair: "SOL/USDC",
-  scope,
-  queriedAt: new Date(queriedAtUnixMs).toISOString(),
-  items: records.map(toEvidenceWireItem)
-}
-```
+  Run: `DATABASE_URL=postgres://test:test@localhost:5432/regime_engine_test PG_SSL=false pnpm exec vitest run src/adapters/postgres/__tests__/postgresPolicyInsightRepository.history.test.ts src/application/use-cases/__tests__/getPolicyInsightHistoryUseCase.test.ts`
 
-An empty result is `404 EVIDENCE_NOT_FOUND`; do not discard expired records or choose a winner.
+  Expected: FAIL because history support does not exist.
 
-- [ ] **Step 3: Verify and commit**
+- [ ] **Step 3: Add the port method, adapter query, and use case together**
 
-Run: `pnpm vitest run src/adapters/http/handlers/__tests__/evidenceCurrent.test.ts`
+  ```ts
+  export interface PolicyInsightHistoryCursor {
+    readonly generatedAtUnixMs: number;
+    readonly id: number;
+  }
 
-Expected: PASS.
+  getHistory(input: {
+    readonly pair: "SOL/USDC";
+    readonly scopeKey: string;
+    readonly limit: number;
+    readonly cursor: PolicyInsightHistoryCursor | null;
+  }): Promise<{
+    readonly records: readonly StoredPolicyInsight[];
+    readonly nextCursor: PolicyInsightHistoryCursor | null;
+  }>;
+  ```
 
-Commit: `git add src/adapters/http/handlers/evidenceCurrent.ts src/adapters/http/handlers/__tests__/evidenceCurrent.test.ts && git commit -m "m59: add current evidence handler"`
+  Query with the strict tuple predicate `(generated_at_unix_ms, id) < (cursor.generatedAtUnixMs, cursor.id)`, request `limit + 1`, and derive the next cursor from the last returned item. Map results into #63's history envelope in the use case, not the repository.
+
+- [ ] **Step 4: Verify pagination**
+
+  Run: `DATABASE_URL=postgres://test:test@localhost:5432/regime_engine_test PG_SSL=false pnpm exec vitest run src/adapters/postgres/__tests__/postgresPolicyInsightRepository.history.test.ts src/application/use-cases/__tests__/getPolicyInsightHistoryUseCase.test.ts`
+
+  Run: `pnpm exec eslint src/application/ports/policyInsightRepositoryPort.ts src/adapters/postgres/postgresPolicyInsightRepository.ts src/adapters/postgres/__tests__/postgresPolicyInsightRepository.history.test.ts src/application/use-cases/getPolicyInsightHistoryUseCase.ts src/application/use-cases/__tests__/getPolicyInsightHistoryUseCase.test.ts`
+
+- [ ] **Step 5: Commit the task**
+
+  Run: `git add src/application/ports/policyInsightRepositoryPort.ts src/adapters/postgres/postgresPolicyInsightRepository.ts src/adapters/postgres/__tests__/postgresPolicyInsightRepository.history.test.ts src/application/use-cases/getPolicyInsightHistoryUseCase.ts src/application/use-cases/__tests__/getPolicyInsightHistoryUseCase.test.ts && git commit -m "m61: paginate canonical policy insight history"`
 
 ## Repository Targets
 
 ### Expected Files
-- src/adapters/http/handlers/evidenceCurrent.ts
-- src/adapters/http/handlers/__tests__/evidenceCurrent.test.ts
+- src/application/ports/policyInsightRepositoryPort.ts
+- src/adapters/postgres/postgresPolicyInsightRepository.ts
+- src/adapters/postgres/__tests__/postgresPolicyInsightRepository.history.test.ts
+- src/application/use-cases/getPolicyInsightHistoryUseCase.ts
+- src/application/use-cases/__tests__/getPolicyInsightHistoryUseCase.test.ts
 
 ## Validation Commands
 
 ```bash
-pnpm vitest run src/adapters/http/handlers/__tests__/evidenceCurrent.test.ts
+DATABASE_URL=postgres://test:test@localhost:5432/regime_engine_test PG_SSL=false pnpm exec vitest run src/adapters/postgres/__tests__/postgresPolicyInsightRepository.history.test.ts src/application/use-cases/__tests__/getPolicyInsightHistoryUseCase.test.ts
+pnpm exec eslint src/application/ports/policyInsightRepositoryPort.ts src/adapters/postgres/postgresPolicyInsightRepository.ts src/adapters/postgres/__tests__/postgresPolicyInsightRepository.history.test.ts src/application/use-cases/getPolicyInsightHistoryUseCase.ts src/application/use-cases/__tests__/getPolicyInsightHistoryUseCase.test.ts
 ```
 
 ## Behavioral Invariants
 
 You MUST implement the following behavioral invariants as named tests first (TDD):
 
-- **returns all current sources without selecting**: All ordered repository records, including stale and expired records with complete bundles, are returned; only an empty result maps to EVIDENCE_NOT_FOUND. (Test: `returns all current sources without selecting`)
+- **stable tuple cursor**: Equal generation timestamps page without duplicates or gaps by using row ID as the tie-breaker. (Test: `history pagination is stable across equal generation timestamps`)
+- **changed inputs remain historical**: Distinct synthesis input hashes are retained and returned as separate ordered rows. (Test: `history returns changed canonical inputs as distinct rows`)
+- **canonical history isolation**: History reads only policy_insights and ignores externally authored legacy rows. (Test: `history never returns legacy externally authored rows`)
 

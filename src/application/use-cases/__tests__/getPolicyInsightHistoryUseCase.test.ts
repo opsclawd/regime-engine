@@ -99,9 +99,15 @@ describe("GetPolicyInsightHistoryUseCase", () => {
     });
 
     expect(result.queriedAtUnixMs).toBe(CLOCK_TIME);
-    expect(result.records).toHaveLength(2);
-    expect(result.records[0].id).toBe(1);
-    expect(result.records[1].id).toBe(2);
+    expect(result.items).toHaveLength(2);
+    expect(result.items[0].payloadHash).toBe("hash");
+    expect(result.items[0].receivedAtIso).toBe(
+      new Date(1_700_000_000_000 + 1 * 1000 + 200).toISOString()
+    );
+    expect(result.items[1].payloadHash).toBe("hash");
+    expect(result.items[1].receivedAtIso).toBe(
+      new Date(1_700_000_000_000 + 2 * 1000 + 200).toISOString()
+    );
     expect(result.nextCursor).toEqual({ generatedAtUnixMs: 1_700_000_002_000, id: 2 });
 
     expect(repo.calls).toHaveLength(1);
