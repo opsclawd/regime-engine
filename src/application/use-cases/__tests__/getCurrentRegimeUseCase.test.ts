@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { createGetCurrentRegimeUseCase } from "../getCurrentRegimeUseCase.js";
 import { FakeCandleReadPort } from "./fakes/fakeCandleReadPort.js";
 import { FakeClockPort } from "./fakes/fakeClockPort.js";
@@ -168,5 +168,45 @@ describe("GetCurrentRegimeUseCase", () => {
     });
     expect(candleReadPort.calls[0].limit).toBeGreaterThan(0);
     expect(candleReadPort.calls[0].closedCandleCutoffUnixMs).toBeLessThan(FIXED_NOW);
+  });
+
+  it("uses the supplied observedAtUnixMs and does not call clock.nowUnixMs", async () => {
+    const clock = {
+      nowUnixMs: vi.fn().mockReturnValue(FIXED_NOW)
+    };
+    const candleReadPort = new FakeCandleReadPort({
+      "15m": buildSequential15mRows(100, FIXED_NOW)
+    });
+    const useCase = createGetCurrentRegimeUseCase({
+      candleReadPort,
+      clock,
+      engineVersion: "9.9.9"
+    });
+
+    const explicitTime = FIXED_NOW - 1000;
+    await useCase(baseQuery, explicitTime);
+
+    expect(clock.nowUnixMs).not.toHaveBeenCalled();
+    expect(candleReadPort.calls[0].closedCandleCutoffUnixMs).toBeLessThan(explicitTime);
+  });
+
+  it("throws Error if observedAtUnixMs is invalid", async () => {
+    const clock = new FakeClockPort(FIXED_NOW);
+    const candleReadPort = new FakeCandleReadPort({ "15m": [] });
+    const useCase = createGetCurrentRegimeUseCase({
+      candleReadPort,
+      clock,
+      engineVersion: "9.9.9"
+    });
+
+    await expect(useCase(baseQuery, -5)).rejects.toThrow(
+      "observedAtUnixMs must be a non-negative finite integer"
+    );
+    await expect(useCase(baseQuery, NaN)).rejects.toThrow(
+      "observedAtUnixMs must be a non-negative finite integer"
+    );
+    await expect(useCase(baseQuery, 1.5)).rejects.toThrow(
+      "observedAtUnixMs must be a non-negative finite integer"
+    );
   });
 });

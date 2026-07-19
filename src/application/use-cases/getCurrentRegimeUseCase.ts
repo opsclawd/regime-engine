@@ -10,7 +10,10 @@ import { buildRegimeCandleReadPlan } from "../../engine/marketRegime/regimeCandl
 import { aggregate15mTo1h } from "../../engine/candles/aggregateCandles.js";
 import { RegimeCandlesNotFoundError } from "../errors/regimeErrors.js";
 
-export type GetCurrentRegimeUseCase = (query: RegimeCurrentQuery) => Promise<RegimeCurrentResponse>;
+export type GetCurrentRegimeUseCase = (
+  query: RegimeCurrentQuery,
+  observedAtUnixMs?: number
+) => Promise<RegimeCurrentResponse>;
 
 export interface GetCurrentRegimeUseCaseDeps {
   candleReadPort: CandleReadPort;
@@ -21,9 +24,19 @@ export interface GetCurrentRegimeUseCaseDeps {
 export const createGetCurrentRegimeUseCase = (
   deps: GetCurrentRegimeUseCaseDeps
 ): GetCurrentRegimeUseCase => {
-  return async (query) => {
+  return async (query, observedAtUnixMs) => {
+    if (observedAtUnixMs !== undefined) {
+      if (
+        typeof observedAtUnixMs !== "number" ||
+        !Number.isFinite(observedAtUnixMs) ||
+        !Number.isInteger(observedAtUnixMs) ||
+        observedAtUnixMs < 0
+      ) {
+        throw new Error("observedAtUnixMs must be a non-negative finite integer");
+      }
+    }
     const config = MARKET_REGIME_CONFIG[query.timeframe];
-    const nowUnixMs = deps.clock.nowUnixMs();
+    const nowUnixMs = observedAtUnixMs ?? deps.clock.nowUnixMs();
     const plan = buildRegimeCandleReadPlan({
       requestedTimeframe: query.timeframe,
       nowUnixMs
