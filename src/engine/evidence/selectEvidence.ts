@@ -137,6 +137,14 @@ export interface SelectedSourceReference {
   readonly sourceType: string;
   readonly locator: string;
   readonly observedAt: string;
+  readonly bundleHash: string;
+  readonly publisher: string;
+  readonly sourceId: string;
+  readonly runId: string;
+  readonly correlationId: string;
+  readonly receivedAtUnixMs: number;
+  readonly isSelectedLineage: boolean;
+  readonly isAuditOnly: boolean;
 }
 
 export interface BundleSelectionLineage {
@@ -260,7 +268,6 @@ export function selectEvidence(input: SelectEvidenceInput): SelectedEvidenceSumm
 
   const decisions: EvidenceSelectionDecision[] = [];
   const bundles: BundleSelectionLineage[] = [];
-  const selectedSourceRefs = new Map<string, SelectedSourceReference>();
 
   interface IntermediateCandidate {
     candidateId: string;
@@ -280,6 +287,8 @@ export function selectEvidence(input: SelectEvidenceInput): SelectedEvidenceSumm
       | EventClaim
       | NewsRegulatoryClaim
       | ResearchBrief;
+    asOf: string;
+    observedAt: string | null;
     rawConfidence: number;
     sourceQuality: number;
     provenanceQuality: number;
@@ -595,16 +604,6 @@ export function selectEvidence(input: SelectEvidenceInput): SelectedEvidenceSumm
       reasons: []
     });
 
-    // Populate source references
-    for (const ref of record.bundle.sourceReferences) {
-      selectedSourceRefs.set(ref.referenceId, {
-        referenceId: ref.referenceId,
-        sourceType: ref.sourceType,
-        locator: ref.locator,
-        observedAt: ref.observedAt
-      });
-    }
-
     // Score deterministic features
     for (const feature of record.bundle.deterministicFeatures) {
       const candidateId = `${record.evidenceHash}/deterministic_feature/${feature.featureId}`;
@@ -687,6 +686,8 @@ export function selectEvidence(input: SelectEvidenceInput): SelectedEvidenceSumm
         kind: "deterministic_feature",
         localId: feature.featureId,
         originalItem: feature,
+        asOf: record.bundle.asOf,
+        observedAt: feature.observedAt,
         rawConfidence: feature.confidenceBps,
         sourceQuality,
         provenanceQuality,
@@ -765,6 +766,8 @@ export function selectEvidence(input: SelectEvidenceInput): SelectedEvidenceSumm
         kind: "contextual_claim",
         localId: claim.evidenceId,
         originalItem: claim,
+        asOf: record.bundle.asOf,
+        observedAt: (claim as { observedAt?: string | null }).observedAt ?? null,
         rawConfidence: claim.confidenceBps,
         sourceQuality,
         provenanceQuality,
@@ -799,6 +802,8 @@ export function selectEvidence(input: SelectEvidenceInput): SelectedEvidenceSumm
         kind: "research_brief",
         localId: brief.briefId,
         originalItem: brief,
+        asOf: record.bundle.asOf,
+        observedAt: brief.generatedAt,
         rawConfidence: 10000,
         sourceQuality,
         provenanceQuality: 10000,
@@ -826,7 +831,7 @@ export function selectEvidence(input: SelectEvidenceInput): SelectedEvidenceSumm
         freshnessWeight: 0,
         score: null,
         status: "EXCLUDED",
-        reasons: ["brief_unavailable"]
+        reasons: ["RESEARCH_BRIEF_UNAVAILABLE"]
       });
     }
   }
@@ -862,194 +867,336 @@ export function selectEvidence(input: SelectEvidenceInput): SelectedEvidenceSumm
     }
   }
 
+  // A map of qualified candidateId -> IntermediateCandidate to easily retrieve candidate details
+  const allRegisteredCandidates = new Map<string, IntermediateCandidate>();
+  for (const [, list] of candidatesByFamily.entries()) {
+    for (const c of list) {
+      allRegisteredCandidates.set(c.candidateId, c);
+    }
+  }
+
+  const decisionMap = new Map<string, EvidenceSelectionDecision>();
+
+  // Helper to build a complete decision object
+  const buildDecisionObj = (
+    c: IntermediateCandidate,
+    status: "SELECTED" | "EXCLUDED",
+    reasons: readonly string[],
+    score: number | null
+  ): EvidenceSelectionDecision => ({
+    candidateId: c.candidateId,
+    bundleHash: c.bundleHash,
+    publisher: c.publisher,
+    sourceId: c.sourceId,
+    runId: c.runId,
+    correlationId: c.correlationId,
+    receivedAtUnixMs: c.receivedAtUnixMs,
+    kind: c.kind,
+    localId: c.localId,
+    rawConfidence: c.rawConfidence,
+    sourceQuality: c.sourceQuality,
+    provenanceQuality: c.provenanceQuality,
+    freshnessWeight: c.freshnessWeight,
+    score,
+    status,
+    reasons
+  });
+
+  // 1. Populate decisionMap with initial exclusions
+  for (const dec of decisions) {
+    decisionMap.set(dec.candidateId, dec);
+  }
+
+  // 2. Filter non-brief family candidates by threshold and sort by documented tie-breakers
+  const preliminaryInclusions = new Map<string, IntermediateCandidate>();
+
   for (const [familyName, candList] of candidatesByFamily.entries()) {
-    // 1. Filter out under threshold (for scored items)
+    if (familyName === "researchBrief") {
+      continue;
+    }
+
     const thresholdPassed: IntermediateCandidate[] = [];
     for (const c of candList) {
       if (c.score === null) {
-        // research brief bypasses threshold
         thresholdPassed.push(c);
         continue;
       }
       if (c.score >= validatedPolicy.minimumEffectiveScoreBps) {
         thresholdPassed.push(c);
       } else {
-        decisions.push({
-          candidateId: c.candidateId,
-          bundleHash: c.bundleHash,
-          publisher: c.publisher,
-          sourceId: c.sourceId,
-          runId: c.runId,
-          correlationId: c.correlationId,
-          receivedAtUnixMs: c.receivedAtUnixMs,
-          kind: c.kind,
-          localId: c.localId,
-          rawConfidence: c.rawConfidence,
-          sourceQuality: c.sourceQuality,
-          provenanceQuality: c.provenanceQuality,
-          freshnessWeight: c.freshnessWeight,
-          score: c.score,
-          status: "EXCLUDED",
-          reasons: [...c.reasons, "score_threshold"]
-        });
+        decisionMap.set(
+          c.candidateId,
+          buildDecisionObj(c, "EXCLUDED", [...c.reasons, "score_threshold"], c.score)
+        );
       }
     }
 
-    // 2. Sort by score desc, then candidateId asc
+    // Sort using full comparator: score desc, bundle asOf desc, item observedAt desc (null last), publisher/sourceId/localId/bundleHash asc
     thresholdPassed.sort((a, b) => {
-      const scoreA = a.score ?? 100000;
-      const scoreB = b.score ?? 100000;
+      const scoreA = a.score ?? 0;
+      const scoreB = b.score ?? 0;
       if (scoreA !== scoreB) {
         return scoreB - scoreA;
       }
-      if (a.candidateId < b.candidateId) return -1;
-      if (a.candidateId > b.candidateId) return 1;
+
+      if (a.asOf !== b.asOf) {
+        return a.asOf > b.asOf ? -1 : 1;
+      }
+
+      const obsA = a.observedAt;
+      const obsB = b.observedAt;
+      if (obsA !== obsB) {
+        if (obsA === null || obsA === undefined) return 1;
+        if (obsB === null || obsB === undefined) return -1;
+        return obsA > obsB ? -1 : 1;
+      }
+
+      if (a.publisher !== b.publisher) {
+        return a.publisher < b.publisher ? -1 : 1;
+      }
+
+      if (a.sourceId !== b.sourceId) {
+        return a.sourceId < b.sourceId ? -1 : 1;
+      }
+
+      if (a.localId !== b.localId) {
+        return a.localId < b.localId ? -1 : 1;
+      }
+
+      if (a.bundleHash !== b.bundleHash) {
+        return a.bundleHash < b.bundleHash ? -1 : 1;
+      }
+
       return 0;
     });
 
-    // 3. Apply family cap
     for (let i = 0; i < thresholdPassed.length; i++) {
       const c = thresholdPassed[i];
       if (i < validatedPolicy.maxSelectedPerFamily) {
-        // SELECTED
-        const inclusionReason =
-          c.freshnessWeight === validatedPolicy.staleWeightBps
-            ? "stale_inclusion"
-            : "fresh_inclusion";
-        const finalReasons = [...c.reasons];
-        if (!finalReasons.includes(inclusionReason) && c.kind !== "research_brief") {
-          finalReasons.push(inclusionReason);
-        }
-
-        decisions.push({
-          candidateId: c.candidateId,
-          bundleHash: c.bundleHash,
-          publisher: c.publisher,
-          sourceId: c.sourceId,
-          runId: c.runId,
-          correlationId: c.correlationId,
-          receivedAtUnixMs: c.receivedAtUnixMs,
-          kind: c.kind,
-          localId: c.localId,
-          rawConfidence: c.rawConfidence,
-          sourceQuality: c.sourceQuality,
-          provenanceQuality: c.provenanceQuality,
-          freshnessWeight: c.freshnessWeight,
-          score: c.score,
-          status: "SELECTED",
-          reasons: finalReasons
-        });
-
-        countForCoverage[
-          familyName === "researchBrief"
-            ? "researchBrief"
-            : c.kind === "deterministic_feature"
-              ? "deterministic"
-              : familyName
-        ]++;
-
-        if (c.kind === "deterministic_feature") {
-          selectedDeterministic.push({
-            candidateId: c.candidateId,
-            bundleHash: c.bundleHash,
-            publisher: c.publisher,
-            sourceId: c.sourceId,
-            runId: c.runId,
-            correlationId: c.correlationId,
-            receivedAtUnixMs: c.receivedAtUnixMs,
-            originalItem: c.originalItem as DeterministicFeature,
-            featureId: c.localId,
-            family: c.family,
-            value: c.value!,
-            rawConfidence: c.rawConfidence,
-            sourceQuality: c.sourceQuality,
-            provenanceQuality: c.provenanceQuality,
-            freshnessWeight: c.freshnessWeight,
-            score: c.score!,
-            sourceReferenceIds: c.sourceReferenceIds,
-            status: "SELECTED",
-            reasons: finalReasons
-          });
-        } else if (c.kind === "contextual_claim") {
-          const item = c.originalItem as
-            | SupportResistanceClaim
-            | FlowClaim
-            | DerivativesClaim
-            | EventClaim
-            | NewsRegulatoryClaim;
-          const selectedClaim: SelectedContextualClaim = {
-            candidateId: c.candidateId,
-            bundleHash: c.bundleHash,
-            publisher: c.publisher,
-            sourceId: c.sourceId,
-            runId: c.runId,
-            correlationId: c.correlationId,
-            receivedAtUnixMs: c.receivedAtUnixMs,
-            originalItem: item,
-            evidenceId: c.localId,
-            claim: item.claim,
-            direction: c.direction!,
-            rawConfidence: c.rawConfidence,
-            sourceQuality: c.sourceQuality,
-            provenanceQuality: c.provenanceQuality,
-            freshnessWeight: c.freshnessWeight,
-            score: c.score!,
-            sourceReferenceIds: c.sourceReferenceIds,
-            status: "SELECTED",
-            reasons: finalReasons
-          };
-
-          if (familyName === "supportResistance") selectedSR.push(selectedClaim);
-          else if (familyName === "flows") selectedFlows.push(selectedClaim);
-          else if (familyName === "derivatives") selectedDerivatives.push(selectedClaim);
-          else if (familyName === "events") selectedEvents.push(selectedClaim);
-          else if (familyName === "newsRegulatory") selectedNews.push(selectedClaim);
-        } else if (c.kind === "research_brief") {
-          const item = c.originalItem as ResearchBrief;
-          selectedBrief = {
-            candidateId: c.candidateId,
-            bundleHash: c.bundleHash,
-            publisher: c.publisher,
-            sourceId: c.sourceId,
-            runId: c.runId,
-            correlationId: c.correlationId,
-            receivedAtUnixMs: c.receivedAtUnixMs,
-            originalItem: item,
-            briefId: c.localId,
-            summary: item.summary,
-            rawConfidence: c.rawConfidence,
-            sourceQuality: c.sourceQuality,
-            provenanceQuality: c.provenanceQuality,
-            freshnessWeight: c.freshnessWeight,
-            score: null,
-            sourceReferenceIds: c.sourceReferenceIds,
-            status: "SELECTED",
-            reasons: finalReasons
-          };
-        }
+        preliminaryInclusions.set(c.candidateId, c);
       } else {
-        // EXCLUDED due to cap
-        decisions.push({
-          candidateId: c.candidateId,
-          bundleHash: c.bundleHash,
-          publisher: c.publisher,
-          sourceId: c.sourceId,
-          runId: c.runId,
-          correlationId: c.correlationId,
-          receivedAtUnixMs: c.receivedAtUnixMs,
-          kind: c.kind,
-          localId: c.localId,
-          rawConfidence: c.rawConfidence,
-          sourceQuality: c.sourceQuality,
-          provenanceQuality: c.provenanceQuality,
-          freshnessWeight: c.freshnessWeight,
-          score: c.score,
-          status: "EXCLUDED",
-          reasons: [...c.reasons, "family_cap"]
-        });
+        decisionMap.set(
+          c.candidateId,
+          buildDecisionObj(c, "EXCLUDED", [...c.reasons, "FAMILY_SELECTION_LIMIT"], c.score)
+        );
       }
     }
   }
+
+  // 3. Repeatedly scan deterministic feature dependency closure until a pass makes no changes
+  let changed = true;
+  while (changed) {
+    changed = false;
+    const preliminaryFeatures = [...preliminaryInclusions.values()]
+      .filter((c) => c.kind === "deterministic_feature")
+      .sort((a, b) => (a.candidateId < b.candidateId ? -1 : 1));
+
+    for (const feat of preliminaryFeatures) {
+      const record = sortedRecords.find((r) => r.evidenceHash === feat.bundleHash)!;
+      const bundle = record.bundle;
+      const dependencies = feat.sourceReferenceIds; // feature.inputLineage
+
+      let hasExcludedDependency = false;
+      for (const depId of dependencies) {
+        const isFeature = bundle.deterministicFeatures.some((f) => f.featureId === depId);
+        if (isFeature) {
+          const depCandidateId = `${feat.bundleHash}/deterministic_feature/${depId}`;
+          const depDecision = decisionMap.get(depCandidateId);
+          const isExcluded =
+            (depDecision && depDecision.status === "EXCLUDED") ||
+            !preliminaryInclusions.has(depCandidateId);
+          if (isExcluded) {
+            hasExcludedDependency = true;
+            break;
+          }
+        }
+      }
+
+      if (hasExcludedDependency) {
+        preliminaryInclusions.delete(feat.candidateId);
+        decisionMap.set(
+          feat.candidateId,
+          buildDecisionObj(
+            feat,
+            "EXCLUDED",
+            [...feat.reasons, "FEATURE_DEPENDENCY_EXCLUDED"],
+            feat.score
+          )
+        );
+        changed = true;
+      }
+    }
+  }
+
+  // 4. Finalize the non-brief preliminary inclusions as selected
+  for (const [candId, c] of preliminaryInclusions.entries()) {
+    const inclusionReason =
+      c.freshnessWeight === validatedPolicy.staleWeightBps ? "stale_inclusion" : "fresh_inclusion";
+    const finalReasons = [...c.reasons];
+    if (!finalReasons.includes(inclusionReason)) {
+      finalReasons.push(inclusionReason);
+    }
+    decisionMap.set(candId, buildDecisionObj(c, "SELECTED", finalReasons, c.score));
+  }
+
+  // 5. Evaluate briefs after non-brief decisions are terminal
+  const briefCandidates = candidatesByFamily.get("researchBrief") || [];
+  for (const brief of briefCandidates) {
+    const missingOrExcludedIds: string[] = [];
+    const bundle = sortedRecords.find((r) => r.evidenceHash === brief.bundleHash)!.bundle;
+
+    for (const refId of brief.sourceReferenceIds) {
+      const featId = `${brief.bundleHash}/deterministic_feature/${refId}`;
+      const claimId = `${brief.bundleHash}/contextual_claim/${refId}`;
+      const featDec = decisionMap.get(featId);
+      const claimDec = decisionMap.get(claimId);
+
+      const isSelected =
+        (featDec && featDec.status === "SELECTED") || (claimDec && claimDec.status === "SELECTED");
+      if (!isSelected) {
+        missingOrExcludedIds.push(refId);
+      }
+    }
+
+    if (missingOrExcludedIds.length > 0) {
+      missingOrExcludedIds.sort();
+      decisionMap.set(
+        brief.candidateId,
+        buildDecisionObj(
+          brief,
+          "EXCLUDED",
+          ["BRIEF_REFERENCES_EXCLUDED_EVIDENCE", ...missingOrExcludedIds],
+          null
+        )
+      );
+    } else {
+      let sum = 0;
+      let count = 0;
+      for (const refId of brief.sourceReferenceIds) {
+        const featId = `${brief.bundleHash}/deterministic_feature/${refId}`;
+        const claimId = `${brief.bundleHash}/contextual_claim/${refId}`;
+        const dec = decisionMap.get(featId) ?? decisionMap.get(claimId);
+        if (dec && dec.score !== null) {
+          sum += dec.score;
+          count++;
+        }
+      }
+      const average = count > 0 ? Math.floor(sum / count) : 0;
+      const computedScore = Math.min(bundle.assessment.overallConfidenceBps, average);
+
+      if (computedScore >= validatedPolicy.minimumEffectiveScoreBps) {
+        decisionMap.set(
+          brief.candidateId,
+          buildDecisionObj(brief, "SELECTED", [...brief.reasons], computedScore)
+        );
+      } else {
+        decisionMap.set(
+          brief.candidateId,
+          buildDecisionObj(brief, "EXCLUDED", [...brief.reasons, "score_threshold"], computedScore)
+        );
+      }
+    }
+  }
+
+  // Re-populate selected lists and coverage counters based on final decisionMap status
+  for (const [candId, dec] of decisionMap.entries()) {
+    if (dec.status === "SELECTED") {
+      const c = allRegisteredCandidates.get(candId);
+      if (!c) continue;
+
+      countForCoverage[
+        c.family === "researchBrief"
+          ? "researchBrief"
+          : c.kind === "deterministic_feature"
+            ? "deterministic"
+            : c.family
+      ]++;
+
+      if (c.kind === "deterministic_feature") {
+        selectedDeterministic.push({
+          candidateId: c.candidateId,
+          bundleHash: c.bundleHash,
+          publisher: c.publisher,
+          sourceId: c.sourceId,
+          runId: c.runId,
+          correlationId: c.correlationId,
+          receivedAtUnixMs: c.receivedAtUnixMs,
+          originalItem: c.originalItem as DeterministicFeature,
+          featureId: c.localId,
+          family: c.family,
+          value: c.value!,
+          rawConfidence: c.rawConfidence,
+          sourceQuality: c.sourceQuality,
+          provenanceQuality: c.provenanceQuality,
+          freshnessWeight: c.freshnessWeight,
+          score: dec.score!,
+          sourceReferenceIds: c.sourceReferenceIds,
+          status: "SELECTED",
+          reasons: dec.reasons
+        });
+      } else if (c.kind === "contextual_claim") {
+        const item = c.originalItem as
+          | SupportResistanceClaim
+          | FlowClaim
+          | DerivativesClaim
+          | EventClaim
+          | NewsRegulatoryClaim;
+        const selectedClaim: SelectedContextualClaim = {
+          candidateId: c.candidateId,
+          bundleHash: c.bundleHash,
+          publisher: c.publisher,
+          sourceId: c.sourceId,
+          runId: c.runId,
+          correlationId: c.correlationId,
+          receivedAtUnixMs: c.receivedAtUnixMs,
+          originalItem: item,
+          evidenceId: c.localId,
+          claim: item.claim,
+          direction: c.direction!,
+          rawConfidence: c.rawConfidence,
+          sourceQuality: c.sourceQuality,
+          provenanceQuality: c.provenanceQuality,
+          freshnessWeight: c.freshnessWeight,
+          score: dec.score!,
+          sourceReferenceIds: c.sourceReferenceIds,
+          status: "SELECTED",
+          reasons: dec.reasons
+        };
+
+        if (c.family === "supportResistance") selectedSR.push(selectedClaim);
+        else if (c.family === "flows") selectedFlows.push(selectedClaim);
+        else if (c.family === "derivatives") selectedDerivatives.push(selectedClaim);
+        else if (c.family === "events") selectedEvents.push(selectedClaim);
+        else if (c.family === "newsRegulatory") selectedNews.push(selectedClaim);
+      } else if (c.kind === "research_brief") {
+        const item = c.originalItem as ResearchBrief;
+        selectedBrief = {
+          candidateId: c.candidateId,
+          bundleHash: c.bundleHash,
+          publisher: c.publisher,
+          sourceId: c.sourceId,
+          runId: c.runId,
+          correlationId: c.correlationId,
+          receivedAtUnixMs: c.receivedAtUnixMs,
+          originalItem: item,
+          briefId: c.localId,
+          summary: item.summary,
+          rawConfidence: c.rawConfidence,
+          sourceQuality: c.sourceQuality,
+          provenanceQuality: c.provenanceQuality,
+          freshnessWeight: c.freshnessWeight,
+          score: dec.score,
+          sourceReferenceIds: c.sourceReferenceIds,
+          status: "SELECTED",
+          reasons: dec.reasons
+        };
+      }
+    }
+  }
+
+  // Clear and rebuild decisions array to ensure it matches decisionMap
+  decisions.length = 0;
+  decisions.push(...decisionMap.values());
 
   // Sort decisions by candidateId ascending to keep deterministic
   decisions.sort((a, b) => (a.candidateId < b.candidateId ? -1 : 1));
@@ -1120,6 +1267,104 @@ export function selectEvidence(input: SelectEvidenceInput): SelectedEvidenceSumm
     }
   }
 
+  // 6. Build the qualified source-reference union
+  interface MutableSelectedSourceReference {
+    referenceId: string;
+    sourceType: string;
+    locator: string;
+    observedAt: string;
+    bundleHash: string;
+    publisher: string;
+    sourceId: string;
+    runId: string;
+    correlationId: string;
+    receivedAtUnixMs: number;
+    isSelectedLineage: boolean;
+    isAuditOnly: boolean;
+  }
+
+  const referenceUnion = new Map<string, MutableSelectedSourceReference>();
+
+  for (const record of sortedRecords) {
+    const bundle = record.bundle;
+    const bundleHash = record.evidenceHash;
+
+    const getRefEntry = (refId: string): MutableSelectedSourceReference | null => {
+      const key = `${bundleHash}/${refId}`;
+      if (!referenceUnion.has(key)) {
+        const ref = bundle.sourceReferences.find((r) => r.referenceId === refId);
+        if (!ref) return null;
+        referenceUnion.set(key, {
+          referenceId: ref.referenceId,
+          sourceType: ref.sourceType,
+          locator: ref.locator,
+          observedAt: ref.observedAt,
+          bundleHash,
+          publisher: bundle.source.publisher,
+          sourceId: bundle.source.sourceId,
+          runId: bundle.runId,
+          correlationId: bundle.correlationId,
+          receivedAtUnixMs: record.receivedAtUnixMs,
+          isSelectedLineage: false,
+          isAuditOnly: false
+        });
+      }
+      return referenceUnion.get(key)!;
+    };
+
+    // Scan all deterministic features in this bundle
+    for (const feature of bundle.deterministicFeatures) {
+      const candidateId = `${bundleHash}/deterministic_feature/${feature.featureId}`;
+      const dec = decisionMap.get(candidateId);
+      if (!dec) continue;
+
+      for (const refId of feature.inputLineage) {
+        const entry = getRefEntry(refId);
+        if (entry) {
+          if (dec.status === "SELECTED") {
+            entry.isSelectedLineage = true;
+          } else {
+            entry.isAuditOnly = true;
+          }
+        }
+      }
+    }
+
+    // Scan all contextual claims in this bundle
+    const ctx = bundle.contextualEvidence;
+    const allClaims = [
+      ...ctx.supportResistance,
+      ...ctx.flows,
+      ...ctx.derivatives,
+      ...ctx.events,
+      ...ctx.newsRegulatory
+    ];
+    for (const claim of allClaims) {
+      const candidateId = `${bundleHash}/contextual_claim/${claim.evidenceId}`;
+      const dec = decisionMap.get(candidateId);
+      if (!dec) continue;
+
+      for (const refId of claim.sourceReferenceIds) {
+        const entry = getRefEntry(refId);
+        if (entry) {
+          if (dec.status === "SELECTED") {
+            entry.isSelectedLineage = true;
+          } else {
+            entry.isAuditOnly = true;
+          }
+        }
+      }
+    }
+  }
+
+  const sortedSourceRefs = [...referenceUnion.values()].sort((a, b) => {
+    if (a.publisher !== b.publisher) return a.publisher < b.publisher ? -1 : 1;
+    if (a.sourceId !== b.sourceId) return a.sourceId < b.sourceId ? -1 : 1;
+    if (a.bundleHash !== b.bundleHash) return a.bundleHash < b.bundleHash ? -1 : 1;
+    if (a.referenceId !== b.referenceId) return a.referenceId < b.referenceId ? -1 : 1;
+    return 0;
+  });
+
   return {
     selectionPolicyVersion: validatedPolicy.version,
     selectedAtUnixMs,
@@ -1154,9 +1399,7 @@ export function selectEvidence(input: SelectEvidenceInput): SelectedEvidenceSumm
     },
     conflicts: [],
     warnings,
-    sourceReferences: [...selectedSourceRefs.values()].sort((a, b) =>
-      a.referenceId < b.referenceId ? -1 : 1
-    ),
+    sourceReferences: sortedSourceRefs,
     bundles,
     decisions
   };
