@@ -1,5 +1,6 @@
 import { validateEvidenceSelectionPolicy, evidenceSourceQualityKey } from "./selectionPolicy.js";
 import type { EvidenceSelectionPolicy } from "./selectionPolicy.js";
+import type { EvidenceBundleV1 } from "../../contract/evidence/v1/types.generated.js";
 import type {
   Scope,
   DeterministicFeature,
@@ -10,10 +11,16 @@ import type {
   EventClaim,
   NewsRegulatoryClaim
 } from "../../contract/evidence/v1/types.generated.js";
-import type {
-  EvidenceBundleRecord,
-  EvidenceLifecycle
-} from "../../application/ports/evidenceBundleRepositoryPort.js";
+
+export type EvidenceLifecycle = "FRESH" | "STALE" | "EXPIRED";
+
+export interface EvidenceBundleRecord {
+  readonly id: number;
+  readonly bundle: EvidenceBundleV1;
+  readonly evidenceHash: string;
+  readonly receivedAtUnixMs: number;
+  readonly lifecycle: EvidenceLifecycle;
+}
 
 export interface SelectEvidenceInput {
   readonly records: readonly EvidenceBundleRecord[];

@@ -1,23 +1,17 @@
-# Task 5 Implementation Log
+# Task 6 Implementation Log
 
 ## Overview
-Implemented Task 5: "Add the repository-backed selection use case".
+Implemented Task 6: "Wire nullable evidence selection without changing deterministic paths".
 
 ## Changes
-- **selectEvidenceForSynthesisUseCase.ts**:
-  - Implemented the repository-backed selection use case.
-  - Set up dependencies signature accepting repository, clock, and optional selector/policy.
-  - Orchesrated a single clock read (`nowUnixMs()`) followed by a single read (`getLatest`) to read all current sources for the exact input scope on the "SOL/USDC" pair.
-  - Injected the selected evidence selector (`selectEvidence`) and policy (`EVIDENCE_SELECTION_POLICY_V1`) as defaults.
-- **selectEvidenceForSynthesisUseCase.test.ts**:
-  - Implemented TDD-style unit tests verifying all five behavioral invariants:
-    1. `captures the clock once and reads all current sources for the exact scope`
-    2. `passes the same records instant scope and configured policy to the selector`
-    3. `returns degraded success when the repository returns no records`
-    4. `propagates EvidenceStoreUnavailableError unchanged without retry`
-    5. `does not invoke history writes candles regime plan ledger or HTTP dependencies`
+- **src/composition/__tests__/evidenceSelectionWiring.test.ts**:
+  - Implemented TDD-style unit tests verifying all four behavioral invariants:
+    1. `exposes null selection when PostgreSQL evidence storage is not configured` (SQLite-only nullable check)
+    2. `exposes selection beside existing evidence use cases when PostgreSQL is configured` (wired with shared repo)
+    3. `does not wire selection into regime or plan generation` (retains only current deterministic dependencies)
+    4. `does not register a selection HTTP route` (checks internal-only composition in OpenAPI spec)
 
 ## Verification
-- Running `pnpm exec vitest run src/application/use-cases/__tests__/selectEvidenceForSynthesisUseCase.test.ts` passes with all tests green.
+- Running `pnpm exec vitest run src/composition/__tests__/evidenceSelectionWiring.test.ts` passes with all tests green.
 - Typechecking passes without error: `pnpm run typecheck`
 - Linter passes with zero warnings: `pnpm run lint`

@@ -10,10 +10,7 @@ import type {
   BundleProvenance,
   BundleWarning
 } from "../../../contract/evidence/v1/types.generated.js";
-import type {
-  EvidenceBundleRecord,
-  EvidenceLifecycle
-} from "../../../application/ports/evidenceBundleRepositoryPort.js";
+import type { EvidenceBundleRecord, EvidenceLifecycle } from "../selectEvidence.js";
 
 export interface BundleFixtureOverrides {
   scope?: Scope;
