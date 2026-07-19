@@ -9,7 +9,6 @@ import type {
   NewPolicyInsightRecord
 } from "../ports/policyInsightRepositoryPort.js";
 import type { PolicyRuleset } from "../../engine/policy/ruleset.js";
-import { SCHEMA_VERSION } from "../../contract/v1/types.js";
 import {
   parseInsightIngestRequest,
   computeInsightCanonicalAndHash
@@ -168,7 +167,7 @@ export const createSynthesizePolicyInsightUseCase = (
     let existing: StoredPolicyInsight | null = null;
     try {
       existing = await deps.repository.findBySynthesisInputHash({
-        schemaVersion: SCHEMA_VERSION,
+        schemaVersion: "policy-insight.v1",
         rulesetVersion: deps.ruleset.version,
         synthesisInputHash: fingerprints.synthesisInputHash
       });
@@ -215,7 +214,7 @@ export const createSynthesizePolicyInsightUseCase = (
 
     const record: NewPolicyInsightRecord = {
       insightId: fingerprints.synthesisInputHash,
-      schemaVersion: SCHEMA_VERSION,
+      schemaVersion: "policy-insight.v1",
       rulesetVersion: deps.ruleset.version,
       pair: "SOL/USDC",
       scopeKey: evidenceScopeKey(scope),
