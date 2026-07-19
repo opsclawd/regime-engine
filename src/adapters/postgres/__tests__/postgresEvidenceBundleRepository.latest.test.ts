@@ -8,6 +8,8 @@ const TEST_PAIR = "SOL/USDC";
 const TEST_PUBLISHER = "sol-usdc-clmm-intelligence";
 
 const createTestBundle = (overrides: Partial<EvidenceBundleV1> = {}): EvidenceBundleV1 => {
+  const asOf = overrides.asOf ?? "2024-01-15T10:00:00.000Z";
+  const freshUntil = overrides.freshUntil ?? "2024-01-15T11:00:00.000Z";
   const base: EvidenceBundleV1 = {
     schemaVersion: "evidence-bundle.v1",
     pair: TEST_PAIR,
@@ -19,10 +21,10 @@ const createTestBundle = (overrides: Partial<EvidenceBundleV1> = {}): EvidenceBu
     },
     runId: "test-run-001",
     correlationId: "test-corr-001",
-    createdAt: "2024-01-15T10:00:00.000Z",
-    asOf: "2024-01-15T10:00:00.000Z",
-    freshUntil: "2024-01-15T11:00:00.000Z",
-    expiresAt: "2024-01-15T12:00:00.000Z",
+    createdAt: overrides.createdAt ?? "2024-01-15T10:00:00.000Z",
+    asOf,
+    freshUntil,
+    expiresAt: overrides.expiresAt ?? "2024-01-15T12:00:00.000Z",
     deterministicFeatures: [
       {
         featureId: "feat-price-001",
@@ -31,8 +33,8 @@ const createTestBundle = (overrides: Partial<EvidenceBundleV1> = {}): EvidenceBu
         status: "available",
         value: 150.25,
         unit: "usd",
-        observedAt: "2024-01-15T10:00:00.000Z",
-        freshUntil: "2024-01-15T11:00:00.000Z",
+        observedAt: asOf,
+        freshUntil: freshUntil,
         confidenceBps: 9500,
         calculator: { name: "price-aggregator", version: "1.0.0" },
         inputLineage: ["ref-price-source"],

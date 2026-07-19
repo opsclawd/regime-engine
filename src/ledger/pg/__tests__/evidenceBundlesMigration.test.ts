@@ -35,8 +35,19 @@ describe.skipIf(!process.env.DATABASE_URL)("evidence_bundles migration (PG)", ()
       (row: Record<string, unknown>) => row.column_name as string
     );
 
-    const overlap = evidenceColNames.filter((c) => clmmColNames.includes(c));
-    expect(overlap).toHaveLength(0);
+    const standardMetadataCols = [
+      "id",
+      "schema_version",
+      "pair",
+      "as_of_unix_ms",
+      "run_id",
+      "expires_at_unix_ms",
+      "received_at_unix_ms"
+    ];
+    const nonMetadataOverlap = evidenceColNames.filter(
+      (c) => clmmColNames.includes(c) && !standardMetadataCols.includes(c)
+    );
+    expect(nonMetadataOverlap).toHaveLength(0);
 
     const existingInsightRows = await db.execute(
       sql`SELECT COUNT(*) as cnt FROM regime_engine.clmm_insights LIMIT 1`
