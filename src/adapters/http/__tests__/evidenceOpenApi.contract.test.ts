@@ -190,8 +190,9 @@ describe("Evidence OpenAPI contract", () => {
       expect(cursorParam?.description?.toLowerCase()).toContain("cursor");
     });
 
-    it("retains legacy insight paths separately", () => {
-      expect(doc.paths["/v1/insights/sol-usdc"]).toBeDefined();
+    it("keeps evidence writes separate from canonical insight reads", () => {
+      expect(doc.paths["/v1/evidence/sol-usdc"]?.post).toBeDefined();
+      expect((doc.paths as Record<string, unknown>)["/v1/insights/sol-usdc"]).toBeUndefined();
       expect(doc.paths["/v1/insights/sol-usdc/current"]).toBeDefined();
       expect(doc.paths["/v1/insights/sol-usdc/history"]).toBeDefined();
     });

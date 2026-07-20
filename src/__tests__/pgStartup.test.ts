@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
+import * as dbModule from "../ledger/pg/db.js";
 import {
   verifyPgConnection,
   verifyCandleRevisionsTable,
-  verifyClmmInsightsTable,
   verifyEvidenceBundlesTable
 } from "../ledger/pg/db.js";
 
@@ -51,20 +51,8 @@ describe("verifyCandleRevisionsTable", () => {
   });
 });
 
-describe("verifyClmmInsightsTable", () => {
-  it("resolves when the table exists in regime_engine schema", async () => {
-    const connectionString = process.env.DATABASE_URL;
-    if (!connectionString) {
-      return;
-    }
-
-    const { createDb } = await import("../ledger/pg/db.js");
-    const { db, client } = createDb(connectionString);
-
-    await expect(verifyClmmInsightsTable(db)).resolves.toBeUndefined();
-
-    await client.end();
-  });
+it("does not expose a clmm_insights startup verifier", () => {
+  expect(dbModule).not.toHaveProperty("verifyClmmInsightsTable");
 });
 
 describe("verifyEvidenceBundlesTable", () => {

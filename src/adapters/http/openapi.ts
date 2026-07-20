@@ -590,34 +590,6 @@ export const buildOpenApiDocument = () => {
           }
         }
       },
-      "/v1/insights/sol-usdc": {
-        post: {
-          summary: "Ingest a CLMM insight for SOL/USDC",
-          responses: {
-            "201": {
-              description: "Insight created successfully"
-            },
-            "200": {
-              description: "Idempotent replay of already-ingested insight"
-            },
-            "400": {
-              description: "Validation error"
-            },
-            "401": {
-              description: "Invalid or missing X-Insight-Ingest-Token"
-            },
-            "409": {
-              description: "Insight conflict (same source+runId, different payload)"
-            },
-            "500": {
-              description: "INSIGHT_INGEST_TOKEN environment variable not set"
-            },
-            "503": {
-              description: "Insights store not available (no DATABASE_URL configured)"
-            }
-          }
-        }
-      },
       "/v1/insights/sol-usdc/current": {
         get: {
           summary: "Get the most recent CLMM insight for SOL/USDC",

@@ -48,7 +48,6 @@ import { SOL_USDC_POLICY_V1 } from "../engine/policy/ruleset.js";
 import { checkPgHealth, checkSqliteHealth } from "../ledger/health.js";
 import type { RuntimeStoreContext } from "./buildStoreContext.js";
 import type { LedgerStore } from "../ledger/store.js";
-import type { InsightsStore } from "../ledger/insightsStore.js";
 import type { SrThesesV2Store } from "../ledger/srThesesV2Store.js";
 
 export interface VersionInfo {
@@ -85,7 +84,6 @@ export interface ApplicationDependencies {
   getCurrentPolicyInsight: GetCurrentPolicyInsightUseCase | null;
   getPolicyInsightHistory: GetPolicyInsightHistoryUseCase | null;
   ledgerStore: LedgerStore;
-  insightsStore: InsightsStore | null;
   srThesesV2Store: SrThesesV2Store | null;
   versionInfo: VersionInfo;
   checkHealth(): Promise<HealthResult>;
@@ -198,7 +196,6 @@ export const buildApplication = (ctx: RuntimeStoreContext): ApplicationDependenc
     getCurrentPolicyInsight,
     getPolicyInsightHistory,
     ledgerStore: ctx.ledger,
-    insightsStore: ctx.insightsStore,
     srThesesV2Store: ctx.srThesesV2Store,
     versionInfo,
     checkHealth: async () => {

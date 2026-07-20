@@ -15,7 +15,6 @@ describe("StoreContext", () => {
         end: async () => {}
       } as never,
       candleStore: {} as never,
-      insightsStore: {} as never,
       srThesesV2Store: {} as never
     };
 
@@ -38,7 +37,6 @@ describe("StoreContext", () => {
       pg: {} as never,
       pgClient: { end: pgClientEnd } as never,
       candleStore: {} as never,
-      insightsStore: {} as never,
       srThesesV2Store: {} as never
     };
 
@@ -63,7 +61,6 @@ describe("StoreContext", () => {
       pg: {} as never,
       pgClient: { end: pgClientEnd } as never,
       candleStore: {} as never,
-      insightsStore: {} as never,
       srThesesV2Store: {} as never
     };
 

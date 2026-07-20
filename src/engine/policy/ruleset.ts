@@ -1,4 +1,14 @@
-import { CONFIDENCES, POSTURES, RANGE_BIASES, RISK_LEVELS } from "../../contract/v1/insights.js";
+export const POLICY_CONFIDENCE_ORDER = ["low", "medium", "high"] as const;
+export const POLICY_RISK_ORDER = ["normal", "elevated", "critical"] as const;
+export const POLICY_POSTURE_ORDER = [
+  "aggressive",
+  "moderately_aggressive",
+  "neutral",
+  "defensive",
+  "paused"
+] as const;
+export const POLICY_RANGE_BIAS_ORDER = ["tight", "medium", "wide", "passive"] as const;
+export const POLICY_REBALANCE_SENSITIVITY_ORDER = ["low", "normal", "high", "paused"] as const;
 
 export const POLICY_RULESET_VERSION = "sol-usdc-policy.v1" as const;
 
@@ -61,32 +71,32 @@ export function validatePolicyRuleset(candidate: PolicyRuleset): PolicyRuleset {
 
   // Validate confidenceOrder
   if (
-    candidate.confidenceOrder.length !== CONFIDENCES.length ||
-    !candidate.confidenceOrder.every((val, idx) => val === CONFIDENCES[idx])
+    candidate.confidenceOrder.length !== POLICY_CONFIDENCE_ORDER.length ||
+    !candidate.confidenceOrder.every((val, idx) => val === POLICY_CONFIDENCE_ORDER[idx])
   ) {
     throw new Error("Invalid confidence order");
   }
 
   // Validate riskOrder
   if (
-    candidate.riskOrder.length !== RISK_LEVELS.length ||
-    !candidate.riskOrder.every((val, idx) => val === RISK_LEVELS[idx])
+    candidate.riskOrder.length !== POLICY_RISK_ORDER.length ||
+    !candidate.riskOrder.every((val, idx) => val === POLICY_RISK_ORDER[idx])
   ) {
     throw new Error("Invalid risk order");
   }
 
   // Validate postureOrder
   if (
-    candidate.postureOrder.length !== POSTURES.length ||
-    !candidate.postureOrder.every((val, idx) => val === POSTURES[idx])
+    candidate.postureOrder.length !== POLICY_POSTURE_ORDER.length ||
+    !candidate.postureOrder.every((val, idx) => val === POLICY_POSTURE_ORDER[idx])
   ) {
     throw new Error("Invalid posture order");
   }
 
   // Validate rangeBiasOrder
   if (
-    candidate.rangeBiasOrder.length !== RANGE_BIASES.length ||
-    !candidate.rangeBiasOrder.every((val, idx) => val === RANGE_BIASES[idx])
+    candidate.rangeBiasOrder.length !== POLICY_RANGE_BIAS_ORDER.length ||
+    !candidate.rangeBiasOrder.every((val, idx) => val === POLICY_RANGE_BIAS_ORDER[idx])
   ) {
     throw new Error("Invalid range bias order");
   }
@@ -118,10 +128,10 @@ export const SOL_USDC_POLICY_V1: PolicyRuleset = {
   maxInsightLifetimeMs: 3600000, // 1 hour
   positionMaxAgeMs: 86400000, // 24 hours
   degradedSafetyTtlMs: 300000, // 5 minutes
-  confidenceOrder: [...CONFIDENCES],
-  riskOrder: [...RISK_LEVELS],
-  postureOrder: [...POSTURES],
-  rangeBiasOrder: [...RANGE_BIASES],
+  confidenceOrder: [...POLICY_CONFIDENCE_ORDER],
+  riskOrder: [...POLICY_RISK_ORDER],
+  postureOrder: [...POLICY_POSTURE_ORDER],
+  rangeBiasOrder: [...POLICY_RANGE_BIAS_ORDER],
   reasonOrder: {
     // Stage 1
     DATA_HARD_STALE: 10,

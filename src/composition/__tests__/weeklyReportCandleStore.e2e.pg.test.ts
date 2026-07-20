@@ -197,7 +197,6 @@ const buildStoreContext = (dbPath: string, pg: Db | null): RuntimeStoreContext =
     ledger,
     pg,
     candleStore: null,
-    insightsStore: null,
     srThesesV2Store: null,
     close: async () => {
       ledger.close();

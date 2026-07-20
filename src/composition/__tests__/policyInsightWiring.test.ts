@@ -23,7 +23,6 @@ describe("policyInsightWiring", () => {
       ledger: store,
       pg: null,
       candleStore: null,
-      insightsStore: null,
       srThesesV2Store: null,
       close: async () => {}
     };
@@ -39,7 +38,6 @@ describe("policyInsightWiring", () => {
       ledger: store,
       pg: dbDouble,
       candleStore: null,
-      insightsStore: null,
       srThesesV2Store: null,
       close: async () => {}
     };
@@ -51,6 +49,30 @@ describe("policyInsightWiring", () => {
     expect(typeof depsWithPg.synthesizePolicyInsight).toBe("function");
     expect(typeof depsWithPg.getCurrentPolicyInsight).toBe("function");
     expect(typeof depsWithPg.getPolicyInsightHistory).toBe("function");
+  });
+
+  it("does not expose a legacy insightsStore in runtime composition", () => {
+    const ctxNoPg: RuntimeStoreContext = {
+      ledger: store,
+      pg: null,
+      candleStore: null,
+      srThesesV2Store: null,
+      close: async () => {}
+    };
+    const depsNoPg = buildApplication(ctxNoPg);
+
+    const dbDouble = {} as unknown as Db;
+    const ctxWithPg: RuntimeStoreContext = {
+      ledger: store,
+      pg: dbDouble,
+      candleStore: null,
+      srThesesV2Store: null,
+      close: async () => {}
+    };
+    const depsWithPg = buildApplication(ctxWithPg);
+
+    expect("insightsStore" in depsNoPg).toBe(false);
+    expect("insightsStore" in depsWithPg).toBe(false);
   });
 
   it("fails startup verification when policy_insights is missing", async () => {

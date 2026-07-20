@@ -22,19 +22,19 @@ import type {
   Evidence
 } from "../../contract/policyInsight/v1/types.generated.js";
 import {
-  POSTURES,
-  RANGE_BIASES,
-  REBALANCE_SENSITIVITIES,
-  CONFIDENCES,
-  RISK_LEVELS
-} from "../../contract/v1/insights.js";
+  POLICY_CONFIDENCE_ORDER,
+  POLICY_POSTURE_ORDER,
+  POLICY_RANGE_BIAS_ORDER,
+  POLICY_RISK_ORDER,
+  POLICY_REBALANCE_SENSITIVITY_ORDER
+} from "./ruleset.js";
 import { renderPolicyReasoning } from "./reasoning.js";
 
-type LegacyPosture = (typeof POSTURES)[number];
-type LegacyRangeBias = (typeof RANGE_BIASES)[number];
-type LegacyRebalanceSensitivity = (typeof REBALANCE_SENSITIVITIES)[number];
-type LegacyConfidence = (typeof CONFIDENCES)[number];
-type LegacyRiskLevel = (typeof RISK_LEVELS)[number];
+type LegacyPosture = (typeof POLICY_POSTURE_ORDER)[number];
+type LegacyRangeBias = (typeof POLICY_RANGE_BIAS_ORDER)[number];
+type LegacyRebalanceSensitivity = (typeof POLICY_REBALANCE_SENSITIVITY_ORDER)[number];
+type LegacyConfidence = (typeof POLICY_CONFIDENCE_ORDER)[number];
+type LegacyRiskLevel = (typeof POLICY_RISK_ORDER)[number];
 
 export type PolicyInsightContentDraft = Omit<PolicyInsightContent, "insightId">;
 

@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
 import {
+  POLICY_CONFIDENCE_ORDER,
+  POLICY_RISK_ORDER,
+  POLICY_POSTURE_ORDER,
+  POLICY_RANGE_BIAS_ORDER,
   POLICY_RULESET_VERSION,
   validatePolicyRuleset,
   SOL_USDC_POLICY_V1,
@@ -104,5 +108,18 @@ describe("policy ruleset", () => {
       degradedSafetyTtlMs: 0
     };
     expect(() => validatePolicyRuleset(invalidTtl)).toThrow("degradedSafetyTtlMs must be positive");
+  });
+
+  it("keeps policy ordering independent of the legacy ingest contract", () => {
+    expect(POLICY_CONFIDENCE_ORDER).toEqual(["low", "medium", "high"]);
+    expect(POLICY_RISK_ORDER).toEqual(["normal", "elevated", "critical"]);
+    expect(POLICY_POSTURE_ORDER).toEqual([
+      "aggressive",
+      "moderately_aggressive",
+      "neutral",
+      "defensive",
+      "paused"
+    ]);
+    expect(POLICY_RANGE_BIAS_ORDER).toEqual(["tight", "medium", "wide", "passive"]);
   });
 });

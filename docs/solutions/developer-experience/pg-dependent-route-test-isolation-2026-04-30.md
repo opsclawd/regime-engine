@@ -24,7 +24,9 @@ tags: [testing, postgres, e2e, vitest, mock-propagation, openapi, skipif]
 
 ## Context
 
-When adding PG-dependent routes (e.g., CLMM Insight Ingestion) to a TypeScript/Fastify/Drizzle ORM/Postgres codebase that runs two test modes — a default `pnpm run test` without Postgres and a separate PG-enabled `pnpm run test:pg` — several systemic friction points emerge:
+**Superseded by #62:** The `POST /v1/insights/sol-usdc` route and `InsightsStore` were removed by #62. The canonical GET endpoints (`/v1/insights/sol-usdc/current`, `/v1/insights/sol-usdc/history`) remain active. The patterns in this document still apply to any future PG-dependent routes added to the codebase.
+
+When adding PG-dependent routes (e.g., evidence ingestion) to a TypeScript/Fastify/Drizzle ORM/Postgres codebase that runs two test modes — a default `pnpm run test` without Postgres and a separate PG-enabled `pnpm run test:pg` — several systemic friction points emerge:
 
 - **Mock propagation** — Adding a new store to `StoreContext` breaks every test that constructs a mock `StoreContext` object with `TS2741`.
 - **Hardcoded API path counts** — OpenAPI smoke tests with `expect(paths).toHaveLength(N)` fail the moment new routes are added.
@@ -107,18 +109,14 @@ try {
 
 const setupPg = describe.skipIf(!pgAvailable);
 
-afterAll(async () => {
-  if (pgClient) {
-    await pgClient.end();
-  }
-});
-
-setupPg("POST /v1/insights/sol-usdc (PG)", () => {
+setupPg("POST /v1/evidence/sol-usdc (PG)", () => {
   it("returns 201 with created status on first ingest", async () => {
     // PG is guaranteed available here
   });
 });
 ```
+
+Note: The legacy `POST /v1/insights/sol-usdc` was removed by #62. The example above uses the current evidence POST route.
 
 ### 4. Handler ordering determines test placement
 
@@ -127,16 +125,18 @@ If a route handler checks service availability (503) **before** auth (401), then
 - **Non-PG suite**: only 503 / service-unavailable tests
 - **PG suite**: auth (401/500), validation (400), created (201), conflict (409), read (200/404) tests
 
+Note: The legacy `POST /v1/insights/sol-usdc` was removed by #62; the examples below use the current evidence POST route.
+
 ```typescript
 // Non-PG test — only tests reachable without the service
-it("returns 503 when insights store is unavailable", async () => {
+it("returns 503 when evidence store is unavailable", async () => {
   process.env.LEDGER_DB_PATH = ":memory:";
   delete process.env.DATABASE_URL;
   const app = buildApp();
 
   const res = await app.inject({
     method: "POST",
-    url: "/v1/insights/sol-usdc",
+    url: "/v1/evidence/sol-usdc",
     payload: makePayload()
   });
   expect(res.statusCode).toBe(503);
@@ -251,7 +251,7 @@ expect(paths).toEqual(
     "/v1/sr-levels/current",
     "/v1/candles",
     "/v1/regime/current",
-    "/v1/insights/sol-usdc",
+    "/v1/evidence/sol-usdc",
     "/v1/insights/sol-usdc/current",
     "/v1/insights/sol-usdc/history",
     "/v2/sr-levels",
@@ -259,6 +259,8 @@ expect(paths).toEqual(
   ])
 );
 ```
+
+Note: `/v1/insights/sol-usdc` (POST) was removed by #62 and replaced with `/v1/evidence/sol-usdc`.
 
 ## Related
 
