@@ -1,13 +1,7 @@
 import evidenceBundleSchema from "../../../contracts/evidence-bundle/v1/evidence-bundle.schema.json" with { type: "json" };
-import {
-  RECOMMENDED_ACTIONS,
-  POSTURES,
-  RANGE_BIASES,
-  REBALANCE_SENSITIVITIES,
-  CONFIDENCES,
-  RISK_LEVELS,
-  DATA_QUALITIES
-} from "../../contract/v1/insights.js";
+import policyInsightSchema from "../../../contracts/policy-insight/v1/policy-insight.schema.json" with { type: "json" };
+import currentPairInsight from "../../../contracts/policy-insight/v1/fixtures/valid/current-pair.json" with { type: "json" };
+import historyInsight from "../../../contracts/policy-insight/v1/fixtures/valid/history.json" with { type: "json" };
 
 export const buildOpenApiDocument = () => {
   return {
@@ -134,86 +128,12 @@ export const buildOpenApiDocument = () => {
             id: { type: "integer", minimum: 1 }
           }
         },
+        PolicyInsightSchema: policyInsightSchema,
         InsightCurrentResponse: {
-          type: "object",
-          additionalProperties: false,
-          required: [
-            "schemaVersion",
-            "pair",
-            "asOf",
-            "source",
-            "runId",
-            "marketRegime",
-            "fundamentalRegime",
-            "recommendedAction",
-            "confidence",
-            "riskLevel",
-            "dataQuality",
-            "clmmPolicy",
-            "levels",
-            "reasoning",
-            "sourceRefs",
-            "expiresAt",
-            "status",
-            "payloadHash",
-            "receivedAtIso",
-            "freshness"
-          ],
-          properties: {
-            schemaVersion: { type: "string" },
-            pair: { type: "string", enum: ["SOL/USDC"] },
-            asOf: { type: "string", format: "date-time" },
-            source: { type: "string", enum: ["openclaw"] },
-            runId: { type: "string" },
-            marketRegime: { type: "string" },
-            fundamentalRegime: { type: "string" },
-            recommendedAction: { type: "string", enum: RECOMMENDED_ACTIONS },
-            confidence: { type: "string", enum: CONFIDENCES },
-            riskLevel: { type: "string", enum: RISK_LEVELS },
-            dataQuality: { type: "string", enum: DATA_QUALITIES },
-            clmmPolicy: {
-              type: "object",
-              additionalProperties: false,
-              required: [
-                "posture",
-                "rangeBias",
-                "rebalanceSensitivity",
-                "maxCapitalDeploymentPercent"
-              ],
-              properties: {
-                posture: { type: "string", enum: POSTURES },
-                rangeBias: { type: "string", enum: RANGE_BIASES },
-                rebalanceSensitivity: { type: "string", enum: REBALANCE_SENSITIVITIES },
-                maxCapitalDeploymentPercent: { type: "number", minimum: 0, maximum: 100 }
-              }
-            },
-            levels: {
-              type: "object",
-              additionalProperties: false,
-              required: ["support", "resistance"],
-              properties: {
-                support: { type: "array", items: { type: "number" } },
-                resistance: { type: "array", items: { type: "number" } }
-              }
-            },
-            reasoning: { type: "array", items: { type: "string" } },
-            sourceRefs: { type: "array", items: { type: "string" } },
-            expiresAt: { type: "string", format: "date-time" },
-            status: { type: "string", enum: ["FRESH", "STALE"] },
-            payloadHash: { type: "string" },
-            receivedAtIso: { type: "string", format: "date-time" },
-            freshness: {
-              type: "object",
-              additionalProperties: false,
-              required: ["generatedAtIso", "expiresAtIso", "ageSeconds", "stale"],
-              properties: {
-                generatedAtIso: { type: "string", format: "date-time" },
-                expiresAtIso: { type: "string", format: "date-time" },
-                ageSeconds: { type: "integer" },
-                stale: { type: "boolean" }
-              }
-            }
-          }
+          $ref: "#/components/schemas/PolicyInsightSchema"
+        },
+        InsightHistoryResponse: {
+          $ref: "#/components/schemas/PolicyInsightSchema/$defs/PolicyInsightHistoryResponse"
         },
         InsightError: {
           type: "object",
@@ -243,88 +163,6 @@ export const buildOpenApiDocument = () => {
                 }
               }
             }
-          }
-        },
-        InsightHistoryItem: {
-          type: "object",
-          additionalProperties: false,
-          required: [
-            "schemaVersion",
-            "pair",
-            "asOf",
-            "source",
-            "runId",
-            "marketRegime",
-            "fundamentalRegime",
-            "recommendedAction",
-            "confidence",
-            "riskLevel",
-            "dataQuality",
-            "clmmPolicy",
-            "levels",
-            "reasoning",
-            "sourceRefs",
-            "expiresAt",
-            "payloadHash",
-            "receivedAtIso"
-          ],
-          properties: {
-            schemaVersion: { type: "string" },
-            pair: { type: "string", enum: ["SOL/USDC"] },
-            asOf: { type: "string", format: "date-time" },
-            source: { type: "string", enum: ["openclaw"] },
-            runId: { type: "string" },
-            marketRegime: { type: "string" },
-            fundamentalRegime: { type: "string" },
-            recommendedAction: { type: "string", enum: RECOMMENDED_ACTIONS },
-            confidence: { type: "string", enum: CONFIDENCES },
-            riskLevel: { type: "string", enum: RISK_LEVELS },
-            dataQuality: { type: "string", enum: DATA_QUALITIES },
-            clmmPolicy: {
-              type: "object",
-              additionalProperties: false,
-              required: [
-                "posture",
-                "rangeBias",
-                "rebalanceSensitivity",
-                "maxCapitalDeploymentPercent"
-              ],
-              properties: {
-                posture: { type: "string", enum: POSTURES },
-                rangeBias: { type: "string", enum: RANGE_BIASES },
-                rebalanceSensitivity: { type: "string", enum: REBALANCE_SENSITIVITIES },
-                maxCapitalDeploymentPercent: { type: "number", minimum: 0, maximum: 100 }
-              }
-            },
-            levels: {
-              type: "object",
-              additionalProperties: false,
-              required: ["support", "resistance"],
-              properties: {
-                support: { type: "array", items: { type: "number" } },
-                resistance: { type: "array", items: { type: "number" } }
-              }
-            },
-            reasoning: { type: "array", items: { type: "string" } },
-            sourceRefs: { type: "array", items: { type: "string" } },
-            expiresAt: { type: "string", format: "date-time" },
-            payloadHash: { type: "string" },
-            receivedAtIso: { type: "string", format: "date-time" }
-          }
-        },
-        InsightHistoryResponse: {
-          type: "object",
-          additionalProperties: false,
-          required: ["schemaVersion", "pair", "limit", "items", "nextCursor"],
-          properties: {
-            schemaVersion: { type: "string" },
-            pair: { type: "string", enum: ["SOL/USDC"] },
-            limit: { type: "integer" },
-            items: {
-              type: "array",
-              items: { $ref: "#/components/schemas/InsightHistoryItem" }
-            },
-            nextCursor: { type: "string", nullable: true }
           }
         }
       }
@@ -814,7 +652,12 @@ export const buildOpenApiDocument = () => {
               description: "Current insight with freshness metadata",
               content: {
                 "application/json": {
-                  schema: { $ref: "#/components/schemas/InsightCurrentResponse" }
+                  schema: { $ref: "#/components/schemas/InsightCurrentResponse" },
+                  examples: {
+                    "Current SOL/USDC insight": {
+                      value: currentPairInsight
+                    }
+                  }
                 }
               }
             },
@@ -877,7 +720,7 @@ export const buildOpenApiDocument = () => {
               name: "limit",
               in: "query",
               required: false,
-              schema: { type: "integer", minimum: 1, maximum: 200, default: 50 }
+              schema: { type: "integer", minimum: 1, maximum: 100, default: 50 }
             },
             {
               name: "cursor",
@@ -891,7 +734,12 @@ export const buildOpenApiDocument = () => {
               description: "List of insights with pagination support",
               content: {
                 "application/json": {
-                  schema: { $ref: "#/components/schemas/InsightHistoryResponse" }
+                  schema: { $ref: "#/components/schemas/InsightHistoryResponse" },
+                  examples: {
+                    "Historical SOL/USDC insights": {
+                      value: historyInsight
+                    }
+                  }
                 }
               }
             },

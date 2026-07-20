@@ -7,9 +7,14 @@ import { createPostgresPolicyInsightRepository } from "../../postgres/postgresPo
 import type { NewPolicyInsightRecord } from "../../../application/ports/policyInsightRepositoryPort.js";
 import { sql } from "drizzle-orm";
 import type { PolicySynthesisEnvelope } from "../../../engine/policy/synthesizePolicyInsight.js";
+import { computePolicyInsightContentCanonicalAndHash } from "../../../contract/policyInsight/v1/canonical.js";
+import type { PolicyInsightContent } from "../../../contract/policyInsight/v1/types.generated.js";
 
 const PG_CONNECTION_STRING =
   process.env.DATABASE_URL ?? "postgres://test:test@localhost:5432/regime_engine_test";
+
+const POLICY_INSIGHT_V1_WIRE_CONTRACT_SHA256 =
+  "80487b0a9374d0b535accf535ef9819f2b2de00e1d65980deb73c97afaa02800";
 
 const testSynthesisInput = {
   synthesisAtUnixMs: 1700000000000,
@@ -63,31 +68,41 @@ const testSynthesisInput = {
   }
 };
 
-const testOutput = {
-  schemaVersion: "1.0" as const,
-  pair: "SOL/USDC" as const,
-  asOf: "2026-04-29T12:00:00Z",
-  source: "openclaw" as const,
-  runId: "run-001",
-  marketRegime: "ranging",
-  fundamentalRegime: "neutral",
-  recommendedAction: "hold" as const,
-  confidence: "medium" as const,
-  riskLevel: "normal" as const,
-  dataQuality: "complete" as const,
+const testOutput: PolicyInsightContent = {
+  schemaVersion: "policy-insight.v1",
+  insightId: "a".repeat(64),
+  rulesetVersion: "ruleset-1.0.0",
+  pair: "SOL/USDC",
+  position: null,
+  generatedAt: "2026-04-29T12:00:00.000Z",
+  asOf: "2026-04-29T11:59:59.000Z", // strictly before generatedAt
+  expiresAt: "2026-04-30T12:00:00.000Z",
+  marketRegime: "CHOP",
+  fundamentalRegime: "NEUTRAL",
+  posture: "NEUTRAL",
+  recommendedAction: "HOLD",
+  riskLevel: "NORMAL",
   clmmPolicy: {
-    posture: "neutral" as const,
-    rangeBias: "medium" as const,
-    rebalanceSensitivity: "normal" as const,
-    maxCapitalDeploymentPercent: 80
+    rangeBias: "MEDIUM",
+    rebalanceSensitivity: "NORMAL",
+    maxCapitalDeploymentBps: 8000
   },
-  levels: { support: [140.5], resistance: [180.25] },
-  reasoning: ["Market ranging"],
-  sourceRefs: ["https://example.com"],
-  expiresAt: "2026-04-30T12:00:00Z"
+  levels: {
+    supportsUsdcPerSol: ["140.5", "141"],
+    resistancesUsdcPerSol: ["180.25", "181"]
+  },
+  evidence: {
+    selectionStatus: "FULL",
+    selectionPolicyVersion: "selector.v1.2026-07",
+    selectedBundleRefs: [],
+    selectedSourceRefs: []
+  },
+  confidenceBps: 7500,
+  dataQuality: "COMPLETE",
+  reasonCodes: ["MARKET_REGIME_CHOP"],
+  reasoning: "Market ranging",
+  warnings: []
 };
-
-import { computeInsightCanonicalAndHash } from "../../../contract/v1/insights.js";
 
 const createTestRecord = (
   overrides: Partial<NewPolicyInsightRecord> = {}
@@ -97,8 +112,11 @@ const createTestRecord = (
   const persistedAtUnixMs = overrides.persistedAtUnixMs ?? generatedAtUnixMs + 1000;
   const expiresAtUnixMs = overrides.expiresAtUnixMs ?? generatedAtUnixMs + 5000;
 
-  const output = overrides.synthesisOutputJson ?? testOutput;
-  const { canonical, hash } = computeInsightCanonicalAndHash(output);
+  const output: PolicyInsightContent = overrides.synthesisOutputJson ?? {
+    ...testOutput,
+    insightId: overrides.insightId ?? "a".repeat(64)
+  };
+  const { canonical, hash } = computePolicyInsightContentCanonicalAndHash(output);
 
   return {
     insightId: overrides.insightId ?? "a".repeat(64),
@@ -115,6 +133,7 @@ const createTestRecord = (
     positionHash: "c".repeat(64),
     selectionHash: "d".repeat(64),
     synthesisInputHash: overrides.synthesisInputHash ?? "e".repeat(64),
+    wireContractSha256: POLICY_INSIGHT_V1_WIRE_CONTRACT_SHA256,
     selectionPolicyVersion: "policy-v1",
     synthesisInputJson: testSynthesisInput as unknown as PolicySynthesisEnvelope,
     synthesisOutputJson: output,
@@ -164,14 +183,12 @@ setupPg("GET /v1/insights/sol-usdc/current (PG Canonical Policy)", () => {
     const record1 = createTestRecord({
       insightId: "1".repeat(64),
       synthesisInputHash: "1".repeat(64),
-      generatedAtUnixMs: 1700000000000,
-      synthesisOutputJson: { ...testOutput, runId: "run-1" }
+      generatedAtUnixMs: 1700000000000
     });
     const record2 = createTestRecord({
       insightId: "2".repeat(64),
       synthesisInputHash: "2".repeat(64),
-      generatedAtUnixMs: 1700000005000,
-      synthesisOutputJson: { ...testOutput, runId: "run-2" }
+      generatedAtUnixMs: 1700000005000
     });
 
     await repository.insertOrGet(record1);
@@ -184,7 +201,7 @@ setupPg("GET /v1/insights/sol-usdc/current (PG Canonical Policy)", () => {
 
     expect(res.statusCode).toBe(200);
     const body = res.json();
-    expect(body.payloadHash).toBe(record2.payloadHash);
+    expect(body.insightId).toBe(record2.insightId);
 
     await app.close();
   });
@@ -285,8 +302,7 @@ setupPg("GET /v1/insights/sol-usdc/current (PG Canonical Policy)", () => {
     const recordPair = createTestRecord({
       insightId: "3".repeat(64),
       synthesisInputHash: "3".repeat(64),
-      scopeKey: "pair",
-      synthesisOutputJson: { ...testOutput, runId: "run-3" }
+      scopeKey: "pair"
     });
 
     const LENGTH_PREFIX = (s: string): string => `${s.length}:${s}`;
@@ -297,8 +313,7 @@ setupPg("GET /v1/insights/sol-usdc/current (PG Canonical Policy)", () => {
       insightId: "4".repeat(64),
       synthesisInputHash: "4".repeat(64),
       scopeKey: scopeKeyPos,
-      positionId: "pos1",
-      synthesisOutputJson: { ...testOutput, runId: "run-4" }
+      positionId: "pos1"
     });
 
     await repository.insertOrGet(recordPair);
@@ -310,7 +325,7 @@ setupPg("GET /v1/insights/sol-usdc/current (PG Canonical Policy)", () => {
       url: "/v1/insights/sol-usdc/current?scope=pair"
     });
     expect(resPair.statusCode).toBe(200);
-    expect(resPair.json().payloadHash).toBe(recordPair.payloadHash);
+    expect(resPair.json().insightId).toBe(recordPair.insightId);
 
     // Query position scope
     const resPos = await app.inject({
@@ -318,7 +333,7 @@ setupPg("GET /v1/insights/sol-usdc/current (PG Canonical Policy)", () => {
       url: "/v1/insights/sol-usdc/current?scope=position&walletAddress=wallet1&whirlpoolAddress=pool1&positionId=pos1"
     });
     expect(resPos.statusCode).toBe(200);
-    expect(resPos.json().payloadHash).toBe(recordPos.payloadHash);
+    expect(resPos.json().insightId).toBe(recordPos.insightId);
 
     await app.close();
   });
@@ -332,14 +347,12 @@ setupPg("GET /v1/insights/sol-usdc/current (PG Canonical Policy)", () => {
     const record1 = createTestRecord({
       insightId: "5".repeat(64),
       synthesisInputHash: "5".repeat(64),
-      generatedAtUnixMs: 1700000000000,
-      synthesisOutputJson: { ...testOutput, runId: "run-5" }
+      generatedAtUnixMs: 1700000000000
     });
     const record2 = createTestRecord({
       insightId: "6".repeat(64),
       synthesisInputHash: "6".repeat(64),
-      generatedAtUnixMs: 1700000000000,
-      synthesisOutputJson: { ...testOutput, runId: "run-6" }
+      generatedAtUnixMs: 1700000000000
     });
 
     // Insertion order: record1, then record2. record2 will have a higher id
@@ -351,7 +364,7 @@ setupPg("GET /v1/insights/sol-usdc/current (PG Canonical Policy)", () => {
       url: "/v1/insights/sol-usdc/current"
     });
     expect(res.statusCode).toBe(200);
-    expect(res.json().payloadHash).toBe(record2.payloadHash); // Winner by id descending
+    expect(res.json().insightId).toBe(record2.insightId); // Winner by id descending
 
     await app.close();
   });

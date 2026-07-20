@@ -1,4 +1,4 @@
-import type { InsightIngestRequest } from "../../contract/v1/insights.js";
+import type { PolicyInsightContent } from "../../contract/policyInsight/v1/types.generated.js";
 import type { PolicySynthesisEnvelope } from "../../engine/policy/synthesizePolicyInsight.js";
 import type { EvidenceSelectionDecision } from "../../engine/evidence/selectEvidence.js";
 
@@ -17,9 +17,10 @@ export interface NewPolicyInsightRecord {
   readonly positionHash: string;
   readonly selectionHash: string;
   readonly synthesisInputHash: string;
+  readonly wireContractSha256: string;
   readonly selectionPolicyVersion: string;
   readonly synthesisInputJson: PolicySynthesisEnvelope;
-  readonly synthesisOutputJson: InsightIngestRequest;
+  readonly synthesisOutputJson: PolicyInsightContent;
   readonly payloadCanonical: string;
   readonly payloadHash: string;
   readonly selectedLineageJson: readonly EvidenceSelectionDecision[];
@@ -33,6 +34,7 @@ export interface StoredPolicyInsight extends NewPolicyInsightRecord {
 export interface PolicyInsightRepositoryPort {
   findBySynthesisInputHash(input: {
     readonly schemaVersion: string;
+    readonly wireContractSha256: string;
     readonly rulesetVersion: string;
     readonly synthesisInputHash: string;
   }): Promise<StoredPolicyInsight | null>;
@@ -45,6 +47,7 @@ export interface PolicyInsightRepositoryPort {
   getCurrent(input: {
     readonly pair: "SOL/USDC";
     readonly scopeKey: string;
+    readonly wireContractSha256: string;
   }): Promise<StoredPolicyInsight | null>;
 
   getHistory(input: {
@@ -52,6 +55,7 @@ export interface PolicyInsightRepositoryPort {
     readonly scopeKey: string;
     readonly limit: number;
     readonly cursor: PolicyInsightHistoryCursor | null;
+    readonly wireContractSha256: string;
   }): Promise<{
     readonly records: readonly StoredPolicyInsight[];
     readonly nextCursor: PolicyInsightHistoryCursor | null;

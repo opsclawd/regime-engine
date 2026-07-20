@@ -1,10 +1,12 @@
 import type { FastifyReply, FastifyRequest } from "fastify";
 import { SCHEMA_VERSION } from "../../../contract/v1/types.js";
-import type { InsightCurrentResponse, InsightFreshness } from "../../../contract/v1/insights.js";
 import { ERROR_CODES, ContractValidationError } from "../../../contract/v1/errors.js";
 import type { GetCurrentPolicyInsightUseCase } from "../../../application/use-cases/getCurrentPolicyInsightUseCase.js";
 import { PolicyInsightNotFoundError } from "../../../application/use-cases/getCurrentPolicyInsightUseCase.js";
-import { PolicyInsightStoreUnavailableError } from "../../../application/errors/policyInsightErrors.js";
+import {
+  PolicyInsightStoreUnavailableError,
+  PolicyInsightValidationError
+} from "../../../application/errors/policyInsightErrors.js";
 
 const CURRENT_ALLOWED_KEYS = new Set(["scope", "walletAddress", "whirlpoolAddress", "positionId"]);
 
@@ -51,7 +53,6 @@ function parseIdentifier(value: unknown, fieldName: string): string {
 export function parsePolicyInsightCurrentQuery(query: Record<string, unknown>): {
   scopeKey: string;
 } {
-  // Check extra keys
   const extraKeys = Object.keys(query).filter((k) => !CURRENT_ALLOWED_KEYS.has(k));
   if (extraKeys.length > 0) {
     throw new ContractValidationError(400, {
@@ -71,7 +72,6 @@ export function parsePolicyInsightCurrentQuery(query: Record<string, unknown>): 
   const scopeValue = query.scope;
 
   if (scopeValue === undefined || scopeValue === "" || scopeValue === "pair") {
-    // Check inapplicable params
     const inapplicable = ["walletAddress", "whirlpoolAddress", "positionId"].filter(
       (k) => query[k] !== undefined
     );
@@ -157,27 +157,7 @@ export const createInsightsCurrentHandler = (useCase: GetCurrentPolicyInsightUse
         scopeKey
       });
 
-      const record = result.record;
-      const nowUnixMs = Date.now();
-      const ageSeconds = Math.floor((nowUnixMs - record.asOfUnixMs) / 1000);
-      const stale = nowUnixMs >= record.expiresAtUnixMs;
-
-      const freshness: InsightFreshness = {
-        generatedAtIso: new Date(record.asOfUnixMs).toISOString(),
-        expiresAtIso: new Date(record.expiresAtUnixMs).toISOString(),
-        ageSeconds,
-        stale
-      };
-
-      const response: InsightCurrentResponse = {
-        ...record.synthesisOutputJson,
-        status: stale ? "STALE" : "FRESH",
-        payloadHash: record.payloadHash,
-        receivedAtIso: new Date(record.persistedAtUnixMs).toISOString(),
-        freshness
-      };
-
-      return reply.code(200).send(response);
+      return reply.code(200).send(result);
     } catch (error) {
       if (error instanceof ContractValidationError) {
         return reply.code(error.statusCode).send(error.response);
@@ -188,6 +168,17 @@ export const createInsightsCurrentHandler = (useCase: GetCurrentPolicyInsightUse
           schemaVersion: SCHEMA_VERSION,
           error: {
             code: ERROR_CODES.INSIGHT_NOT_FOUND,
+            message: error.message,
+            details: []
+          }
+        });
+      }
+
+      if (error instanceof PolicyInsightValidationError) {
+        return reply.code(400).send({
+          schemaVersion: SCHEMA_VERSION,
+          error: {
+            code: ERROR_CODES.VALIDATION_ERROR,
             message: error.message,
             details: []
           }

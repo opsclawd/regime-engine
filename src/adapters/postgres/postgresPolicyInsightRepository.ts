@@ -12,11 +12,9 @@ import {
   PolicyInsightStoreUnavailableError,
   PolicyInsightValidationError
 } from "../../application/errors/policyInsightErrors.js";
-import {
-  parseInsightIngestRequest,
-  computeInsightCanonicalAndHash
-} from "../../contract/v1/insights.js";
-import type { InsightIngestRequest } from "../../contract/v1/insights.js";
+import { parsePolicyInsightContent } from "../../contract/policyInsight/v1/validate.js";
+import { computePolicyInsightContentCanonicalAndHash } from "../../contract/policyInsight/v1/canonical.js";
+import type { PolicyInsightContent } from "../../contract/policyInsight/v1/types.generated.js";
 import type { PolicySynthesisEnvelope } from "../../engine/policy/synthesizePolicyInsight.js";
 import type { EvidenceSelectionDecision } from "../../engine/evidence/selectEvidence.js";
 
@@ -143,26 +141,22 @@ const validateSynthesisOutput = (
   value: unknown,
   payloadCanonical: string,
   payloadHash: string
-): InsightIngestRequest => {
-  let validatedOutput: InsightIngestRequest;
-  try {
-    validatedOutput = parseInsightIngestRequest(value);
-  } catch (error) {
+): PolicyInsightContent => {
+  const result = parsePolicyInsightContent(value);
+  if (!result.ok) {
     throw new PolicyInsightValidationError(
-      `synthesisOutputJson failed InsightIngestRequest validation: ${
-        error instanceof Error ? error.message : String(error)
-      }`,
-      { cause: error }
+      `synthesisOutputJson failed PolicyInsightContent validation: ${result.issues.length} issue(s)`,
+      { cause: result.issues }
     );
   }
 
-  const { canonical, hash } = computeInsightCanonicalAndHash(validatedOutput);
+  const { canonical, hash } = computePolicyInsightContentCanonicalAndHash(result.value);
   if (canonical !== payloadCanonical || hash !== payloadHash) {
     throw new PolicyInsightValidationError(
       "payloadCanonical/payloadHash do not match the recomputed canonical form of synthesisOutputJson"
     );
   }
-  return validatedOutput;
+  return result.value;
 };
 
 const mapRowToStoredInsight = (row: PolicyInsightRow): StoredPolicyInsight => {
@@ -182,6 +176,7 @@ const mapRowToStoredInsight = (row: PolicyInsightRow): StoredPolicyInsight => {
     positionHash: row.positionHash,
     selectionHash: row.selectionHash,
     synthesisInputHash: row.synthesisInputHash,
+    wireContractSha256: row.wireContractSha256 ?? "",
     selectionPolicyVersion: row.selectionPolicyVersion,
     synthesisInputJson: validateSynthesisInput(row.synthesisInputJson),
     synthesisOutputJson: validateSynthesisOutput(
@@ -218,7 +213,8 @@ export const createPostgresPolicyInsightRepository = (db: Db): PolicyInsightRepo
             and(
               eq(policyInsights.schemaVersion, input.schemaVersion),
               eq(policyInsights.rulesetVersion, input.rulesetVersion),
-              eq(policyInsights.synthesisInputHash, input.synthesisInputHash)
+              eq(policyInsights.synthesisInputHash, input.synthesisInputHash),
+              eq(policyInsights.wireContractSha256, input.wireContractSha256)
             )
           )
           .limit(1);
@@ -258,6 +254,7 @@ export const createPostgresPolicyInsightRepository = (db: Db): PolicyInsightRepo
               positionHash: input.positionHash,
               selectionHash: input.selectionHash,
               synthesisInputHash: input.synthesisInputHash,
+              wireContractSha256: input.wireContractSha256,
               selectionPolicyVersion: input.selectionPolicyVersion,
               synthesisInputJson: input.synthesisInputJson,
               synthesisOutputJson: input.synthesisOutputJson,
@@ -269,6 +266,7 @@ export const createPostgresPolicyInsightRepository = (db: Db): PolicyInsightRepo
             .onConflictDoNothing({
               target: [
                 policyInsights.schemaVersion,
+                policyInsights.wireContractSha256,
                 policyInsights.rulesetVersion,
                 policyInsights.synthesisInputHash
               ]
@@ -289,7 +287,8 @@ export const createPostgresPolicyInsightRepository = (db: Db): PolicyInsightRepo
               and(
                 eq(policyInsights.schemaVersion, input.schemaVersion),
                 eq(policyInsights.rulesetVersion, input.rulesetVersion),
-                eq(policyInsights.synthesisInputHash, input.synthesisInputHash)
+                eq(policyInsights.synthesisInputHash, input.synthesisInputHash),
+                eq(policyInsights.wireContractSha256, input.wireContractSha256)
               )
             )
             .limit(1);
@@ -319,7 +318,12 @@ export const createPostgresPolicyInsightRepository = (db: Db): PolicyInsightRepo
           .select()
           .from(policyInsights)
           .where(
-            and(eq(policyInsights.pair, input.pair), eq(policyInsights.scopeKey, input.scopeKey))
+            and(
+              eq(policyInsights.pair, input.pair),
+              eq(policyInsights.scopeKey, input.scopeKey),
+              eq(policyInsights.schemaVersion, "policy-insight.v1"),
+              eq(policyInsights.wireContractSha256, input.wireContractSha256)
+            )
           )
           .orderBy(desc(policyInsights.generatedAtUnixMs), desc(policyInsights.id))
           .limit(1);
@@ -337,7 +341,7 @@ export const createPostgresPolicyInsightRepository = (db: Db): PolicyInsightRepo
       }
     },
 
-    getHistory: async ({ pair, scopeKey, limit, cursor }) => {
+    getHistory: async ({ pair, scopeKey, limit, cursor, wireContractSha256 }) => {
       try {
         const MIN_LIMIT = 1;
         const MAX_LIMIT = 100;
@@ -348,7 +352,12 @@ export const createPostgresPolicyInsightRepository = (db: Db): PolicyInsightRepo
 
         const queryLimit = limit + 1;
 
-        const conditions = [eq(policyInsights.pair, pair), eq(policyInsights.scopeKey, scopeKey)];
+        const conditions = [
+          eq(policyInsights.pair, pair),
+          eq(policyInsights.scopeKey, scopeKey),
+          eq(policyInsights.schemaVersion, "policy-insight.v1"),
+          eq(policyInsights.wireContractSha256, wireContractSha256)
+        ];
 
         if (cursor !== null) {
           conditions.push(

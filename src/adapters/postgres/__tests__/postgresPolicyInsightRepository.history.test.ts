@@ -3,37 +3,50 @@ import { createDb, type Db } from "../../../ledger/pg/db.js";
 import { createPostgresPolicyInsightRepository } from "../postgresPolicyInsightRepository.js";
 import { sql } from "drizzle-orm";
 import type { NewPolicyInsightRecord } from "../../../application/ports/policyInsightRepositoryPort.js";
-import { computeInsightCanonicalAndHash } from "../../../contract/v1/insights.js";
-import type { InsightIngestRequest } from "../../../contract/v1/insights.js";
-import { SCHEMA_VERSION } from "../../../contract/v1/types.js";
+import { computePolicyInsightContentCanonicalAndHash } from "../../../contract/policyInsight/v1/canonical.js";
+import type { PolicyInsightContent } from "../../../contract/policyInsight/v1/types.generated.js";
 import type { PolicySynthesisEnvelope } from "../../../engine/policy/synthesizePolicyInsight.js";
 import type { EvidenceSelectionDecision } from "../../../engine/evidence/selectEvidence.js";
 import { clmmInsights } from "../../../ledger/pg/schema/clmmInsights.js";
+const POLICY_INSIGHT_V1_WIRE_CONTRACT_SHA256 =
+  "80487b0a9374d0b535accf535ef9819f2b2de00e1d65980deb73c97afaa02800";
 
 const TEST_PAIR = "SOL/USDC";
 
-const testOutput: InsightIngestRequest = {
-  schemaVersion: SCHEMA_VERSION,
+const testOutput: PolicyInsightContent = {
+  schemaVersion: "policy-insight.v1",
+  insightId: "a".repeat(64),
+  rulesetVersion: "ruleset-1.0.0",
   pair: "SOL/USDC",
-  asOf: "2024-01-01T00:00:00.000Z",
-  source: "openclaw",
-  runId: "synthesis-sol-usdc-1700000000000",
-  marketRegime: "up",
-  fundamentalRegime: "unknown",
-  recommendedAction: "watch",
-  confidence: "medium",
-  riskLevel: "normal",
-  dataQuality: "complete",
+  position: null,
+  generatedAt: "2024-01-01T00:00:00.000Z",
+  asOf: "2023-12-31T23:59:59.000Z",
+  expiresAt: "2024-01-01T00:05:00.000Z",
+  marketRegime: "UP",
+  fundamentalRegime: "NEUTRAL",
+  posture: "NEUTRAL",
+  recommendedAction: "HOLD",
+  riskLevel: "NORMAL",
   clmmPolicy: {
-    posture: "neutral",
-    rangeBias: "medium",
-    rebalanceSensitivity: "normal",
-    maxCapitalDeploymentPercent: 75
+    rangeBias: "MEDIUM",
+    rebalanceSensitivity: "NORMAL",
+    maxCapitalDeploymentBps: 7500
   },
-  levels: { support: [95], resistance: [110] },
-  reasoning: ["MARKET_REGIME_UP"],
-  sourceRefs: [],
-  expiresAt: "2024-01-01T00:05:00.000Z"
+  levels: {
+    supportsUsdcPerSol: ["96", "95"],
+    resistancesUsdcPerSol: ["110", "111"]
+  },
+  evidence: {
+    selectionStatus: "FULL",
+    selectionPolicyVersion: "selector.v1.2026-07",
+    selectedBundleRefs: [],
+    selectedSourceRefs: []
+  },
+  confidenceBps: 7500,
+  dataQuality: "COMPLETE",
+  reasonCodes: ["MARKET_REGIME_UP"],
+  reasoning: "Market regime is UP.",
+  warnings: []
 };
 
 const testSynthesisInput: PolicySynthesisEnvelope = {
@@ -75,7 +88,7 @@ const excludedDecision: EvidenceSelectionDecision = {
 };
 
 const { canonical: testPayloadCanonical, hash: testPayloadHash } =
-  computeInsightCanonicalAndHash(testOutput);
+  computePolicyInsightContentCanonicalAndHash(testOutput);
 
 const createTestRecord = (
   overrides: Partial<NewPolicyInsightRecord> = {}
@@ -100,6 +113,7 @@ const createTestRecord = (
     positionHash: "c".repeat(64),
     selectionHash: "d".repeat(64),
     synthesisInputHash: overrides.synthesisInputHash ?? "e".repeat(64),
+    wireContractSha256: POLICY_INSIGHT_V1_WIRE_CONTRACT_SHA256,
     selectionPolicyVersion: "policy-v1",
     synthesisInputJson: testSynthesisInput,
     synthesisOutputJson: testOutput,
@@ -134,7 +148,8 @@ describe.skipIf(!process.env.DATABASE_URL)("postgresPolicyInsightRepository.hist
       pair: TEST_PAIR,
       scopeKey: "pair",
       limit: 10,
-      cursor: null
+      cursor: null,
+      wireContractSha256: POLICY_INSIGHT_V1_WIRE_CONTRACT_SHA256
     });
     expect(result.records).toEqual([]);
     expect(result.nextCursor).toBeNull();
@@ -146,7 +161,8 @@ describe.skipIf(!process.env.DATABASE_URL)("postgresPolicyInsightRepository.hist
         pair: TEST_PAIR,
         scopeKey: "pair",
         limit: 0,
-        cursor: null
+        cursor: null,
+        wireContractSha256: POLICY_INSIGHT_V1_WIRE_CONTRACT_SHA256
       })
     ).rejects.toThrow();
 
@@ -155,7 +171,8 @@ describe.skipIf(!process.env.DATABASE_URL)("postgresPolicyInsightRepository.hist
         pair: TEST_PAIR,
         scopeKey: "pair",
         limit: 101,
-        cursor: null
+        cursor: null,
+        wireContractSha256: POLICY_INSIGHT_V1_WIRE_CONTRACT_SHA256
       })
     ).rejects.toThrow();
   });
@@ -179,7 +196,8 @@ describe.skipIf(!process.env.DATABASE_URL)("postgresPolicyInsightRepository.hist
       pair: TEST_PAIR,
       scopeKey: "pair",
       limit: 10,
-      cursor: null
+      cursor: null,
+      wireContractSha256: POLICY_INSIGHT_V1_WIRE_CONTRACT_SHA256
     });
 
     expect(pairHistory.records).toHaveLength(1);
@@ -215,7 +233,8 @@ describe.skipIf(!process.env.DATABASE_URL)("postgresPolicyInsightRepository.hist
       pair: TEST_PAIR,
       scopeKey: "pair",
       limit: 2,
-      cursor: null
+      cursor: null,
+      wireContractSha256: POLICY_INSIGHT_V1_WIRE_CONTRACT_SHA256
     });
 
     expect(page1.records).toHaveLength(2);
@@ -230,7 +249,8 @@ describe.skipIf(!process.env.DATABASE_URL)("postgresPolicyInsightRepository.hist
       pair: TEST_PAIR,
       scopeKey: "pair",
       limit: 2,
-      cursor: page1.nextCursor
+      cursor: page1.nextCursor,
+      wireContractSha256: POLICY_INSIGHT_V1_WIRE_CONTRACT_SHA256
     });
 
     expect(page2.records).toHaveLength(1);
@@ -257,7 +277,8 @@ describe.skipIf(!process.env.DATABASE_URL)("postgresPolicyInsightRepository.hist
       pair: TEST_PAIR,
       scopeKey: "pair",
       limit: 10,
-      cursor: null
+      cursor: null,
+      wireContractSha256: POLICY_INSIGHT_V1_WIRE_CONTRACT_SHA256
     });
 
     expect(history.records).toHaveLength(2);
@@ -293,7 +314,8 @@ describe.skipIf(!process.env.DATABASE_URL)("postgresPolicyInsightRepository.hist
       pair: TEST_PAIR,
       scopeKey: "pair",
       limit: 10,
-      cursor: null
+      cursor: null,
+      wireContractSha256: POLICY_INSIGHT_V1_WIRE_CONTRACT_SHA256
     });
 
     expect(history.records).toHaveLength(0);
@@ -344,7 +366,8 @@ describe.skipIf(!process.env.DATABASE_URL)("postgresPolicyInsightRepository.hist
       pair: TEST_PAIR,
       scopeKey: "pair",
       limit: 1,
-      cursor: null
+      cursor: null,
+      wireContractSha256: POLICY_INSIGHT_V1_WIRE_CONTRACT_SHA256
     });
 
     expect(history.records).toHaveLength(1);

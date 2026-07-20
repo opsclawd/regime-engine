@@ -7,10 +7,14 @@ import { createPostgresPolicyInsightRepository } from "../../postgres/postgresPo
 import type { NewPolicyInsightRecord } from "../../../application/ports/policyInsightRepositoryPort.js";
 import { sql } from "drizzle-orm";
 import type { PolicySynthesisEnvelope } from "../../../engine/policy/synthesizePolicyInsight.js";
-import { computeInsightCanonicalAndHash } from "../../../contract/v1/insights.js";
+import { computePolicyInsightContentCanonicalAndHash } from "../../../contract/policyInsight/v1/canonical.js";
+import type { PolicyInsightContent } from "../../../contract/policyInsight/v1/types.generated.js";
 
 const PG_CONNECTION_STRING =
   process.env.DATABASE_URL ?? "postgres://test:test@localhost:5432/regime_engine_test";
+
+const POLICY_INSIGHT_V1_WIRE_CONTRACT_SHA256 =
+  "80487b0a9374d0b535accf535ef9819f2b2de00e1d65980deb73c97afaa02800";
 
 const testSynthesisInput = {
   synthesisAtUnixMs: 1700000000000,
@@ -64,28 +68,40 @@ const testSynthesisInput = {
   }
 };
 
-const testOutput = {
-  schemaVersion: "1.0" as const,
-  pair: "SOL/USDC" as const,
-  asOf: "2026-04-29T12:00:00Z",
-  source: "openclaw" as const,
-  runId: "run-001",
-  marketRegime: "ranging",
-  fundamentalRegime: "neutral",
-  recommendedAction: "hold" as const,
-  confidence: "medium" as const,
-  riskLevel: "normal" as const,
-  dataQuality: "complete" as const,
+const testOutput: PolicyInsightContent = {
+  schemaVersion: "policy-insight.v1",
+  insightId: "a".repeat(64),
+  rulesetVersion: "ruleset-1.0.0",
+  pair: "SOL/USDC",
+  position: null,
+  generatedAt: "2026-04-29T12:00:00.000Z",
+  asOf: "2026-04-29T11:59:59.000Z",
+  expiresAt: "2026-04-30T12:00:00.000Z",
+  marketRegime: "CHOP",
+  fundamentalRegime: "NEUTRAL",
+  posture: "NEUTRAL",
+  recommendedAction: "HOLD",
+  riskLevel: "NORMAL",
   clmmPolicy: {
-    posture: "neutral" as const,
-    rangeBias: "medium" as const,
-    rebalanceSensitivity: "normal" as const,
-    maxCapitalDeploymentPercent: 80
+    rangeBias: "MEDIUM",
+    rebalanceSensitivity: "NORMAL",
+    maxCapitalDeploymentBps: 8000
   },
-  levels: { support: [140.5], resistance: [180.25] },
-  reasoning: ["Market ranging"],
-  sourceRefs: ["https://example.com"],
-  expiresAt: "2026-04-30T12:00:00Z"
+  levels: {
+    supportsUsdcPerSol: ["140.5", "141"],
+    resistancesUsdcPerSol: ["180.25", "181"]
+  },
+  evidence: {
+    selectionStatus: "FULL",
+    selectionPolicyVersion: "selector.v1.2026-07",
+    selectedBundleRefs: [],
+    selectedSourceRefs: []
+  },
+  confidenceBps: 7500,
+  dataQuality: "COMPLETE",
+  reasonCodes: ["MARKET_REGIME_CHOP"],
+  reasoning: "Market ranging",
+  warnings: []
 };
 
 const createTestRecord = (
@@ -96,8 +112,11 @@ const createTestRecord = (
   const persistedAtUnixMs = overrides.persistedAtUnixMs ?? generatedAtUnixMs + 1000;
   const expiresAtUnixMs = overrides.expiresAtUnixMs ?? generatedAtUnixMs + 5000;
 
-  const output = overrides.synthesisOutputJson ?? testOutput;
-  const { canonical, hash } = computeInsightCanonicalAndHash(output);
+  const output: PolicyInsightContent = overrides.synthesisOutputJson ?? {
+    ...testOutput,
+    insightId: overrides.insightId ?? "a".repeat(64)
+  };
+  const { canonical, hash } = computePolicyInsightContentCanonicalAndHash(output);
 
   return {
     insightId: overrides.insightId ?? "a".repeat(64),
@@ -114,6 +133,7 @@ const createTestRecord = (
     positionHash: "c".repeat(64),
     selectionHash: "d".repeat(64),
     synthesisInputHash: overrides.synthesisInputHash ?? "e".repeat(64),
+    wireContractSha256: POLICY_INSIGHT_V1_WIRE_CONTRACT_SHA256,
     selectionPolicyVersion: "policy-v1",
     synthesisInputJson: testSynthesisInput as unknown as PolicySynthesisEnvelope,
     synthesisOutputJson: output,
@@ -204,7 +224,7 @@ setupPg("GET /v1/insights/sol-usdc/history (PG Canonical Policy History)", () =>
     expect(res.statusCode).toBe(200);
     const body = res.json();
     expect(body.items.length).toBe(1);
-    expect(body.items[0].payloadHash).toBe(record.payloadHash);
+    expect(body.items[0].insightId).toBe(record.insightId);
 
     await app.close();
   });
@@ -218,20 +238,17 @@ setupPg("GET /v1/insights/sol-usdc/history (PG Canonical Policy History)", () =>
     const record1 = createTestRecord({
       insightId: "1".repeat(64),
       synthesisInputHash: "1".repeat(64),
-      generatedAtUnixMs: 1700000000000,
-      synthesisOutputJson: { ...testOutput, runId: "run-1" }
+      generatedAtUnixMs: 1700000000000
     });
     const record2 = createTestRecord({
       insightId: "2".repeat(64),
       synthesisInputHash: "2".repeat(64),
-      generatedAtUnixMs: 1700000005000,
-      synthesisOutputJson: { ...testOutput, runId: "run-2" }
+      generatedAtUnixMs: 1700000005000
     });
     const record3 = createTestRecord({
       insightId: "3".repeat(64),
       synthesisInputHash: "3".repeat(64),
-      generatedAtUnixMs: 1700000005000, // tie-breaker by id/insert order
-      synthesisOutputJson: { ...testOutput, runId: "run-3" }
+      generatedAtUnixMs: 1700000005000
     });
 
     await repository.insertOrGet(record1);
@@ -245,10 +262,9 @@ setupPg("GET /v1/insights/sol-usdc/history (PG Canonical Policy History)", () =>
     expect(resHistory.statusCode).toBe(200);
     const historyBody = resHistory.json();
     expect(historyBody.items.length).toBe(3);
-    // Order should be record3 (newest timestamp + highest id), record2 (newest timestamp + lower id), record1
-    expect(historyBody.items[0].runId).toBe("run-3");
-    expect(historyBody.items[1].runId).toBe("run-2");
-    expect(historyBody.items[2].runId).toBe("run-1");
+    expect(historyBody.items[0].insightId).toBe("3".repeat(64));
+    expect(historyBody.items[1].insightId).toBe("2".repeat(64));
+    expect(historyBody.items[2].insightId).toBe("1".repeat(64));
 
     const resCurrent = await app.inject({
       method: "GET",
@@ -256,8 +272,7 @@ setupPg("GET /v1/insights/sol-usdc/history (PG Canonical Policy History)", () =>
     });
     expect(resCurrent.statusCode).toBe(200);
     const currentBody = resCurrent.json();
-    // Current should return the very first one from the history array (newest/winner)
-    expect(currentBody.runId).toBe("run-3");
+    expect(currentBody.insightId).toBe("3".repeat(64));
 
     await app.close();
   });
@@ -271,20 +286,17 @@ setupPg("GET /v1/insights/sol-usdc/history (PG Canonical Policy History)", () =>
     const record1 = createTestRecord({
       insightId: "1".repeat(64),
       synthesisInputHash: "1".repeat(64),
-      generatedAtUnixMs: 1700000000000,
-      synthesisOutputJson: { ...testOutput, runId: "run-1" }
+      generatedAtUnixMs: 1700000000000
     });
     const record2 = createTestRecord({
       insightId: "2".repeat(64),
       synthesisInputHash: "2".repeat(64),
-      generatedAtUnixMs: 1700000000000,
-      synthesisOutputJson: { ...testOutput, runId: "run-2" }
+      generatedAtUnixMs: 1700000000000
     });
     const record3 = createTestRecord({
       insightId: "3".repeat(64),
       synthesisInputHash: "3".repeat(64),
-      generatedAtUnixMs: 1700000000000,
-      synthesisOutputJson: { ...testOutput, runId: "run-3" }
+      generatedAtUnixMs: 1700000000000
     });
 
     await repository.insertOrGet(record1);
@@ -299,7 +311,7 @@ setupPg("GET /v1/insights/sol-usdc/history (PG Canonical Policy History)", () =>
     expect(page1Res.statusCode).toBe(200);
     const page1 = page1Res.json();
     expect(page1.items.length).toBe(1);
-    expect(page1.items[0].runId).toBe("run-3");
+    expect(page1.items[0].insightId).toBe("3".repeat(64));
     expect(page1.nextCursor).toBeDefined();
 
     // Get page 2 (limit 1) using cursor
@@ -310,7 +322,7 @@ setupPg("GET /v1/insights/sol-usdc/history (PG Canonical Policy History)", () =>
     expect(page2Res.statusCode).toBe(200);
     const page2 = page2Res.json();
     expect(page2.items.length).toBe(1);
-    expect(page2.items[0].runId).toBe("run-2");
+    expect(page2.items[0].insightId).toBe("2".repeat(64));
     expect(page2.nextCursor).toBeDefined();
 
     // Get page 3 (limit 1) using cursor
@@ -321,7 +333,7 @@ setupPg("GET /v1/insights/sol-usdc/history (PG Canonical Policy History)", () =>
     expect(page3Res.statusCode).toBe(200);
     const page3 = page3Res.json();
     expect(page3.items.length).toBe(1);
-    expect(page3.items[0].runId).toBe("run-1");
+    expect(page3.items[0].insightId).toBe("1".repeat(64));
 
     await app.close();
   });
@@ -343,7 +355,7 @@ setupPg("GET /v1/insights/sol-usdc/history (PG Canonical Policy History)", () =>
       await app.close();
     }
 
-    // 2. Limits validation (min 1, max 200)
+    // 2. Limits validation (min 1, max 100)
     {
       const app = buildApp();
       const resMin = await app.inject({
@@ -354,7 +366,7 @@ setupPg("GET /v1/insights/sol-usdc/history (PG Canonical Policy History)", () =>
 
       const resMax = await app.inject({
         method: "GET",
-        url: "/v1/insights/sol-usdc/history?limit=201"
+        url: "/v1/insights/sol-usdc/history?limit=101"
       });
       expect(resMax.statusCode).toBe(400);
       await app.close();

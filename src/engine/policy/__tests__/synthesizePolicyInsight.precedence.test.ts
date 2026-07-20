@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
-  synthesizePolicyInsight,
+  synthesizePolicyInsightV1,
   type PolicySynthesisEnvelope
 } from "../synthesizePolicyInsight.js";
 import { SOL_USDC_POLICY_V1 } from "../ruleset.js";
@@ -49,14 +49,14 @@ describe("synthesizePolicyInsight - Precedence Guards", () => {
       hashes: { inputHash: "in-1", rulesetHash: "rules-1" }
     };
 
-    const result = synthesizePolicyInsight(envelope, SOL_USDC_POLICY_V1);
+    const result = synthesizePolicyInsightV1(envelope, SOL_USDC_POLICY_V1);
 
-    expect(result.recommendedAction).toBe("pause_rebalances");
-    expect(result.clmmPolicy.posture).toBe("paused");
-    expect(result.clmmPolicy.rebalanceSensitivity).toBe("paused");
-    expect(result.clmmPolicy.maxCapitalDeploymentPercent).toBe(0);
-    expect(result.riskLevel).toBe("critical");
-    expect(result.confidence).toBe("low");
+    expect(result.recommendedAction).toBe("STAND_DOWN");
+    expect(result.posture).toBe("PAUSED");
+    expect(result.clmmPolicy.rebalanceSensitivity).toBe("PAUSED");
+    expect(result.clmmPolicy.maxCapitalDeploymentBps).toBe(0);
+    expect(result.riskLevel).toBe("CRITICAL");
+    expect(result.confidenceBps).toBe(2500);
     expect(result.reasoning).toContain("DATA_HARD_STALE");
   });
 
@@ -79,10 +79,10 @@ describe("synthesizePolicyInsight - Precedence Guards", () => {
       hashes: { inputHash: "in-1", rulesetHash: "rules-1" }
     };
 
-    const result = synthesizePolicyInsight(envelope, SOL_USDC_POLICY_V1);
+    const result = synthesizePolicyInsightV1(envelope, SOL_USDC_POLICY_V1);
 
-    expect(result.recommendedAction).toBe("exit_range");
-    expect(result.clmmPolicy.maxCapitalDeploymentPercent).toBe(0);
+    expect(result.recommendedAction).toBe("EXIT_TO_USDC");
+    expect(result.clmmPolicy.maxCapitalDeploymentBps).toBe(0);
     expect(result.reasoning).toContain("CLMM_BREACH_LOWER");
   });
 
@@ -105,10 +105,10 @@ describe("synthesizePolicyInsight - Precedence Guards", () => {
       hashes: { inputHash: "in-1", rulesetHash: "rules-1" }
     };
 
-    const result = synthesizePolicyInsight(envelope, SOL_USDC_POLICY_V1);
+    const result = synthesizePolicyInsightV1(envelope, SOL_USDC_POLICY_V1);
 
-    expect(result.recommendedAction).toBe("exit_range");
-    expect(result.clmmPolicy.maxCapitalDeploymentPercent).toBe(0);
+    expect(result.recommendedAction).toBe("EXIT_TO_SOL");
+    expect(result.clmmPolicy.maxCapitalDeploymentBps).toBe(0);
     expect(result.reasoning).toContain("CLMM_BREACH_UPPER");
   });
 
@@ -133,11 +133,11 @@ describe("synthesizePolicyInsight - Precedence Guards", () => {
       hashes: { inputHash: "in-1", rulesetHash: "rules-1" }
     };
 
-    const result = synthesizePolicyInsight(envelope, SOL_USDC_POLICY_V1);
+    const result = synthesizePolicyInsightV1(envelope, SOL_USDC_POLICY_V1);
 
-    expect(result.recommendedAction).toBe("pause_rebalances");
-    expect(result.clmmPolicy.posture).toBe("paused");
-    expect(result.clmmPolicy.maxCapitalDeploymentPercent).toBe(0);
+    expect(result.recommendedAction).toBe("STAND_DOWN");
+    expect(result.posture).toBe("PAUSED");
+    expect(result.clmmPolicy.maxCapitalDeploymentBps).toBe(0);
     expect(result.reasoning).toContain("CHURN_STAND_DOWN_ACTIVE");
   });
 
@@ -161,10 +161,10 @@ describe("synthesizePolicyInsight - Precedence Guards", () => {
       hashes: { inputHash: "in-1", rulesetHash: "rules-1" }
     };
 
-    const result = synthesizePolicyInsight(envelope, SOL_USDC_POLICY_V1);
+    const result = synthesizePolicyInsightV1(envelope, SOL_USDC_POLICY_V1);
 
-    expect(result.clmmPolicy.maxCapitalDeploymentPercent).toBeLessThanOrEqual(50); // Down regime baseline cap
-    expect(result.clmmPolicy.rebalanceSensitivity).toBe("low");
+    expect(result.clmmPolicy.maxCapitalDeploymentBps).toBeLessThanOrEqual(5000); // Down regime baseline cap
+    expect(result.clmmPolicy.rebalanceSensitivity).toBe("LOW");
     expect(result.reasoning).toContain("CHURN_COOLDOWN_ACTIVE");
   });
 
@@ -201,12 +201,12 @@ describe("synthesizePolicyInsight - Precedence Guards", () => {
       hashes: { inputHash: "in-1", rulesetHash: "rules-1" }
     };
 
-    const result = synthesizePolicyInsight(envelope, SOL_USDC_POLICY_V1);
+    const result = synthesizePolicyInsightV1(envelope, SOL_USDC_POLICY_V1);
 
     // Stage 1 (DATA_HARD_STALE) sets actionLock = "pause_rebalances"
     // Stage 2 (BREACH) sets actionLock = "exit_range"
     // Since Stage 1 has higher precedence, recommendedAction must be "pause_rebalances"
-    expect(result.recommendedAction).toBe("pause_rebalances");
+    expect(result.recommendedAction).toBe("STAND_DOWN");
   });
 
   it("authoritative plan action HOLD locks recommended action to hold", () => {
@@ -227,9 +227,9 @@ describe("synthesizePolicyInsight - Precedence Guards", () => {
       hashes: { inputHash: "in-1", rulesetHash: "rules-1" }
     };
 
-    const result = synthesizePolicyInsight(envelope, SOL_USDC_POLICY_V1);
+    const result = synthesizePolicyInsightV1(envelope, SOL_USDC_POLICY_V1);
 
-    expect(result.recommendedAction).toBe("hold");
+    expect(result.recommendedAction).toBe("HOLD");
   });
 
   it("does not incorrectly classify CLMM_BREACH_UPPER for non-breached positions or missing position details", () => {
@@ -250,9 +250,9 @@ describe("synthesizePolicyInsight - Precedence Guards", () => {
       hashes: { inputHash: "in-1", rulesetHash: "rules-1" }
     };
 
-    const result = synthesizePolicyInsight(envelope, SOL_USDC_POLICY_V1);
+    const result = synthesizePolicyInsightV1(envelope, SOL_USDC_POLICY_V1);
 
-    expect(result.recommendedAction).toBe("exit_range");
+    expect(result.recommendedAction).toBe("EXIT_TO_SOL");
     expect(result.reasoning).not.toContain("CLMM_BREACH_UPPER");
     expect(result.reasoning).not.toContain("CLMM_BREACH_LOWER");
   });

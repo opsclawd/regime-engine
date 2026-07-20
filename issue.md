@@ -1,171 +1,166 @@
-# feat: synthesize PolicyInsights from market regime plus research evidence
+# fix: define the canonical PolicyInsight v1 wire contract for clmm-v2
 
 ## Summary
 
-Implement the canonical policy-synthesis use case that combines:
+Define, publish, and apply one strict canonical `PolicyInsight v1` read contract for clmm-v2 and other consumers.
 
-- deterministic market/regime state already owned by Regime Engine;
-- current position/plan hard-guard context when available;
-- selected evidence produced by #60;
-- an explicit, versioned policy rule matrix.
+This contract must be decided **before** policy synthesis in #61 so synthesis implements a stable output rather than inventing the public wire shape during implementation.
 
-The output must conform exactly to the canonical `PolicyInsight v1` contract defined by #63.
+## Current drift to eliminate
 
-## Correct boundary
+Current code and consumers disagree on:
 
-Regime Engine owns advisory policy synthesis. It does not sign or submit transactions.
+- `maxCapitalDeploymentPercent` vs `maxCapitalDeploymentPct`;
+- `levels.support/resistance` vs `levels.supports/resistances`;
+- percentage units expressed as `0..100` vs `0..1`;
+- duplicated handwritten validation in downstream consumers;
+- incomplete machine-readable fixtures for exact contract testing.
 
-clmm-v2 remains responsible for:
+No adapter-side guessing or silent unit conversion may remain.
 
-- live wallet/position/execution truth;
-- deterministic breach qualification and debounce behavior;
-- balance, route, slippage, fee-buffer, retry, and transaction-safety checks;
-- user approval and signing;
-- reporting what actually happened.
+## Canonical contract decisions
 
-A synthesized recommendation can explain or reinforce an action, but it cannot bypass those execution controls.
+### Version
 
-## Required precedence matrix
-
-Implement and document an explicit deterministic precedence order:
+Use an explicit schema/version identifier:
 
 ```text
-1. Deterministic execution-safety and hard stale-data guards
-2. Qualified clmm-v2 breach/position hard-guard state, when supplied
-3. Position-plan constraints and explicit stand-down/cooldown state
-4. Deterministic market regime
-5. Selected deterministic evidence features
-6. Selected contextual evidence
-7. Optional research brief
+policy-insight.v1
 ```
 
-Lower-precedence evidence may refine confidence, risk, posture, reasoning, or monitoring emphasis. It may not silently reverse a higher-precedence hard guard.
+The exact property name and serialization must be fixed in the JSON Schema and examples.
 
-### Non-negotiable directional behavior
+### Percentages and ratios
 
-When a qualified breach is present in the deterministic position state:
-
-- lower-bound breach context cannot be reversed by bullish research evidence;
-- upper-bound breach context cannot be reversed by bearish research evidence;
-- contextual evidence may explain uncertainty or risk but cannot convert the breach into a contradictory hold recommendation;
-- the final insight remains advisory and does not itself authorize execution.
-
-When no qualified breach is present, market regime and selected evidence may produce monitor, hold, defensive, or stand-down guidance according to the versioned rule matrix.
-
-## Versioned ruleset
-
-Define a stable ruleset identifier, for example:
+Use explicit basis-point fields for bounded percentage-like public values.
 
 ```text
-sol-usdc-policy.v1
+maxCapitalDeploymentBps: integer 0..10_000
+confidenceBps: integer 0..10_000
 ```
 
-Persist it with every synthesized insight. A ruleset change must produce a new auditable version rather than altering the historical interpretation silently.
+Do not expose ambiguous `Pct` or `Percent` fields in the v1 wire contract.
 
-The rule matrix must be code/configuration that can be tested deterministically. Do not delegate the final action choice to an unconstrained LLM prompt.
+### Price levels
 
-## Required input handling
+Expose zero-or-more levels as arrays with explicit units:
 
-Synthesis must consume:
+```text
+levels.supportsUsdcPerSol: decimal-string[]
+levels.resistancesUsdcPerSol: decimal-string[]
+```
 
-- canonical current market regime/state;
-- current position/plan context where available and fresh;
-- the deterministic selection result from #60, including selected and rejected evidence and reasons;
-- explicit freshness, expiry, confidence, coverage, source quality, and warning metadata;
-- optional research brief only as bounded explanatory evidence.
+Use decimal strings rather than binary floating-point JSON numbers for externally serialized price levels. Arrays may be empty; absence of evidence must not be represented as a fake zero level.
 
-Never read raw external evidence directly around the selector or use “latest payload wins.”
+### Recommended action
 
-## Degraded operation
+Define one closed advisory enum, distinct from the Regime plan-action contract:
 
-Synthesis must still produce an explicit result when external evidence is absent or degraded:
+```text
+HOLD
+MONITOR_LOWER_BOUND
+MONITOR_UPPER_BOUND
+EXIT_TO_USDC
+EXIT_TO_SOL
+STAND_DOWN
+```
 
-- no evidence -> use deterministic Regime Engine state and mark evidence selection `NONE`/degraded;
-- partial evidence -> use eligible evidence only and expose missing-family warnings;
-- stale/expired evidence -> exclude or downweight according to #60 and explain the exclusion;
-- persistence unavailable -> fail explicitly rather than fabricating a current insight;
-- optional brief unavailable -> continue without it.
+These values communicate advisory posture. They do not authorize or submit execution; clmm-v2 remains responsible for deterministic trigger qualification, safety checks, user approval, signing, and transaction submission.
 
-Missing evidence must never become successful zero-valued evidence.
+### Required decision context
 
-## Required output
+The v1 contract must define exact names, enums, units, and nullability for at least:
 
-Produce and persist exactly one canonical `PolicyInsight v1` as defined by #63, including at least:
-
-- schema and ruleset versions;
-- insight identity;
+- schema version;
+- insight ID and ruleset version;
 - pair and optional position identity;
 - generated/as-of/expiry timestamps;
-- market and fundamental regimes;
-- posture and recommended advisory action;
-- confidence, risk, and data-quality state;
-- CLMM policy block;
-- support/resistance arrays when selected evidence supports them;
-- evidence-selection status and selected bundle/source references;
+- market regime;
+- fundamental regime;
+- posture;
+- recommended action;
+- risk level;
+- CLMM policy block including range bias, rebalance sensitivity, and `maxCapitalDeploymentBps`;
+- support/resistance arrays with explicit units;
+- evidence selection status and selected bundle/source references;
+- `confidenceBps`;
+- data-quality state;
 - machine-readable reason codes;
-- concise reasoning and warnings;
-- complete lineage to deterministic state, selection result, and evidence inputs.
+- concise human-readable reasoning;
+- warnings and freshness/stale status.
 
-Do not invent a second output shape inside this issue.
+Unknown enum values and unknown fields must fail closed unless the documented versioning strategy explicitly permits forward-compatible extensions.
 
-## Persistence and audit
+## Machine-readable artifacts
 
-Persist enough synthesis input/output material to reconstruct why an insight was emitted:
+Publish:
 
-- ruleset version;
-- deterministic market/position state references or snapshot hash;
-- evidence-selection result identity;
-- selected and excluded bundle/evidence references with reasons;
-- canonical output payload/hash;
-- timestamps and freshness state.
+- canonical strict JSON Schema, preferably at a stable repository path such as `contracts/policy-insight.v1.schema.json`;
+- generated or schema-tied TypeScript types;
+- valid fixture(s);
+- invalid fixtures for old field names, wrong units, out-of-range basis points, malformed price strings, invalid enums, impossible freshness/timestamp relationships, and unknown fields;
+- OpenAPI read-response examples;
+- documented schema path, commit SHA, version, and SHA-256 for downstream pinning.
 
-Identical re-execution over the same ruleset and canonical input set must be idempotent or deterministically deduplicated. Changed inputs or ruleset versions remain historically distinct.
+clmm-v2 #92 must consume these artifacts instead of maintaining an independent handwritten contract.
+
+## Required Regime Engine changes
+
+- update the domain/output mapping needed to emit the canonical shape;
+- update current/history read handlers and serializers;
+- update persistence mapping where the public shape requires it, without rewriting historical rows silently;
+- update OpenAPI, docs, fixtures, and contract tests;
+- remove old ambiguous public names from the v1 response;
+- add compatibility behavior only when explicitly justified and documented as a temporary boundary adapter.
 
 ## Scope
 
 In scope:
 
-- policy-synthesis application/domain use case;
-- versioned deterministic rule matrix;
-- precedence and degraded-mode handling;
-- mapping to canonical `PolicyInsight v1`;
-- final insight persistence and audit lineage;
-- current/history integration as needed;
-- fixtures, tests, and documentation.
+- canonical public wire-contract decision;
+- JSON Schema and generated/schema-tied types;
+- read serializers/handlers;
+- fixtures, OpenAPI, tests, and migration/compatibility documentation;
+- exact artifact handoff to clmm-v2.
 
 Out of scope:
 
-- evidence ingestion (#59);
-- evidence selection/scoring (#60);
-- defining a different wire contract (#63 owns it);
-- clmm-v2 UI or execution flows;
-- autonomous transaction submission.
+- evidence ingest (#59);
+- evidence selection (#60);
+- synthesis rules (#61), except any minimal mapping needed to preserve existing read behavior;
+- clmm-v2 implementation (#92);
+- execution-plan action contracts.
 
 ## Guardrails
 
-- Deterministic hard guards remain authoritative.
-- Research evidence cannot silently reverse a qualified breach.
-- An LLM cannot select the final action or invent numerical metrics.
-- Synthesis remains usable in explicit degraded mode without research evidence.
-- Final insight lineage must be auditable.
+- `PolicyInsight` is advisory and must not be confused with a signed execution request.
+- No ambiguous percentage fields.
+- No singular-vs-array level drift.
+- No fake zero levels or silent numeric coercion.
+- Do not maintain two undocumented public shapes.
 
 ## Acceptance criteria
 
-- [ ] Synthesis consumes only the selection result from #60, not arbitrary latest evidence.
-- [ ] Output validates exactly against the `PolicyInsight v1` schema from #63.
-- [ ] A versioned rule matrix and precedence order are implemented and documented.
-- [ ] Lower- and upper-bound qualified breach tests prove contradictory contextual evidence cannot reverse the directional posture.
-- [ ] No-evidence, partial, stale, expired, conflicting, and optional-brief-unavailable cases produce explicit deterministic outcomes.
-- [ ] Every recommendation includes machine-readable reason codes, concise reasoning, source/evidence references, confidence, risk, data quality, and freshness.
-- [ ] Stored lineage identifies the ruleset, deterministic inputs, evidence selection, selected/rejected evidence, and canonical output hash.
-- [ ] Calm, upward trend, downward trend, chop, stressed/high-volatility, sparse-evidence, and poor-price-quality scenarios are covered by tests.
-- [ ] No execution authority or transaction submission is introduced.
+- [ ] `PolicyInsight v1` has one strict canonical JSON Schema and exact schema version.
+- [ ] `maxCapitalDeploymentBps` and `confidenceBps` use integer basis points in `0..10_000`.
+- [ ] Support and resistance use `supportsUsdcPerSol` and `resistancesUsdcPerSol` decimal-string arrays.
+- [ ] Recommended action uses the documented closed advisory enum.
+- [ ] Every field name, enum, unit, nullability rule, timestamp relationship, and freshness state is documented.
+- [ ] Current/history endpoints emit the canonical shape without adapter-side guessing.
+- [ ] Old mismatched field names and unit conventions are rejected by negative fixtures or isolated behind an explicitly documented temporary compatibility mapper.
+- [ ] Contract tests cover the exact public payload.
+- [ ] JSON Schema, types, valid/invalid fixtures, OpenAPI examples, schema path, version, and schema hash are published for clmm-v2.
+- [ ] Existing freshness/stale behavior remains explicit and tested.
 
 ## Parent
 
 Part of #57.
 
-## Blocked by
+## Blocks
 
-- #60
-- #63
+- #61
+- `opsclawd/clmm-v2#92`
+
+## Dependency correction
+
+This issue is **not blocked by #61**. #61 must synthesize output conforming to the contract defined here.

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
-  synthesizePolicyInsight,
+  synthesizePolicyInsightV1,
   type PolicySynthesisEnvelope
 } from "../synthesizePolicyInsight.js";
 import { SOL_USDC_POLICY_V1 } from "../ruleset.js";
@@ -89,11 +89,11 @@ describe("synthesizePolicyInsight - Evidence Invariants", () => {
       hashes: { inputHash: "in-1", rulesetHash: "rules-1" }
     };
 
-    const result = synthesizePolicyInsight(envelope, SOL_USDC_POLICY_V1);
+    const result = synthesizePolicyInsightV1(envelope, SOL_USDC_POLICY_V1);
 
     // The high-precedence hard stale lock MUST NOT be relaxed
-    expect(result.recommendedAction).toBe("pause_rebalances");
-    expect(result.clmmPolicy.posture).toBe("paused");
+    expect(result.recommendedAction).toBe("STAND_DOWN");
+    expect(result.posture).toBe("PAUSED");
   });
 
   it("no evidence remains degraded rather than a successful zero signal", () => {
@@ -108,13 +108,13 @@ describe("synthesizePolicyInsight - Evidence Invariants", () => {
       hashes: { inputHash: "in-1", rulesetHash: "rules-1" }
     };
 
-    const result = synthesizePolicyInsight(envelope, SOL_USDC_POLICY_V1);
+    const result = synthesizePolicyInsightV1(envelope, SOL_USDC_POLICY_V1);
 
     // Should be a successful synthesis but in degraded state
-    expect(result.dataQuality).toBe("complete");
+    expect(result.dataQuality).toBe("COMPLETE");
     // Verify it doesn't default to a numeric zero signal or action, but is explicit
-    expect(result.recommendedAction).toBe("watch");
-    expect(result.clmmPolicy.maxCapitalDeploymentPercent).toBe(75); // standard baseline
+    expect(result.recommendedAction).toBe("HOLD");
+    expect(result.clmmPolicy.maxCapitalDeploymentBps).toBe(7500); // standard baseline
   });
 
   it("expired and unknown evidence cannot affect policy", () => {
@@ -200,12 +200,12 @@ describe("synthesizePolicyInsight - Evidence Invariants", () => {
       hashes: { inputHash: "in-1", rulesetHash: "rules-1" }
     };
 
-    const result = synthesizePolicyInsight(envelope, SOL_USDC_POLICY_V1);
+    const result = synthesizePolicyInsightV1(envelope, SOL_USDC_POLICY_V1);
 
     // Output must not be affected by unknown or expired features/claims
-    expect(result.recommendedAction).toBe("watch");
-    expect(result.riskLevel).toBe("normal");
-    expect(result.confidence).toBe("medium");
+    expect(result.recommendedAction).toBe("HOLD");
+    expect(result.riskLevel).toBe("NORMAL");
+    expect(result.confidenceBps).toBe(5000);
   });
 
   it("contextual prose and research briefs never create actions or numerical levels", () => {
@@ -284,13 +284,13 @@ describe("synthesizePolicyInsight - Evidence Invariants", () => {
       hashes: { inputHash: "in-1", rulesetHash: "rules-1" }
     };
 
-    const result = synthesizePolicyInsight(envelope, SOL_USDC_POLICY_V1);
+    const result = synthesizePolicyInsightV1(envelope, SOL_USDC_POLICY_V1);
 
     // The text of prose must never change output actions to buy/exit or levels
-    expect(result.recommendedAction).toBe("watch");
+    expect(result.recommendedAction).toBe("HOLD");
     // Ensure levels don't parse 92.5 or 91
-    expect(result.levels.support).not.toContain(92.5);
-    expect(result.levels.support).not.toContain(91);
+    expect(result.levels.supportsUsdcPerSol).not.toContain("92.5");
+    expect(result.levels.supportsUsdcPerSol).not.toContain("91");
   });
 
   it("handles FULL/PARTIAL/DEGRADED selection modes and matches deterministic features", () => {
@@ -350,9 +350,9 @@ describe("synthesizePolicyInsight - Evidence Invariants", () => {
       hashes: { inputHash: "in-1", rulesetHash: "rules-1" }
     };
 
-    const result = synthesizePolicyInsight(envelope, SOL_USDC_POLICY_V1);
+    const result = synthesizePolicyInsightV1(envelope, SOL_USDC_POLICY_V1);
     expect(result.reasoning).toContain("FEATURE_THRESHOLD_BREACHED");
-    expect(result.riskLevel).toBe("elevated"); // tightened from normal
+    expect(result.riskLevel).toBe("ELEVATED"); // tightened from normal
   });
 
   it("aggregates contextual direction votes and handles conflicts", () => {
@@ -444,10 +444,10 @@ describe("synthesizePolicyInsight - Evidence Invariants", () => {
       hashes: { inputHash: "in-1", rulesetHash: "rules-1" }
     };
 
-    const result = synthesizePolicyInsight(envelope, SOL_USDC_POLICY_V1);
+    const result = synthesizePolicyInsightV1(envelope, SOL_USDC_POLICY_V1);
     expect(result.reasoning).toContain("CONTEXTUAL_EVIDENCE_VOTE");
     // Conflict should increase risk or reduce confidence but cannot produce directional upgrade
-    expect(result.riskLevel).toBe("elevated");
-    expect(result.confidence).toBe("low");
+    expect(result.riskLevel).toBe("ELEVATED");
+    expect(result.confidenceBps).toBe(2500);
   });
 });

@@ -7,36 +7,49 @@ import {
 } from "../../../application/errors/policyInsightErrors.js";
 import { sql } from "drizzle-orm";
 import type { NewPolicyInsightRecord } from "../../../application/ports/policyInsightRepositoryPort.js";
-import { computeInsightCanonicalAndHash } from "../../../contract/v1/insights.js";
-import type { InsightIngestRequest } from "../../../contract/v1/insights.js";
-import { SCHEMA_VERSION } from "../../../contract/v1/types.js";
+import { computePolicyInsightContentCanonicalAndHash } from "../../../contract/policyInsight/v1/canonical.js";
+import type { PolicyInsightContent } from "../../../contract/policyInsight/v1/types.generated.js";
 import type { PolicySynthesisEnvelope } from "../../../engine/policy/synthesizePolicyInsight.js";
 import type { EvidenceSelectionDecision } from "../../../engine/evidence/selectEvidence.js";
+const POLICY_INSIGHT_V1_WIRE_CONTRACT_SHA256 =
+  "80487b0a9374d0b535accf535ef9819f2b2de00e1d65980deb73c97afaa02800";
 
 const TEST_PAIR = "SOL/USDC";
 
-const testOutput: InsightIngestRequest = {
-  schemaVersion: SCHEMA_VERSION,
+const testOutput: PolicyInsightContent = {
+  schemaVersion: "policy-insight.v1",
+  insightId: "a".repeat(64),
+  rulesetVersion: "ruleset-1.0.0",
   pair: "SOL/USDC",
-  asOf: "2024-01-01T00:00:00.000Z",
-  source: "openclaw",
-  runId: "synthesis-sol-usdc-1700000000000",
-  marketRegime: "up",
-  fundamentalRegime: "unknown",
-  recommendedAction: "watch",
-  confidence: "medium",
-  riskLevel: "normal",
-  dataQuality: "complete",
+  position: null,
+  generatedAt: "2024-01-01T00:00:00.000Z",
+  asOf: "2023-12-31T23:59:59.000Z",
+  expiresAt: "2024-01-01T00:05:00.000Z",
+  marketRegime: "UP",
+  fundamentalRegime: "NEUTRAL",
+  posture: "NEUTRAL",
+  recommendedAction: "HOLD",
+  riskLevel: "NORMAL",
   clmmPolicy: {
-    posture: "neutral",
-    rangeBias: "medium",
-    rebalanceSensitivity: "normal",
-    maxCapitalDeploymentPercent: 75
+    rangeBias: "MEDIUM",
+    rebalanceSensitivity: "NORMAL",
+    maxCapitalDeploymentBps: 7500
   },
-  levels: { support: [95], resistance: [110] },
-  reasoning: ["MARKET_REGIME_UP"],
-  sourceRefs: [],
-  expiresAt: "2024-01-01T00:05:00.000Z"
+  levels: {
+    supportsUsdcPerSol: ["96", "95"],
+    resistancesUsdcPerSol: ["110", "111"]
+  },
+  evidence: {
+    selectionStatus: "FULL",
+    selectionPolicyVersion: "selector.v1.2026-07",
+    selectedBundleRefs: [],
+    selectedSourceRefs: []
+  },
+  confidenceBps: 7500,
+  dataQuality: "COMPLETE",
+  reasonCodes: ["MARKET_REGIME_UP"],
+  reasoning: "Market regime is UP.",
+  warnings: []
 };
 
 const testSynthesisInput: PolicySynthesisEnvelope = {
@@ -78,7 +91,7 @@ const excludedDecision: EvidenceSelectionDecision = {
 };
 
 const { canonical: testPayloadCanonical, hash: testPayloadHash } =
-  computeInsightCanonicalAndHash(testOutput);
+  computePolicyInsightContentCanonicalAndHash(testOutput);
 
 const createTestRecord = (
   overrides: Partial<NewPolicyInsightRecord> = {}
@@ -91,13 +104,14 @@ const createTestRecord = (
     scopeKey: "pair",
     positionId: null,
     generatedAtUnixMs: 1700000000000,
-    asOfUnixMs: 1700000000000,
+    asOfUnixMs: 1699999999000,
     expiresAtUnixMs: 1700000005000,
     persistedAtUnixMs: 1700000001000,
     marketHash: "b".repeat(64),
     positionHash: "c".repeat(64),
     selectionHash: "d".repeat(64),
     synthesisInputHash: "e".repeat(64),
+    wireContractSha256: POLICY_INSIGHT_V1_WIRE_CONTRACT_SHA256,
     selectionPolicyVersion: "policy-v1",
     synthesisInputJson: testSynthesisInput,
     synthesisOutputJson: testOutput,
@@ -130,6 +144,7 @@ describe.skipIf(!process.env.DATABASE_URL)("postgresPolicyInsightRepository.comm
     const record = createTestRecord({ synthesisInputHash: "1".repeat(64) });
     const miss = await repository.findBySynthesisInputHash({
       schemaVersion: record.schemaVersion,
+      wireContractSha256: record.wireContractSha256,
       rulesetVersion: record.rulesetVersion,
       synthesisInputHash: record.synthesisInputHash
     });
@@ -139,6 +154,7 @@ describe.skipIf(!process.env.DATABASE_URL)("postgresPolicyInsightRepository.comm
 
     const hit = await repository.findBySynthesisInputHash({
       schemaVersion: record.schemaVersion,
+      wireContractSha256: record.wireContractSha256,
       rulesetVersion: record.rulesetVersion,
       synthesisInputHash: record.synthesisInputHash
     });
@@ -214,6 +230,7 @@ describe.skipIf(!process.env.DATABASE_URL)("postgresPolicyInsightRepository.comm
 
     const hit = await repository.findBySynthesisInputHash({
       schemaVersion: record.schemaVersion,
+      wireContractSha256: record.wireContractSha256,
       rulesetVersion: record.rulesetVersion,
       synthesisInputHash: record.synthesisInputHash
     });
@@ -252,13 +269,13 @@ describe.skipIf(!process.env.DATABASE_URL)("postgresPolicyInsightRepository.comm
 });
 
 describe("postgresPolicyInsightRepository payload and lineage validation", () => {
-  it("rejects a synthesisOutputJson that fails InsightIngestRequest validation", async () => {
+  it("rejects a synthesisOutputJson that fails PolicyInsightContent validation", async () => {
     const repository = createPostgresPolicyInsightRepository({} as unknown as Db);
     const record = createTestRecord({
       synthesisOutputJson: {
         ...testOutput,
-        recommendedAction: "not_a_real_action"
-      } as unknown as InsightIngestRequest
+        recommendedAction: "INVALID_ACTION"
+      } as unknown as PolicyInsightContent
     });
 
     await expect(repository.insertOrGet(record)).rejects.toThrow(PolicyInsightValidationError);
@@ -354,6 +371,7 @@ describe("postgresPolicyInsightRepository transient failure handling", () => {
       await expect(
         repository.findBySynthesisInputHash({
           schemaVersion: record.schemaVersion,
+          wireContractSha256: record.wireContractSha256,
           rulesetVersion: record.rulesetVersion,
           synthesisInputHash: record.synthesisInputHash
         })
@@ -366,7 +384,8 @@ describe("postgresPolicyInsightRepository transient failure handling", () => {
       await expect(
         repository.getCurrent({
           pair: TEST_PAIR,
-          scopeKey: "pair"
+          scopeKey: "pair",
+          wireContractSha256: POLICY_INSIGHT_V1_WIRE_CONTRACT_SHA256
         })
       ).rejects.toThrow(PolicyInsightStoreUnavailableError);
 
@@ -375,7 +394,8 @@ describe("postgresPolicyInsightRepository transient failure handling", () => {
           pair: TEST_PAIR,
           scopeKey: "pair",
           limit: 10,
-          cursor: null
+          cursor: null,
+          wireContractSha256: POLICY_INSIGHT_V1_WIRE_CONTRACT_SHA256
         })
       ).rejects.toThrow(PolicyInsightStoreUnavailableError);
     }

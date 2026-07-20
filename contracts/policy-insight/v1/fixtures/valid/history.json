@@ -1,0 +1,94 @@
+{
+  "schemaVersion": "policy-insight.v1",
+  "pair": "SOL/USDC",
+  "queriedAt": "2026-07-19T12:00:00.000Z",
+  "limit": 50,
+  "items": [
+    {
+      "schemaVersion": "policy-insight.v1",
+      "insightId": "c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3",
+      "rulesetVersion": "sol-usdc-policy.v1.2026-07",
+      "pair": "SOL/USDC",
+      "position": null,
+      "generatedAt": "2026-07-19T12:00:00.000Z",
+      "asOf": "2026-07-19T11:59:00.000Z",
+      "expiresAt": "2026-07-19T13:00:00.000Z",
+      "marketRegime": "UP",
+      "fundamentalRegime": "BULLISH",
+      "posture": "AGGRESSIVE",
+      "recommendedAction": "HOLD",
+      "riskLevel": "NORMAL",
+      "clmmPolicy": {
+        "rangeBias": "MEDIUM",
+        "rebalanceSensitivity": "NORMAL",
+        "maxCapitalDeploymentBps": 7500
+      },
+      "levels": {
+        "supportsUsdcPerSol": [],
+        "resistancesUsdcPerSol": []
+      },
+      "evidence": {
+        "selectionStatus": "FULL",
+        "selectionPolicyVersion": "selector.v1.2026-07",
+        "selectedBundleRefs": [],
+        "selectedSourceRefs": []
+      },
+      "confidenceBps": 7500,
+      "dataQuality": "COMPLETE",
+      "reasonCodes": ["MARKET_REGIME_UP", "ADVISORY_ONLY"],
+      "reasoning": "Market regime is UP with bullish fundamental signals. No position-specific triggers present.",
+      "warnings": [],
+      "freshness": {
+        "status": "FRESH",
+        "evaluatedAt": "2026-07-19T12:00:00.000Z",
+        "ageSeconds": 60
+      }
+    },
+    {
+      "schemaVersion": "policy-insight.v1",
+      "insightId": "d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4",
+      "rulesetVersion": "sol-usdc-policy.v1.2026-07",
+      "pair": "SOL/USDC",
+      "position": null,
+      "generatedAt": "2026-07-19T10:00:00.000Z",
+      "asOf": "2026-07-19T09:59:00.000Z",
+      "expiresAt": "2026-07-19T11:00:00.000Z",
+      "marketRegime": "CHOP",
+      "fundamentalRegime": "NEUTRAL",
+      "posture": "NEUTRAL",
+      "recommendedAction": "HOLD",
+      "riskLevel": "NORMAL",
+      "clmmPolicy": {
+        "rangeBias": "WIDE",
+        "rebalanceSensitivity": "LOW",
+        "maxCapitalDeploymentBps": 5000
+      },
+      "levels": {
+        "supportsUsdcPerSol": [],
+        "resistancesUsdcPerSol": []
+      },
+      "evidence": {
+        "selectionStatus": "DEGRADED",
+        "selectionPolicyVersion": "selector.v1.2026-07",
+        "selectedBundleRefs": [],
+        "selectedSourceRefs": []
+      },
+      "confidenceBps": 2500,
+      "dataQuality": "PARTIAL",
+      "reasonCodes": ["MARKET_REGIME_CHOP", "DATA_INSUFFICIENT_SAMPLES"],
+      "reasoning": "Market regime is CHOP with insufficient samples. No actionable signals.",
+      "warnings": [
+        {
+          "code": "EVIDENCE_STALE_INPUT",
+          "message": "Some input data is older than preferred freshness window"
+        }
+      ],
+      "freshness": {
+        "status": "STALE",
+        "evaluatedAt": "2026-07-19T12:00:00.000Z",
+        "ageSeconds": 7200
+      }
+    }
+  ],
+  "nextCursor": null
+}
