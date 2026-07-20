@@ -203,7 +203,6 @@ Rationale:
 | ----------------------- | -------------------------------------------------- | ---------------------------------------- |
 | `DATABASE_URL`          | Postgres connection string (Railway provides this) | `postgres://user:pass@host:5432/railway` |
 | `LEDGER_DB_PATH`        | SQLite path (existing, unchanged)                  | `/data/ledger.sqlite`                    |
-| `INSIGHT_INGEST_TOKEN`  | Auth token for CLMM insights ingestion (#21)       | (secret)                                 |
 | `OPENCLAW_INGEST_TOKEN` | Auth token for S/R levels ingestion (existing)     | (secret)                                 |
 | `CLMM_INTERNAL_TOKEN`   | Auth token for CLMM execution events (existing)    | (secret)                                 |
 
@@ -246,14 +245,9 @@ NOT in scope for #22:
 
 ---
 
-## Issue #21 Notes: CLMM Insights
+## Issue #21 Notes: CLMM Insights (superseded by #62)
 
-- Postgres table `clmm_insights` in `regime_engine` schema (append-only, versioned)
-- JSONB columns for `clmm_policy_json`, `levels_json`, `reasoning_json`, `source_refs_json`
-- `pgTable()` definitions in `src/ledger/pg/schema/clmmInsights.ts`
-- Idempotency by `run_id` — same as v1 pattern (200 idempotent, 409 conflict)
-- Stale handling: explicit `{ status: "STALE", freshness: { stale: true } }` in GET response
-- Auth: `X-Insight-Ingest-Token` header / `INSIGHT_INGEST_TOKEN` env var
+Issue #21 was implemented and then superseded by #62. The `POST /v1/insights/sol-usdc` route, handler, `INSIGHT_INGEST_TOKEN`, and `InsightsStore` have been removed. The `clmm_insights` table declaration remains in `src/ledger/pg/schema/clmmInsights.ts` as inert schema only — no active writer, reader, or auth path references it. Data retention is a separate pending decision.
 
 ---
 

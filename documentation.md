@@ -1016,10 +1016,18 @@ Insights are persisted in the PostgreSQL `regime_engine.policy_insights` table. 
 
 The synthesis process is triggered by a trusted internal command within the microservice composition. The Regime Engine does not expose a public synthesis HTTP endpoint and does not run an internal scheduler.
 
-### Legacy POST Isolation
+### Legacy POST Removed
 
-The legacy `POST /v1/insights/sol-usdc` ingestion endpoint and the `clmm_insights` table remain isolated only for legacy system compatibility. They do not interact with the new canonical synthesis pipeline or get returned by the canonical GET endpoints.
+Issue #62 removed the `POST /v1/insights/sol-usdc` route, handler, token, store, and startup dependency. Only the inert `clmm_insights` Drizzle table declaration and migration history remain, pending a separate data-retention decision. The route no longer exists in the codebase.
 
-### Deployment Requirement
+### Deployment Gate
+
+This repository cannot deploy the route removal until a separate downstream intelligence-repository PR proves:
+
+1. In the separate intelligence repository, remove the old URL constant/client, `INSIGHT_INGEST_TOKEN`, `X-Insight-Ingest-Token`, scheduled publisher, retry/dead-letter behavior, fixtures, and operational docs; link that PR in the Regime Engine delivery record.
+2. Verify `POST /v1/evidence/sol-usdc` publication succeeds and the trusted internal synthesis command produces a recent `policy_insights` record.
+3. Verify the canonical current GET returns that record, then deploy the Regime Engine route removal.
+
+This repository cannot satisfy or prove step 1 locally. Deployment must stop if the linked downstream evidence is absent.
 
 Before relying on GET `/v1/insights/sol-usdc/current` reads in any deployment, a trusted orchestrator/caller must be deployed to explicitly invoke the internal synthesis command, ensuring that the database is populated with current policy insights.

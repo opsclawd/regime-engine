@@ -175,19 +175,11 @@ POST /v1/sr-levels
 GET  /v1/sr-levels/current?symbol=SYMBOL&source=SOURCE
 POST /v1/candles
 GET  /v1/regime/current?symbol=&source=&network=&poolAddress=&timeframe=15m|1h
-POST /v1/insights/sol-usdc       # legacy external final-insight write path; roadmap removes it
+POST /v1/evidence/sol-usdc
 GET  /v1/insights/sol-usdc/current
 GET  /v1/insights/sol-usdc/history
 POST /v2/sr-levels
 GET  /v2/sr-levels/current
-```
-
-Planned evidence endpoints:
-
-```text
-POST /v1/evidence/sol-usdc
-GET  /v1/evidence/sol-usdc/current
-GET  /v1/evidence/sol-usdc/history
 ```
 
 ### GeckoTerminal collector
@@ -247,21 +239,14 @@ The future `GET /v1/insights/sol-usdc/current` response should be the internally
 
 ### From `sol-usdc-clmm-intelligence` into Regime Engine
 
-Current/legacy final-policy ingest:
-
-```text
-POST /v1/insights/sol-usdc
-Header: X-Insight-Ingest-Token: <INSIGHT_INGEST_TOKEN>
-```
-
-Roadmap evidence ingest:
+Intelligence publishes structured research evidence:
 
 ```text
 POST /v1/evidence/sol-usdc
 Header: X-Evidence-Ingest-Token: <shared-secret>
 ```
 
-New work should target the evidence contract and evidence route. The final-insight write path is transitional.
+Regime Engine synthesizes final PolicyInsight internally. The canonical GET routes return the internally synthesized result. Consumers read only the canonical GET routes.
 
 ## Getting started
 

@@ -1338,10 +1338,9 @@ DATABASE_URL=
 
 # Postgres max connections (optional, defaults to postgres.js default of 10)
 # PG_MAX_CONNECTIONS=10
-
-# Insight ingest token for CLMM insights API (#21)
-# INSIGHT_INGEST_TOKEN=
 ```
+
+Note: `INSIGHT_INGEST_TOKEN` was removed by #62 — the legacy insight ingest route no longer exists.
 
 - [ ] **Step 2: Run full quality gate**
 
