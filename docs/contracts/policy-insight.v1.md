@@ -79,7 +79,7 @@ These fields are set by the policy synthesis process and are **not** modified by
 | `pair`              | string    | Required    | Must be `"SOL/USDC"`                                                                      |
 | `position`          | object    | Nullable    | `positionScope` when insight applies to a specific position; null for pair-level insights |
 | `generatedAt`       | timestamp | Required    | When insight was generated (ISO 8601)                                                     |
-| `asOf`              | timestamp | Required    | Market data instant evaluated against (ISO 8601). Must be >= generatedAt                  |
+| `asOf`              | timestamp | Required    | Market data instant evaluated against (ISO 8601). Must be <= generatedAt                  |
 | `expiresAt`         | timestamp | Required    | Expiration timestamp. Must be > generatedAt. Exclusive boundary.                          |
 | `marketRegime`      | enum      | Required    | UP, DOWN, or CHOP                                                                         |
 | `fundamentalRegime` | enum      | Required    | BULLISH, BEARISH, NEUTRAL, or UNKNOWN                                                     |
