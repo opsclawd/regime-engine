@@ -42,7 +42,8 @@ function assertPolicyInsightAssets() {
   const sha256Source = resolve(baseSource, sha256File);
 
   console.log(`Checking ${schemaDest}...`);
-  assertFileDigest(schemaDest, computeSha256(schemaSource));
+  const publishedDigest = readFileSync(sha256Source, "utf8").split(" ")[0];
+  assertFileDigest(schemaDest, publishedDigest);
 
   console.log(`Checking ${resolve(baseDest, sha256File)}...`);
   assertFileDigest(resolve(baseDest, sha256File), computeSha256(sha256Source));
