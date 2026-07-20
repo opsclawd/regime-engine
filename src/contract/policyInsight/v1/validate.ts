@@ -163,7 +163,7 @@ function validateSemantic(
     return true;
   }
 
-  if (asOfDate.getTime() > generatedAtDate.getTime()) {
+  if (asOfDate.getTime() >= generatedAtDate.getTime()) {
     issues.push({
       path: "",
       code: "SEMANTIC",
