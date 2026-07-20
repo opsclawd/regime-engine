@@ -1,0 +1,675 @@
+// Generated from contracts/policy-insight/v1/policy-insight.schema.json (sha256: 6be5c75e000b272b1df84cbc0ed0ad5b02b389804235805bc43f06db8cd7a441). Do not edit.
+export type SchemaVersion = "policy-insight.v1";
+export type Hex64 = string;
+export type Identifier = string;
+export type Pair = "SOL/USDC";
+export type CanonicalTimestamp = string;
+export type MarketRegime = "UP" | "DOWN" | "CHOP";
+export type FundamentalRegime = "BULLISH" | "BEARISH" | "NEUTRAL" | "UNKNOWN";
+export type Posture = "AGGRESSIVE" | "MODERATELY_AGGRESSIVE" | "NEUTRAL" | "DEFENSIVE" | "PAUSED";
+export type RecommendedAction =
+  | "HOLD"
+  | "MONITOR_LOWER_BOUND"
+  | "MONITOR_UPPER_BOUND"
+  | "EXIT_TO_USDC"
+  | "EXIT_TO_SOL"
+  | "STAND_DOWN";
+export type RiskLevel = "NORMAL" | "ELEVATED" | "CRITICAL";
+export type RangeBias = "TIGHT" | "MEDIUM" | "WIDE" | "PASSIVE";
+export type RebalanceSensitivity = "LOW" | "NORMAL" | "HIGH" | "PAUSED";
+export type MaxCapitalDeploymentBps = number;
+export type PositiveDecimalString = string;
+export type SelectionStatus = "FULL" | "PARTIAL" | "DEGRADED";
+export type ConfidenceBps = number;
+export type DataQuality = "COMPLETE" | "PARTIAL" | "STALE";
+export type ReasonCode =
+  | "ADVISORY_ONLY"
+  | "DATA_HARD_STALE"
+  | "DATA_INSUFFICIENT_SAMPLES"
+  | "CLMM_BREACH_LOWER"
+  | "CLMM_BREACH_UPPER"
+  | "CHURN_STAND_DOWN_ACTIVE"
+  | "CHURN_COOLDOWN_ACTIVE"
+  | "MARKET_REGIME_UP"
+  | "MARKET_REGIME_DOWN"
+  | "MARKET_REGIME_CHOP"
+  | "FEATURE_THRESHOLD_BREACHED"
+  | "CONTEXTUAL_EVIDENCE_VOTE"
+  | "RESEARCH_BRIEF_ANALYSIS"
+  | "NO_ELIGIBLE_PRICE_LEVELS";
+export type WarningCode =
+  | "MARKET_DATA_HARD_STALE"
+  | "EVIDENCE_STALE_INPUT"
+  | "EVIDENCE_MISSING_FAMILY"
+  | "EVIDENCE_REJECTED_FAMILY"
+  | "EVIDENCE_CONFLICTED_FAMILY"
+  | "EVIDENCE_NO_SELECTED_RESEARCH"
+  | "NO_ELIGIBLE_PRICE_LEVELS";
+export type FreshnessStatus = "FRESH" | "STALE";
+
+export interface PolicyInsightRead {
+  schemaVersion: SchemaVersion;
+  insightId: Hex64;
+  rulesetVersion: Identifier;
+  pair: Pair;
+  position: PositionScope | null;
+  generatedAt: CanonicalTimestamp;
+  asOf: CanonicalTimestamp;
+  expiresAt: CanonicalTimestamp;
+  marketRegime: MarketRegime;
+  fundamentalRegime: FundamentalRegime;
+  posture: Posture;
+  recommendedAction: RecommendedAction;
+  riskLevel: RiskLevel;
+  clmmPolicy: ClmmPolicy;
+  levels: Levels;
+  evidence: Evidence;
+  confidenceBps: ConfidenceBps;
+  dataQuality: DataQuality;
+  /**
+   * @minItems 1
+   * @maxItems 16
+   */
+  reasonCodes:
+    | [ReasonCode]
+    | [ReasonCode, ReasonCode]
+    | [ReasonCode, ReasonCode, ReasonCode]
+    | [ReasonCode, ReasonCode, ReasonCode, ReasonCode]
+    | [ReasonCode, ReasonCode, ReasonCode, ReasonCode, ReasonCode]
+    | [ReasonCode, ReasonCode, ReasonCode, ReasonCode, ReasonCode, ReasonCode]
+    | [ReasonCode, ReasonCode, ReasonCode, ReasonCode, ReasonCode, ReasonCode, ReasonCode]
+    | [
+        ReasonCode,
+        ReasonCode,
+        ReasonCode,
+        ReasonCode,
+        ReasonCode,
+        ReasonCode,
+        ReasonCode,
+        ReasonCode
+      ]
+    | [
+        ReasonCode,
+        ReasonCode,
+        ReasonCode,
+        ReasonCode,
+        ReasonCode,
+        ReasonCode,
+        ReasonCode,
+        ReasonCode,
+        ReasonCode
+      ]
+    | [
+        ReasonCode,
+        ReasonCode,
+        ReasonCode,
+        ReasonCode,
+        ReasonCode,
+        ReasonCode,
+        ReasonCode,
+        ReasonCode,
+        ReasonCode,
+        ReasonCode
+      ]
+    | [
+        ReasonCode,
+        ReasonCode,
+        ReasonCode,
+        ReasonCode,
+        ReasonCode,
+        ReasonCode,
+        ReasonCode,
+        ReasonCode,
+        ReasonCode,
+        ReasonCode,
+        ReasonCode
+      ]
+    | [
+        ReasonCode,
+        ReasonCode,
+        ReasonCode,
+        ReasonCode,
+        ReasonCode,
+        ReasonCode,
+        ReasonCode,
+        ReasonCode,
+        ReasonCode,
+        ReasonCode,
+        ReasonCode,
+        ReasonCode
+      ]
+    | [
+        ReasonCode,
+        ReasonCode,
+        ReasonCode,
+        ReasonCode,
+        ReasonCode,
+        ReasonCode,
+        ReasonCode,
+        ReasonCode,
+        ReasonCode,
+        ReasonCode,
+        ReasonCode,
+        ReasonCode,
+        ReasonCode
+      ]
+    | [
+        ReasonCode,
+        ReasonCode,
+        ReasonCode,
+        ReasonCode,
+        ReasonCode,
+        ReasonCode,
+        ReasonCode,
+        ReasonCode,
+        ReasonCode,
+        ReasonCode,
+        ReasonCode,
+        ReasonCode,
+        ReasonCode,
+        ReasonCode
+      ]
+    | [
+        ReasonCode,
+        ReasonCode,
+        ReasonCode,
+        ReasonCode,
+        ReasonCode,
+        ReasonCode,
+        ReasonCode,
+        ReasonCode,
+        ReasonCode,
+        ReasonCode,
+        ReasonCode,
+        ReasonCode,
+        ReasonCode,
+        ReasonCode,
+        ReasonCode
+      ]
+    | [
+        ReasonCode,
+        ReasonCode,
+        ReasonCode,
+        ReasonCode,
+        ReasonCode,
+        ReasonCode,
+        ReasonCode,
+        ReasonCode,
+        ReasonCode,
+        ReasonCode,
+        ReasonCode,
+        ReasonCode,
+        ReasonCode,
+        ReasonCode,
+        ReasonCode,
+        ReasonCode
+      ];
+  reasoning: string;
+  /**
+   * @maxItems 16
+   */
+  warnings:
+    | []
+    | [Warning]
+    | [Warning, Warning]
+    | [Warning, Warning, Warning]
+    | [Warning, Warning, Warning, Warning]
+    | [Warning, Warning, Warning, Warning, Warning]
+    | [Warning, Warning, Warning, Warning, Warning, Warning]
+    | [Warning, Warning, Warning, Warning, Warning, Warning, Warning]
+    | [Warning, Warning, Warning, Warning, Warning, Warning, Warning, Warning]
+    | [Warning, Warning, Warning, Warning, Warning, Warning, Warning, Warning, Warning]
+    | [Warning, Warning, Warning, Warning, Warning, Warning, Warning, Warning, Warning, Warning]
+    | [
+        Warning,
+        Warning,
+        Warning,
+        Warning,
+        Warning,
+        Warning,
+        Warning,
+        Warning,
+        Warning,
+        Warning,
+        Warning
+      ]
+    | [
+        Warning,
+        Warning,
+        Warning,
+        Warning,
+        Warning,
+        Warning,
+        Warning,
+        Warning,
+        Warning,
+        Warning,
+        Warning,
+        Warning
+      ]
+    | [
+        Warning,
+        Warning,
+        Warning,
+        Warning,
+        Warning,
+        Warning,
+        Warning,
+        Warning,
+        Warning,
+        Warning,
+        Warning,
+        Warning,
+        Warning
+      ]
+    | [
+        Warning,
+        Warning,
+        Warning,
+        Warning,
+        Warning,
+        Warning,
+        Warning,
+        Warning,
+        Warning,
+        Warning,
+        Warning,
+        Warning,
+        Warning,
+        Warning
+      ]
+    | [
+        Warning,
+        Warning,
+        Warning,
+        Warning,
+        Warning,
+        Warning,
+        Warning,
+        Warning,
+        Warning,
+        Warning,
+        Warning,
+        Warning,
+        Warning,
+        Warning,
+        Warning
+      ]
+    | [
+        Warning,
+        Warning,
+        Warning,
+        Warning,
+        Warning,
+        Warning,
+        Warning,
+        Warning,
+        Warning,
+        Warning,
+        Warning,
+        Warning,
+        Warning,
+        Warning,
+        Warning,
+        Warning
+      ];
+  freshness: Freshness;
+}
+export interface PositionScope {
+  network: "solana-mainnet";
+  walletAddress: Identifier;
+  whirlpoolAddress: Identifier;
+  positionId: Identifier;
+}
+export interface ClmmPolicy {
+  rangeBias: RangeBias;
+  rebalanceSensitivity: RebalanceSensitivity;
+  maxCapitalDeploymentBps: MaxCapitalDeploymentBps;
+}
+export interface Levels {
+  /**
+   * @maxItems 16
+   */
+  supportsUsdcPerSol:
+    | []
+    | [PositiveDecimalString]
+    | [PositiveDecimalString, PositiveDecimalString]
+    | [PositiveDecimalString, PositiveDecimalString, PositiveDecimalString]
+    | [PositiveDecimalString, PositiveDecimalString, PositiveDecimalString, PositiveDecimalString]
+    | [
+        PositiveDecimalString,
+        PositiveDecimalString,
+        PositiveDecimalString,
+        PositiveDecimalString,
+        PositiveDecimalString
+      ]
+    | [
+        PositiveDecimalString,
+        PositiveDecimalString,
+        PositiveDecimalString,
+        PositiveDecimalString,
+        PositiveDecimalString,
+        PositiveDecimalString
+      ]
+    | [
+        PositiveDecimalString,
+        PositiveDecimalString,
+        PositiveDecimalString,
+        PositiveDecimalString,
+        PositiveDecimalString,
+        PositiveDecimalString,
+        PositiveDecimalString
+      ]
+    | [
+        PositiveDecimalString,
+        PositiveDecimalString,
+        PositiveDecimalString,
+        PositiveDecimalString,
+        PositiveDecimalString,
+        PositiveDecimalString,
+        PositiveDecimalString,
+        PositiveDecimalString
+      ]
+    | [
+        PositiveDecimalString,
+        PositiveDecimalString,
+        PositiveDecimalString,
+        PositiveDecimalString,
+        PositiveDecimalString,
+        PositiveDecimalString,
+        PositiveDecimalString,
+        PositiveDecimalString,
+        PositiveDecimalString
+      ]
+    | [
+        PositiveDecimalString,
+        PositiveDecimalString,
+        PositiveDecimalString,
+        PositiveDecimalString,
+        PositiveDecimalString,
+        PositiveDecimalString,
+        PositiveDecimalString,
+        PositiveDecimalString,
+        PositiveDecimalString,
+        PositiveDecimalString
+      ]
+    | [
+        PositiveDecimalString,
+        PositiveDecimalString,
+        PositiveDecimalString,
+        PositiveDecimalString,
+        PositiveDecimalString,
+        PositiveDecimalString,
+        PositiveDecimalString,
+        PositiveDecimalString,
+        PositiveDecimalString,
+        PositiveDecimalString,
+        PositiveDecimalString
+      ]
+    | [
+        PositiveDecimalString,
+        PositiveDecimalString,
+        PositiveDecimalString,
+        PositiveDecimalString,
+        PositiveDecimalString,
+        PositiveDecimalString,
+        PositiveDecimalString,
+        PositiveDecimalString,
+        PositiveDecimalString,
+        PositiveDecimalString,
+        PositiveDecimalString,
+        PositiveDecimalString
+      ]
+    | [
+        PositiveDecimalString,
+        PositiveDecimalString,
+        PositiveDecimalString,
+        PositiveDecimalString,
+        PositiveDecimalString,
+        PositiveDecimalString,
+        PositiveDecimalString,
+        PositiveDecimalString,
+        PositiveDecimalString,
+        PositiveDecimalString,
+        PositiveDecimalString,
+        PositiveDecimalString,
+        PositiveDecimalString
+      ]
+    | [
+        PositiveDecimalString,
+        PositiveDecimalString,
+        PositiveDecimalString,
+        PositiveDecimalString,
+        PositiveDecimalString,
+        PositiveDecimalString,
+        PositiveDecimalString,
+        PositiveDecimalString,
+        PositiveDecimalString,
+        PositiveDecimalString,
+        PositiveDecimalString,
+        PositiveDecimalString,
+        PositiveDecimalString,
+        PositiveDecimalString
+      ]
+    | [
+        PositiveDecimalString,
+        PositiveDecimalString,
+        PositiveDecimalString,
+        PositiveDecimalString,
+        PositiveDecimalString,
+        PositiveDecimalString,
+        PositiveDecimalString,
+        PositiveDecimalString,
+        PositiveDecimalString,
+        PositiveDecimalString,
+        PositiveDecimalString,
+        PositiveDecimalString,
+        PositiveDecimalString,
+        PositiveDecimalString,
+        PositiveDecimalString
+      ]
+    | [
+        PositiveDecimalString,
+        PositiveDecimalString,
+        PositiveDecimalString,
+        PositiveDecimalString,
+        PositiveDecimalString,
+        PositiveDecimalString,
+        PositiveDecimalString,
+        PositiveDecimalString,
+        PositiveDecimalString,
+        PositiveDecimalString,
+        PositiveDecimalString,
+        PositiveDecimalString,
+        PositiveDecimalString,
+        PositiveDecimalString,
+        PositiveDecimalString,
+        PositiveDecimalString
+      ];
+  /**
+   * @maxItems 16
+   */
+  resistancesUsdcPerSol:
+    | []
+    | [PositiveDecimalString]
+    | [PositiveDecimalString, PositiveDecimalString]
+    | [PositiveDecimalString, PositiveDecimalString, PositiveDecimalString]
+    | [PositiveDecimalString, PositiveDecimalString, PositiveDecimalString, PositiveDecimalString]
+    | [
+        PositiveDecimalString,
+        PositiveDecimalString,
+        PositiveDecimalString,
+        PositiveDecimalString,
+        PositiveDecimalString
+      ]
+    | [
+        PositiveDecimalString,
+        PositiveDecimalString,
+        PositiveDecimalString,
+        PositiveDecimalString,
+        PositiveDecimalString,
+        PositiveDecimalString
+      ]
+    | [
+        PositiveDecimalString,
+        PositiveDecimalString,
+        PositiveDecimalString,
+        PositiveDecimalString,
+        PositiveDecimalString,
+        PositiveDecimalString,
+        PositiveDecimalString
+      ]
+    | [
+        PositiveDecimalString,
+        PositiveDecimalString,
+        PositiveDecimalString,
+        PositiveDecimalString,
+        PositiveDecimalString,
+        PositiveDecimalString,
+        PositiveDecimalString,
+        PositiveDecimalString
+      ]
+    | [
+        PositiveDecimalString,
+        PositiveDecimalString,
+        PositiveDecimalString,
+        PositiveDecimalString,
+        PositiveDecimalString,
+        PositiveDecimalString,
+        PositiveDecimalString,
+        PositiveDecimalString,
+        PositiveDecimalString
+      ]
+    | [
+        PositiveDecimalString,
+        PositiveDecimalString,
+        PositiveDecimalString,
+        PositiveDecimalString,
+        PositiveDecimalString,
+        PositiveDecimalString,
+        PositiveDecimalString,
+        PositiveDecimalString,
+        PositiveDecimalString,
+        PositiveDecimalString
+      ]
+    | [
+        PositiveDecimalString,
+        PositiveDecimalString,
+        PositiveDecimalString,
+        PositiveDecimalString,
+        PositiveDecimalString,
+        PositiveDecimalString,
+        PositiveDecimalString,
+        PositiveDecimalString,
+        PositiveDecimalString,
+        PositiveDecimalString,
+        PositiveDecimalString
+      ]
+    | [
+        PositiveDecimalString,
+        PositiveDecimalString,
+        PositiveDecimalString,
+        PositiveDecimalString,
+        PositiveDecimalString,
+        PositiveDecimalString,
+        PositiveDecimalString,
+        PositiveDecimalString,
+        PositiveDecimalString,
+        PositiveDecimalString,
+        PositiveDecimalString,
+        PositiveDecimalString
+      ]
+    | [
+        PositiveDecimalString,
+        PositiveDecimalString,
+        PositiveDecimalString,
+        PositiveDecimalString,
+        PositiveDecimalString,
+        PositiveDecimalString,
+        PositiveDecimalString,
+        PositiveDecimalString,
+        PositiveDecimalString,
+        PositiveDecimalString,
+        PositiveDecimalString,
+        PositiveDecimalString,
+        PositiveDecimalString
+      ]
+    | [
+        PositiveDecimalString,
+        PositiveDecimalString,
+        PositiveDecimalString,
+        PositiveDecimalString,
+        PositiveDecimalString,
+        PositiveDecimalString,
+        PositiveDecimalString,
+        PositiveDecimalString,
+        PositiveDecimalString,
+        PositiveDecimalString,
+        PositiveDecimalString,
+        PositiveDecimalString,
+        PositiveDecimalString,
+        PositiveDecimalString
+      ]
+    | [
+        PositiveDecimalString,
+        PositiveDecimalString,
+        PositiveDecimalString,
+        PositiveDecimalString,
+        PositiveDecimalString,
+        PositiveDecimalString,
+        PositiveDecimalString,
+        PositiveDecimalString,
+        PositiveDecimalString,
+        PositiveDecimalString,
+        PositiveDecimalString,
+        PositiveDecimalString,
+        PositiveDecimalString,
+        PositiveDecimalString,
+        PositiveDecimalString
+      ]
+    | [
+        PositiveDecimalString,
+        PositiveDecimalString,
+        PositiveDecimalString,
+        PositiveDecimalString,
+        PositiveDecimalString,
+        PositiveDecimalString,
+        PositiveDecimalString,
+        PositiveDecimalString,
+        PositiveDecimalString,
+        PositiveDecimalString,
+        PositiveDecimalString,
+        PositiveDecimalString,
+        PositiveDecimalString,
+        PositiveDecimalString,
+        PositiveDecimalString,
+        PositiveDecimalString
+      ];
+}
+export interface Evidence {
+  selectionStatus: SelectionStatus;
+  selectionPolicyVersion: Identifier;
+  selectedBundleRefs: BundleRef[];
+  selectedSourceRefs: SourceRef[];
+}
+export interface BundleRef {
+  bundleHash: Hex64;
+  publisher: Identifier;
+  sourceId: Identifier;
+  runId: Identifier;
+}
+export interface SourceRef {
+  referenceId: Identifier;
+  sourceType: "api" | "database" | "chain" | "document" | "internal_bundle";
+  locator: string;
+  observedAt: CanonicalTimestamp;
+}
+export interface Warning {
+  code: WarningCode;
+  message: string;
+}
+export interface Freshness {
+  status: FreshnessStatus;
+  evaluatedAt: CanonicalTimestamp;
+  ageSeconds: number;
+}

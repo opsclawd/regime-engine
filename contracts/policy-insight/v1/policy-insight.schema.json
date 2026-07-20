@@ -1,0 +1,614 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.opsclawd.dev/regime-engine/policy-insight/v1/policy-insight.schema.json",
+  "title": "PolicyInsightRead",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "insightId",
+    "rulesetVersion",
+    "pair",
+    "position",
+    "generatedAt",
+    "asOf",
+    "expiresAt",
+    "marketRegime",
+    "fundamentalRegime",
+    "posture",
+    "recommendedAction",
+    "riskLevel",
+    "clmmPolicy",
+    "levels",
+    "evidence",
+    "confidenceBps",
+    "dataQuality",
+    "reasonCodes",
+    "reasoning",
+    "warnings",
+    "freshness"
+  ],
+  "$defs": {
+    "canonicalTimestamp": {
+      "type": "string",
+      "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d{3}Z$"
+    },
+    "hex64": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    },
+    "identifier": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128
+    },
+    "positiveDecimalString": {
+      "type": "string",
+      "pattern": "^(0|[1-9]\\d*)(\\.\\d+)?$",
+      "minLength": 1,
+      "maxLength": 64
+    },
+    "schemaVersion": {
+      "const": "policy-insight.v1"
+    },
+    "pair": {
+      "const": "SOL/USDC"
+    },
+    "marketRegime": {
+      "enum": ["UP", "DOWN", "CHOP"]
+    },
+    "fundamentalRegime": {
+      "enum": ["BULLISH", "BEARISH", "NEUTRAL", "UNKNOWN"]
+    },
+    "posture": {
+      "enum": ["AGGRESSIVE", "MODERATELY_AGGRESSIVE", "NEUTRAL", "DEFENSIVE", "PAUSED"]
+    },
+    "recommendedAction": {
+      "enum": [
+        "HOLD",
+        "MONITOR_LOWER_BOUND",
+        "MONITOR_UPPER_BOUND",
+        "EXIT_TO_USDC",
+        "EXIT_TO_SOL",
+        "STAND_DOWN"
+      ]
+    },
+    "riskLevel": {
+      "enum": ["NORMAL", "ELEVATED", "CRITICAL"]
+    },
+    "rangeBias": {
+      "enum": ["TIGHT", "MEDIUM", "WIDE", "PASSIVE"]
+    },
+    "rebalanceSensitivity": {
+      "enum": ["LOW", "NORMAL", "HIGH", "PAUSED"]
+    },
+    "maxCapitalDeploymentBps": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 10000
+    },
+    "confidenceBps": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 10000
+    },
+    "dataQuality": {
+      "enum": ["COMPLETE", "PARTIAL", "STALE"]
+    },
+    "selectionStatus": {
+      "enum": ["FULL", "PARTIAL", "DEGRADED"]
+    },
+    "reasonCode": {
+      "enum": [
+        "ADVISORY_ONLY",
+        "DATA_HARD_STALE",
+        "DATA_INSUFFICIENT_SAMPLES",
+        "CLMM_BREACH_LOWER",
+        "CLMM_BREACH_UPPER",
+        "CHURN_STAND_DOWN_ACTIVE",
+        "CHURN_COOLDOWN_ACTIVE",
+        "MARKET_REGIME_UP",
+        "MARKET_REGIME_DOWN",
+        "MARKET_REGIME_CHOP",
+        "FEATURE_THRESHOLD_BREACHED",
+        "CONTEXTUAL_EVIDENCE_VOTE",
+        "RESEARCH_BRIEF_ANALYSIS",
+        "NO_ELIGIBLE_PRICE_LEVELS"
+      ]
+    },
+    "warningCode": {
+      "enum": [
+        "MARKET_DATA_HARD_STALE",
+        "EVIDENCE_STALE_INPUT",
+        "EVIDENCE_MISSING_FAMILY",
+        "EVIDENCE_REJECTED_FAMILY",
+        "EVIDENCE_CONFLICTED_FAMILY",
+        "EVIDENCE_NO_SELECTED_RESEARCH",
+        "NO_ELIGIBLE_PRICE_LEVELS"
+      ]
+    },
+    "freshnessStatus": {
+      "enum": ["FRESH", "STALE"]
+    },
+    "positionScope": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["network", "walletAddress", "whirlpoolAddress", "positionId"],
+      "properties": {
+        "network": {
+          "const": "solana-mainnet"
+        },
+        "walletAddress": {
+          "$ref": "#/$defs/identifier"
+        },
+        "whirlpoolAddress": {
+          "$ref": "#/$defs/identifier"
+        },
+        "positionId": {
+          "$ref": "#/$defs/identifier"
+        }
+      }
+    },
+    "clmmPolicy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["rangeBias", "rebalanceSensitivity", "maxCapitalDeploymentBps"],
+      "properties": {
+        "rangeBias": {
+          "$ref": "#/$defs/rangeBias"
+        },
+        "rebalanceSensitivity": {
+          "$ref": "#/$defs/rebalanceSensitivity"
+        },
+        "maxCapitalDeploymentBps": {
+          "$ref": "#/$defs/maxCapitalDeploymentBps"
+        }
+      }
+    },
+    "levels": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["supportsUsdcPerSol", "resistancesUsdcPerSol"],
+      "properties": {
+        "supportsUsdcPerSol": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/positiveDecimalString"
+          },
+          "maxItems": 16
+        },
+        "resistancesUsdcPerSol": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/positiveDecimalString"
+          },
+          "maxItems": 16
+        }
+      }
+    },
+    "bundleRef": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["bundleHash", "publisher", "sourceId", "runId"],
+      "properties": {
+        "bundleHash": {
+          "$ref": "#/$defs/hex64"
+        },
+        "publisher": {
+          "$ref": "#/$defs/identifier"
+        },
+        "sourceId": {
+          "$ref": "#/$defs/identifier"
+        },
+        "runId": {
+          "$ref": "#/$defs/identifier"
+        }
+      }
+    },
+    "sourceRef": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["referenceId", "sourceType", "locator", "observedAt"],
+      "properties": {
+        "referenceId": {
+          "$ref": "#/$defs/identifier"
+        },
+        "sourceType": {
+          "enum": ["api", "database", "chain", "document", "internal_bundle"]
+        },
+        "locator": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 2048
+        },
+        "observedAt": {
+          "$ref": "#/$defs/canonicalTimestamp"
+        }
+      }
+    },
+    "evidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "selectionStatus",
+        "selectionPolicyVersion",
+        "selectedBundleRefs",
+        "selectedSourceRefs"
+      ],
+      "properties": {
+        "selectionStatus": {
+          "$ref": "#/$defs/selectionStatus"
+        },
+        "selectionPolicyVersion": {
+          "$ref": "#/$defs/identifier"
+        },
+        "selectedBundleRefs": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/bundleRef"
+          }
+        },
+        "selectedSourceRefs": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/sourceRef"
+          }
+        }
+      }
+    },
+    "warning": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["code", "message"],
+      "properties": {
+        "code": {
+          "$ref": "#/$defs/warningCode"
+        },
+        "message": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 2048
+        }
+      }
+    },
+    "freshness": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "evaluatedAt", "ageSeconds"],
+      "properties": {
+        "status": {
+          "$ref": "#/$defs/freshnessStatus"
+        },
+        "evaluatedAt": {
+          "$ref": "#/$defs/canonicalTimestamp"
+        },
+        "ageSeconds": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
+    "PolicyInsightContent": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schemaVersion",
+        "insightId",
+        "rulesetVersion",
+        "pair",
+        "position",
+        "generatedAt",
+        "asOf",
+        "expiresAt",
+        "marketRegime",
+        "fundamentalRegime",
+        "posture",
+        "recommendedAction",
+        "riskLevel",
+        "clmmPolicy",
+        "levels",
+        "evidence",
+        "confidenceBps",
+        "dataQuality",
+        "reasonCodes",
+        "reasoning",
+        "warnings"
+      ],
+      "properties": {
+        "schemaVersion": {
+          "$ref": "#/$defs/schemaVersion"
+        },
+        "insightId": {
+          "$ref": "#/$defs/hex64"
+        },
+        "rulesetVersion": {
+          "$ref": "#/$defs/identifier"
+        },
+        "pair": {
+          "$ref": "#/$defs/pair"
+        },
+        "position": {
+          "anyOf": [{ "$ref": "#/$defs/positionScope" }, { "type": "null" }]
+        },
+        "generatedAt": {
+          "$ref": "#/$defs/canonicalTimestamp"
+        },
+        "asOf": {
+          "$ref": "#/$defs/canonicalTimestamp"
+        },
+        "expiresAt": {
+          "$ref": "#/$defs/canonicalTimestamp"
+        },
+        "marketRegime": {
+          "$ref": "#/$defs/marketRegime"
+        },
+        "fundamentalRegime": {
+          "$ref": "#/$defs/fundamentalRegime"
+        },
+        "posture": {
+          "$ref": "#/$defs/posture"
+        },
+        "recommendedAction": {
+          "$ref": "#/$defs/recommendedAction"
+        },
+        "riskLevel": {
+          "$ref": "#/$defs/riskLevel"
+        },
+        "clmmPolicy": {
+          "$ref": "#/$defs/clmmPolicy"
+        },
+        "levels": {
+          "$ref": "#/$defs/levels"
+        },
+        "evidence": {
+          "$ref": "#/$defs/evidence"
+        },
+        "confidenceBps": {
+          "$ref": "#/$defs/confidenceBps"
+        },
+        "dataQuality": {
+          "$ref": "#/$defs/dataQuality"
+        },
+        "reasonCodes": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/reasonCode"
+          },
+          "minItems": 1,
+          "maxItems": 16
+        },
+        "reasoning": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 2048
+        },
+        "warnings": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/warning"
+          },
+          "maxItems": 16
+        }
+      }
+    },
+    "PolicyInsightFreshness": {
+      "$ref": "#/$defs/freshness"
+    },
+    "PolicyInsightRead": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schemaVersion",
+        "insightId",
+        "rulesetVersion",
+        "pair",
+        "position",
+        "generatedAt",
+        "asOf",
+        "expiresAt",
+        "marketRegime",
+        "fundamentalRegime",
+        "posture",
+        "recommendedAction",
+        "riskLevel",
+        "clmmPolicy",
+        "levels",
+        "evidence",
+        "confidenceBps",
+        "dataQuality",
+        "reasonCodes",
+        "reasoning",
+        "warnings",
+        "freshness"
+      ],
+      "properties": {
+        "schemaVersion": {
+          "$ref": "#/$defs/schemaVersion"
+        },
+        "insightId": {
+          "$ref": "#/$defs/hex64"
+        },
+        "rulesetVersion": {
+          "$ref": "#/$defs/identifier"
+        },
+        "pair": {
+          "$ref": "#/$defs/pair"
+        },
+        "position": {
+          "anyOf": [{ "$ref": "#/$defs/positionScope" }, { "type": "null" }]
+        },
+        "generatedAt": {
+          "$ref": "#/$defs/canonicalTimestamp"
+        },
+        "asOf": {
+          "$ref": "#/$defs/canonicalTimestamp"
+        },
+        "expiresAt": {
+          "$ref": "#/$defs/canonicalTimestamp"
+        },
+        "marketRegime": {
+          "$ref": "#/$defs/marketRegime"
+        },
+        "fundamentalRegime": {
+          "$ref": "#/$defs/fundamentalRegime"
+        },
+        "posture": {
+          "$ref": "#/$defs/posture"
+        },
+        "recommendedAction": {
+          "$ref": "#/$defs/recommendedAction"
+        },
+        "riskLevel": {
+          "$ref": "#/$defs/riskLevel"
+        },
+        "clmmPolicy": {
+          "$ref": "#/$defs/clmmPolicy"
+        },
+        "levels": {
+          "$ref": "#/$defs/levels"
+        },
+        "evidence": {
+          "$ref": "#/$defs/evidence"
+        },
+        "confidenceBps": {
+          "$ref": "#/$defs/confidenceBps"
+        },
+        "dataQuality": {
+          "$ref": "#/$defs/dataQuality"
+        },
+        "reasonCodes": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/reasonCode"
+          },
+          "minItems": 1,
+          "maxItems": 16
+        },
+        "reasoning": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 2048
+        },
+        "warnings": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/warning"
+          },
+          "maxItems": 16
+        },
+        "freshness": {
+          "$ref": "#/$defs/freshness"
+        }
+      }
+    },
+    "PolicyInsightHistoryResponse": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schemaVersion", "pair", "queriedAt", "limit", "items", "nextCursor"],
+      "properties": {
+        "schemaVersion": {
+          "$ref": "#/$defs/schemaVersion"
+        },
+        "pair": {
+          "$ref": "#/$defs/pair"
+        },
+        "queriedAt": {
+          "$ref": "#/$defs/canonicalTimestamp"
+        },
+        "limit": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 100
+        },
+        "items": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/PolicyInsightRead"
+          }
+        },
+        "nextCursor": {
+          "anyOf": [{ "type": "string" }, { "type": "null" }]
+        }
+      }
+    }
+  },
+  "properties": {
+    "schemaVersion": {
+      "$ref": "#/$defs/schemaVersion"
+    },
+    "insightId": {
+      "$ref": "#/$defs/hex64"
+    },
+    "rulesetVersion": {
+      "$ref": "#/$defs/identifier"
+    },
+    "pair": {
+      "$ref": "#/$defs/pair"
+    },
+    "position": {
+      "anyOf": [{ "$ref": "#/$defs/positionScope" }, { "type": "null" }]
+    },
+    "generatedAt": {
+      "$ref": "#/$defs/canonicalTimestamp"
+    },
+    "asOf": {
+      "$ref": "#/$defs/canonicalTimestamp"
+    },
+    "expiresAt": {
+      "$ref": "#/$defs/canonicalTimestamp"
+    },
+    "marketRegime": {
+      "$ref": "#/$defs/marketRegime"
+    },
+    "fundamentalRegime": {
+      "$ref": "#/$defs/fundamentalRegime"
+    },
+    "posture": {
+      "$ref": "#/$defs/posture"
+    },
+    "recommendedAction": {
+      "$ref": "#/$defs/recommendedAction"
+    },
+    "riskLevel": {
+      "$ref": "#/$defs/riskLevel"
+    },
+    "clmmPolicy": {
+      "$ref": "#/$defs/clmmPolicy"
+    },
+    "levels": {
+      "$ref": "#/$defs/levels"
+    },
+    "evidence": {
+      "$ref": "#/$defs/evidence"
+    },
+    "confidenceBps": {
+      "$ref": "#/$defs/confidenceBps"
+    },
+    "dataQuality": {
+      "$ref": "#/$defs/dataQuality"
+    },
+    "reasonCodes": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/reasonCode"
+      },
+      "minItems": 1,
+      "maxItems": 16
+    },
+    "reasoning": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 2048
+    },
+    "warnings": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/warning"
+      },
+      "maxItems": 16
+    },
+    "freshness": {
+      "$ref": "#/$defs/freshness"
+    }
+  }
+}

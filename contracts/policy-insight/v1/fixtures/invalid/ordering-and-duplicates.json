@@ -1,0 +1,191 @@
+[
+  {
+    "name": "duplicate-reason-codes",
+    "payload": {
+      "schemaVersion": "policy-insight.v1",
+      "insightId": "a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1",
+      "rulesetVersion": "policy.v1",
+      "pair": "SOL/USDC",
+      "position": null,
+      "generatedAt": "2026-07-19T12:00:00.000Z",
+      "asOf": "2026-07-19T11:59:00.000Z",
+      "expiresAt": "2026-07-19T13:00:00.000Z",
+      "marketRegime": "UP",
+      "fundamentalRegime": "BULLISH",
+      "posture": "AGGRESSIVE",
+      "recommendedAction": "HOLD",
+      "riskLevel": "NORMAL",
+      "clmmPolicy": {
+        "rangeBias": "MEDIUM",
+        "rebalanceSensitivity": "NORMAL",
+        "maxCapitalDeploymentBps": 7500
+      },
+      "levels": {
+        "supportsUsdcPerSol": [],
+        "resistancesUsdcPerSol": []
+      },
+      "evidence": {
+        "selectionStatus": "FULL",
+        "selectionPolicyVersion": "selector.v1",
+        "selectedBundleRefs": [],
+        "selectedSourceRefs": []
+      },
+      "confidenceBps": 7500,
+      "dataQuality": "COMPLETE",
+      "reasonCodes": ["MARKET_REGIME_UP", "MARKET_REGIME_UP", "ADVISORY_ONLY"],
+      "reasoning": "Market is UP.",
+      "warnings": [],
+      "freshness": {
+        "status": "FRESH",
+        "evaluatedAt": "2026-07-19T12:00:00.000Z",
+        "ageSeconds": 60
+      }
+    },
+    "expectedPath": "/reasonCodes",
+    "expectedCode": "SEMANTIC"
+  },
+  {
+    "name": "duplicate-warning-codes",
+    "payload": {
+      "schemaVersion": "policy-insight.v1",
+      "insightId": "a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1",
+      "rulesetVersion": "policy.v1",
+      "pair": "SOL/USDC",
+      "position": null,
+      "generatedAt": "2026-07-19T12:00:00.000Z",
+      "asOf": "2026-07-19T11:59:00.000Z",
+      "expiresAt": "2026-07-19T13:00:00.000Z",
+      "marketRegime": "UP",
+      "fundamentalRegime": "BULLISH",
+      "posture": "AGGRESSIVE",
+      "recommendedAction": "HOLD",
+      "riskLevel": "NORMAL",
+      "clmmPolicy": {
+        "rangeBias": "MEDIUM",
+        "rebalanceSensitivity": "NORMAL",
+        "maxCapitalDeploymentBps": 7500
+      },
+      "levels": {
+        "supportsUsdcPerSol": [],
+        "resistancesUsdcPerSol": []
+      },
+      "evidence": {
+        "selectionStatus": "FULL",
+        "selectionPolicyVersion": "selector.v1",
+        "selectedBundleRefs": [],
+        "selectedSourceRefs": []
+      },
+      "confidenceBps": 7500,
+      "dataQuality": "COMPLETE",
+      "reasonCodes": ["MARKET_REGIME_UP"],
+      "reasoning": "Market is UP.",
+      "warnings": [
+        {
+          "code": "NO_ELIGIBLE_PRICE_LEVELS",
+          "message": "No eligible price levels found"
+        },
+        {
+          "code": "NO_ELIGIBLE_PRICE_LEVELS",
+          "message": "No eligible price levels found"
+        }
+      ],
+      "freshness": {
+        "status": "FRESH",
+        "evaluatedAt": "2026-07-19T12:00:00.000Z",
+        "ageSeconds": 60
+      }
+    },
+    "expectedPath": "/warnings",
+    "expectedCode": "SEMANTIC"
+  },
+  {
+    "name": "supports-not-in-descending-order",
+    "payload": {
+      "schemaVersion": "policy-insight.v1",
+      "insightId": "a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1",
+      "rulesetVersion": "policy.v1",
+      "pair": "SOL/USDC",
+      "position": null,
+      "generatedAt": "2026-07-19T12:00:00.000Z",
+      "asOf": "2026-07-19T11:59:00.000Z",
+      "expiresAt": "2026-07-19T13:00:00.000Z",
+      "marketRegime": "UP",
+      "fundamentalRegime": "BULLISH",
+      "posture": "AGGRESSIVE",
+      "recommendedAction": "HOLD",
+      "riskLevel": "NORMAL",
+      "clmmPolicy": {
+        "rangeBias": "MEDIUM",
+        "rebalanceSensitivity": "NORMAL",
+        "maxCapitalDeploymentBps": 7500
+      },
+      "levels": {
+        "supportsUsdcPerSol": ["135.2", "138.5"],
+        "resistancesUsdcPerSol": []
+      },
+      "evidence": {
+        "selectionStatus": "FULL",
+        "selectionPolicyVersion": "selector.v1",
+        "selectedBundleRefs": [],
+        "selectedSourceRefs": []
+      },
+      "confidenceBps": 7500,
+      "dataQuality": "COMPLETE",
+      "reasonCodes": ["MARKET_REGIME_UP"],
+      "reasoning": "Market is UP.",
+      "warnings": [],
+      "freshness": {
+        "status": "FRESH",
+        "evaluatedAt": "2026-07-19T12:00:00.000Z",
+        "ageSeconds": 60
+      }
+    },
+    "expectedPath": "",
+    "expectedCode": "SEMANTIC"
+  },
+  {
+    "name": "resistances-not-in-ascending-order",
+    "payload": {
+      "schemaVersion": "policy-insight.v1",
+      "insightId": "a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1",
+      "rulesetVersion": "policy.v1",
+      "pair": "SOL/USDC",
+      "position": null,
+      "generatedAt": "2026-07-19T12:00:00.000Z",
+      "asOf": "2026-07-19T11:59:00.000Z",
+      "expiresAt": "2026-07-19T13:00:00.000Z",
+      "marketRegime": "UP",
+      "fundamentalRegime": "BULLISH",
+      "posture": "AGGRESSIVE",
+      "recommendedAction": "HOLD",
+      "riskLevel": "NORMAL",
+      "clmmPolicy": {
+        "rangeBias": "MEDIUM",
+        "rebalanceSensitivity": "NORMAL",
+        "maxCapitalDeploymentBps": 7500
+      },
+      "levels": {
+        "supportsUsdcPerSol": [],
+        "resistancesUsdcPerSol": ["145.5", "142.0"]
+      },
+      "evidence": {
+        "selectionStatus": "FULL",
+        "selectionPolicyVersion": "selector.v1",
+        "selectedBundleRefs": [],
+        "selectedSourceRefs": []
+      },
+      "confidenceBps": 7500,
+      "dataQuality": "COMPLETE",
+      "reasonCodes": ["MARKET_REGIME_UP"],
+      "reasoning": "Market is UP.",
+      "warnings": [],
+      "freshness": {
+        "status": "FRESH",
+        "evaluatedAt": "2026-07-19T12:00:00.000Z",
+        "ageSeconds": 60
+      }
+    },
+    "expectedPath": "",
+    "expectedCode": "SEMANTIC"
+  }
+]

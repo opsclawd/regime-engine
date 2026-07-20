@@ -1,0 +1,64 @@
+{
+  "schemaVersion": "policy-insight.v1",
+  "insightId": "b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2",
+  "rulesetVersion": "sol-usdc-policy.v1.2026-07",
+  "pair": "SOL/USDC",
+  "position": {
+    "network": "solana-mainnet",
+    "walletAddress": "Wallet1111111111111111111111111111111111",
+    "whirlpoolAddress": "Whrl11111111111111111111111111111111111",
+    "positionId": "Posn111111111111111111111111111111111111"
+  },
+  "generatedAt": "2026-07-19T12:00:00.000Z",
+  "asOf": "2026-07-19T11:59:00.000Z",
+  "expiresAt": "2026-07-19T13:00:00.000Z",
+  "marketRegime": "UP",
+  "fundamentalRegime": "BULLISH",
+  "posture": "MODERATELY_AGGRESSIVE",
+  "recommendedAction": "EXIT_TO_SOL",
+  "riskLevel": "ELEVATED",
+  "clmmPolicy": {
+    "rangeBias": "TIGHT",
+    "rebalanceSensitivity": "HIGH",
+    "maxCapitalDeploymentBps": 5000
+  },
+  "levels": {
+    "supportsUsdcPerSol": ["138.5", "135.2"],
+    "resistancesUsdcPerSol": ["142.0", "145.5"]
+  },
+  "evidence": {
+    "selectionStatus": "PARTIAL",
+    "selectionPolicyVersion": "selector.v1.2026-07",
+    "selectedBundleRefs": [
+      {
+        "bundleHash": "abcd1234efgh5678ijkl9012mnop3456qrst7890uvwx1234yzab5678cdef9012",
+        "publisher": "sol-usdc-clmm-intelligence",
+        "sourceId": "src1111111111111111111111111111111111",
+        "runId": "run2222222222222222222222222222222222"
+      }
+    ],
+    "selectedSourceRefs": [
+      {
+        "referenceId": "ref3333333333333333333333333333333333",
+        "sourceType": "api",
+        "locator": "https://api.example.com/price/sol-usdc",
+        "observedAt": "2026-07-19T11:58:00.000Z"
+      }
+    ]
+  },
+  "confidenceBps": 5000,
+  "dataQuality": "PARTIAL",
+  "reasonCodes": ["MARKET_REGIME_UP", "CLMM_BREACH_UPPER", "CONTEXTUAL_EVIDENCE_VOTE"],
+  "reasoning": "Upper position bound breached. Current price exceeds resistance level.",
+  "warnings": [
+    {
+      "code": "EVIDENCE_CONFLICTED_FAMILY",
+      "message": "Support/resistance evidence conflicts with price momentum"
+    }
+  ],
+  "freshness": {
+    "status": "STALE",
+    "evaluatedAt": "2026-07-19T12:05:00.000Z",
+    "ageSeconds": 360
+  }
+}
