@@ -272,8 +272,8 @@ The canonical handoff information for downstream integration:
 
 ### Timestamps
 
-- `generatedAt` <= `asOf` (must be non-decreasing)
-- `expiresAt` > `generatedAt` (exclusive boundary)
+- `asOf` <= `generatedAt` < `expiresAt`
+- `generatedAt` must be non-decreasing with `asOf`
 
 ### Arrays
 
@@ -301,4 +301,4 @@ History responses return items in reverse chronological order (newest first by `
 
 ### Decimal Level Ordering
 
-Support/resistance levels should be ordered ascending. Consumers must not assume this ordering is enforced by the schema (array order is preserved), but the semantic validation may reject out-of-order entries.
+Supports (`levels.supportsUsdcPerSol`) must be strictly descending (highest-to-lowest). Resistances (`levels.resistancesUsdcPerSol`) must be strictly ascending (lowest-to-highest). The semantic validation rejects out-of-order entries.
