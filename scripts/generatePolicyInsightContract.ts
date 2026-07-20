@@ -81,33 +81,57 @@ function computeSchemaDigest(schemaBytes: Buffer): string {
   return createHash("sha256").update(schemaBytes).digest("hex");
 }
 
-async function formatFixtures(fixturesDir: string): Promise<void> {
+const FIXTURE_PRETTIER_OPTIONS = {
+  parser: "json",
+  printWidth: 100,
+  tabWidth: 2,
+  useTabs: false,
+  singleQuote: false,
+  semi: false,
+  trailingComma: "none"
+} as const;
+
+function listFixtureFiles(fixturesDir: string): string[] {
   const validDirs = ["valid", "invalid"];
+  const filePaths: string[] = [];
   for (const dir of validDirs) {
     const dirPath = resolve(fixturesDir, dir);
     try {
       const entries = readdirSync(dirPath, { withFileTypes: true });
       for (const entry of entries) {
         if (entry.isFile() && entry.name.endsWith(".json")) {
-          const filePath = resolve(dirPath, entry.name);
-          const content = readFileSync(filePath, "utf-8");
-          const formatted = await prettier.format(content, {
-            parser: "json",
-            printWidth: 100,
-            tabWidth: 2,
-            useTabs: false,
-            singleQuote: false,
-            semi: false,
-            trailingComma: "none"
-          });
-          writeFileSync(filePath, formatted);
-          console.log(`FORMATTED: ${filePath}`);
+          filePaths.push(resolve(dirPath, entry.name));
         }
       }
     } catch {
       // Skip directories that don't exist
     }
   }
+  return filePaths;
+}
+
+async function formatFixtures(fixturesDir: string): Promise<void> {
+  for (const filePath of listFixtureFiles(fixturesDir)) {
+    const content = readFileSync(filePath, "utf-8");
+    const formatted = await prettier.format(content, FIXTURE_PRETTIER_OPTIONS);
+    if (formatted !== content) {
+      writeFileSync(filePath, formatted);
+      console.log(`FORMATTED: ${filePath}`);
+    }
+  }
+}
+
+async function checkFixturesFormatted(fixturesDir: string): Promise<boolean> {
+  let hasStale = false;
+  for (const filePath of listFixtureFiles(fixturesDir)) {
+    const content = readFileSync(filePath, "utf-8");
+    const formatted = await prettier.format(content, FIXTURE_PRETTIER_OPTIONS);
+    if (formatted !== content) {
+      console.error(`STALE: ${filePath}`);
+      hasStale = true;
+    }
+  }
+  return hasStale;
 }
 
 async function main() {
@@ -142,6 +166,10 @@ async function main() {
       }
     } catch {
       console.error(`MISSING: ${TYPES_PATH}`);
+      hasStale = true;
+    }
+
+    if (await checkFixturesFormatted(FIXTURES_DIR)) {
       hasStale = true;
     }
 
