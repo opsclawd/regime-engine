@@ -17,7 +17,6 @@ import type {
   RiskLevel,
   ConfidenceBps,
   DataQuality,
-  ReasonCode,
   Warning,
   ClmmPolicy,
   Levels,
@@ -662,60 +661,69 @@ function deriveCanonicalRecommendedAction(input: {
   return "HOLD";
 }
 
-export function synthesizePolicyInsightV1(
+type WarningCode = import("../../contract/policyInsight/v1/types.generated.js").WarningCode;
+
+function selectionWarningCodeToWarningCode(code: SelectionWarning["code"]): WarningCode {
+  switch (code) {
+    case "stale_input":
+      return "EVIDENCE_STALE_INPUT";
+    case "missing_family":
+      return "EVIDENCE_MISSING_FAMILY";
+    case "rejected_family":
+      return "EVIDENCE_REJECTED_FAMILY";
+    case "conflicted_family":
+      return "EVIDENCE_CONFLICTED_FAMILY";
+    case "no_selected_research":
+      return "EVIDENCE_NO_SELECTED_RESEARCH";
+    default:
+      return "MARKET_DATA_HARD_STALE";
+  }
+}
+
+interface SharedEvaluatorState {
+  readonly actionLock: string | null;
+  readonly postureLock: string | null;
+  readonly riskFloor: string | null;
+  readonly confidenceCeiling: string | null;
+  readonly allowClmm: boolean;
+  readonly capitalCap: number | null;
+  readonly sensitivityCap: string | null;
+  readonly posture: string;
+  readonly rangeBias: string;
+  readonly sensitivity: string;
+  readonly maxCapital: number;
+  readonly confidence: string;
+  readonly riskLevel: string;
+  readonly reasonCodeSet: Set<string>;
+  readonly extractedSupport: number[];
+  readonly extractedResistance: number[];
+  readonly bullishCount: number;
+  readonly bearishCount: number;
+  readonly hasConflict: boolean;
+  readonly positionRangeState: string | null;
+  readonly breachQualified: boolean;
+  readonly hardStale: boolean;
+  readonly suitabilityBlocked: boolean;
+  readonly baselineSensitivity: string;
+  readonly baselineCapital: number;
+  readonly boundedIdentifiers: string[];
+  readonly earliestExpiryMs: number;
+}
+
+type SelectionWarning = {
+  readonly code:
+    | "stale_input"
+    | "missing_family"
+    | "rejected_family"
+    | "conflicted_family"
+    | "no_selected_research";
+  readonly message: string;
+};
+
+function evaluateSharedRules(
   envelope: PolicySynthesisEnvelope,
   ruleset: PolicyRuleset
-): PolicyInsightContentDraft {
-  const synthesisAt = new Date(envelope.synthesisAtUnixMs).toISOString();
-
-  let earliestExpiryMs = envelope.synthesisAtUnixMs + ruleset.maxInsightLifetimeMs;
-
-  if (envelope.market.freshness?.generatedAtIso) {
-    const marketGen = Date.parse(envelope.market.freshness.generatedAtIso);
-    const hardStaleSec =
-      envelope.market.freshness.hardStaleSeconds ?? ruleset.degradedSafetyTtlMs / 1000;
-    const marketExpiry = marketGen + hardStaleSec * 1000;
-    if (marketExpiry < earliestExpiryMs) {
-      earliestExpiryMs = marketExpiry;
-    }
-  }
-
-  if (envelope.positionPlan?.position?.observedAtUnixMs) {
-    const positionExpiry =
-      envelope.positionPlan.position.observedAtUnixMs + ruleset.positionMaxAgeMs;
-    if (positionExpiry < earliestExpiryMs) {
-      earliestExpiryMs = positionExpiry;
-    }
-  }
-
-  const evidenceExpiresAt: number[] = [];
-  if (envelope.evidence.selected?.contextualEvidence) {
-    const ctx = envelope.evidence.selected.contextualEvidence;
-    const allClaims = [
-      ...(ctx.supportResistance || []),
-      ...(ctx.flows || []),
-      ...(ctx.derivatives || []),
-      ...(ctx.events || []),
-      ...(ctx.newsRegulatory || [])
-    ];
-    for (const claim of allClaims) {
-      if (claim.originalItem?.expiresAt) {
-        const expiresAtMs = Date.parse(claim.originalItem.expiresAt);
-        if (expiresAtMs >= envelope.synthesisAtUnixMs) {
-          evidenceExpiresAt.push(expiresAtMs);
-        }
-      }
-    }
-  }
-  if (evidenceExpiresAt.length > 0) {
-    const minEvidenceExpiry = Math.min(...evidenceExpiresAt);
-    if (minEvidenceExpiry < earliestExpiryMs) {
-      earliestExpiryMs = minEvidenceExpiry;
-    }
-  }
-
-  const expiresAtIso = new Date(earliestExpiryMs).toISOString();
-
+): SharedEvaluatorState {
   const regime: Regime = envelope.market.regime;
   let posture: string = "neutral";
   let rangeBias: string = "medium";
@@ -742,7 +750,7 @@ export function synthesizePolicyInsightV1(
   const baselineSensitivity = sensitivity;
   const baselineCapital = maxCapital;
 
-  const reasonCodeSet = new Set<ReasonCode>();
+  const reasonCodeSet = new Set<string>();
 
   let actionLock: string | null = null;
   let postureLock: string | null = null;
@@ -751,21 +759,6 @@ export function synthesizePolicyInsightV1(
   let allowClmm: boolean = true;
   let capitalCap: number | null = null;
   let sensitivityCap: string | null = null;
-
-  const compareRisk = (r1: string, r2: string): number => {
-    const order = ruleset.riskOrder;
-    return order.indexOf(r1) - order.indexOf(r2);
-  };
-
-  const compareConfidence = (c1: string, c2: string): number => {
-    const order = ruleset.confidenceOrder;
-    return order.indexOf(c1) - order.indexOf(c2);
-  };
-
-  const sensitivityOrder = ["paused", "low", "normal", "high"];
-  const compareSensitivity = (s1: string, s2: string): number => {
-    return sensitivityOrder.indexOf(s1) - sensitivityOrder.indexOf(s2);
-  };
 
   const hardStale = envelope.market.freshness?.hardStale ?? false;
   const suitabilityBlocked =
@@ -789,16 +782,32 @@ export function synthesizePolicyInsightV1(
     if (!postureLock) {
       postureLock = "paused";
     }
-    if (!riskFloor || compareRisk(riskLevel, "critical") < 0) {
+    if (!riskFloor) {
       riskFloor = "critical";
+    } else {
+      const compareRisk = (r1: string, r2: string): number => {
+        const order = ruleset.riskOrder;
+        return order.indexOf(r1) - order.indexOf(r2);
+      };
+      if (compareRisk(riskLevel, "critical") < 0) {
+        riskFloor = "critical";
+      }
     }
-    if (!confidenceCeiling || compareConfidence(confidence, "low") > 0) {
+    if (!confidenceCeiling) {
       confidenceCeiling = "low";
+    } else {
+      const compareConfidence = (c1: string, c2: string): number => {
+        const order = ruleset.confidenceOrder;
+        return order.indexOf(c1) - order.indexOf(c2);
+      };
+      if (compareConfidence(confidence, "low") > 0) {
+        confidenceCeiling = "low";
+      }
     }
     allowClmm = false;
   }
 
-  const positionRangeState = envelope.positionPlan?.position?.rangeState;
+  const positionRangeState = envelope.positionPlan?.position?.rangeState ?? null;
   const breachQualified = envelope.positionPlan?.position?.breachQualified ?? false;
 
   if (envelope.positionPlan?.plan?.actions) {
@@ -945,80 +954,7 @@ export function synthesizePolicyInsightV1(
     reasonCodeSet.add("RESEARCH_BRIEF_ANALYSIS");
   }
 
-  if (postureLock) {
-    posture = postureLock;
-  }
-  if (riskFloor) {
-    if (compareRisk(riskLevel, riskFloor) < 0) {
-      riskLevel = riskFloor;
-    }
-  }
-  if (confidenceCeiling) {
-    if (compareConfidence(confidence, confidenceCeiling) > 0) {
-      confidence = confidenceCeiling;
-    }
-  }
-  if (!allowClmm) {
-    maxCapital = 0;
-    sensitivity = "paused";
-    posture = "paused";
-  }
-
-  if (capitalCap !== null) {
-    if (maxCapital > capitalCap) {
-      maxCapital = capitalCap;
-    }
-  }
-
-  if (sensitivityCap !== null) {
-    if (compareSensitivity(sensitivity, sensitivityCap) > 0) {
-      sensitivity = sensitivityCap;
-    }
-  }
-
-  const currentPrice = envelope.positionPlan?.position?.currentPrice ?? 100;
-  const lowerBound = envelope.positionPlan?.position?.lowerBoundPrice ?? 95;
-  const upperBound = envelope.positionPlan?.position?.upperBoundPrice ?? 110;
-
-  const supportSet = new Set<string>();
-  if (envelope.positionPlan) {
-    supportSet.add(toDecimalString(lowerBound));
-  }
-  for (const s of extractedSupport) {
-    if (s <= currentPrice && s > 0) {
-      supportSet.add(toDecimalString(s));
-    }
-  }
-  const sortedSupportArray = Array.from(supportSet)
-    .map(Number)
-    .sort((a, b) => b - a)
-    .map(toDecimalString);
-
-  const resistanceSet = new Set<string>();
-  if (envelope.positionPlan) {
-    resistanceSet.add(toDecimalString(upperBound));
-  }
-  for (const r of extractedResistance) {
-    if (r >= currentPrice && r > 0) {
-      resistanceSet.add(toDecimalString(r));
-    }
-  }
-  const sortedResistanceArray = Array.from(resistanceSet)
-    .map(Number)
-    .sort((a, b) => a - b)
-    .map(toDecimalString);
-
-  const hasEligiblePriceLevels = supportSet.size > 0 || resistanceSet.size > 0;
-  if (!hasEligiblePriceLevels) {
-    reasonCodeSet.add("NO_ELIGIBLE_PRICE_LEVELS");
-  }
-
-  const finalSupports = sortedSupportArray.slice(0, 16);
-  const finalResistances = sortedResistanceArray.slice(0, 16);
-
-  const orderedReasonCodes = Array.from(reasonCodeSet);
   const boundedIdentifiers: string[] = [];
-
   if (envelope.evidence.selected?.deterministicFeatures) {
     for (const f of envelope.evidence.selected.deterministicFeatures) {
       boundedIdentifiers.push(f.candidateId);
@@ -1047,23 +983,247 @@ export function synthesizePolicyInsightV1(
     boundedIdentifiers.push(envelope.evidence.selected.researchBrief.candidateId);
   }
 
+  let earliestExpiryMs = envelope.synthesisAtUnixMs + ruleset.maxInsightLifetimeMs;
+
+  if (envelope.market.freshness?.generatedAtIso) {
+    const marketGen = Date.parse(envelope.market.freshness.generatedAtIso);
+    const hardStaleSec =
+      envelope.market.freshness.hardStaleSeconds ?? ruleset.degradedSafetyTtlMs / 1000;
+    const marketExpiry = marketGen + hardStaleSec * 1000;
+    if (marketExpiry < earliestExpiryMs) {
+      earliestExpiryMs = marketExpiry;
+    }
+  }
+
+  if (envelope.positionPlan?.position?.observedAtUnixMs) {
+    const positionExpiry =
+      envelope.positionPlan.position.observedAtUnixMs + ruleset.positionMaxAgeMs;
+    if (positionExpiry < earliestExpiryMs) {
+      earliestExpiryMs = positionExpiry;
+    }
+  }
+
+  const evidenceExpiresAt: number[] = [];
+  if (envelope.evidence.selected?.contextualEvidence) {
+    const ctx = envelope.evidence.selected.contextualEvidence;
+    const allClaims = [
+      ...(ctx.supportResistance || []),
+      ...(ctx.flows || []),
+      ...(ctx.derivatives || []),
+      ...(ctx.events || []),
+      ...(ctx.newsRegulatory || [])
+    ];
+    for (const claim of allClaims) {
+      if (claim.originalItem?.expiresAt) {
+        const expiresAtMs = Date.parse(claim.originalItem.expiresAt);
+        if (expiresAtMs >= envelope.synthesisAtUnixMs) {
+          evidenceExpiresAt.push(expiresAtMs);
+        }
+      }
+    }
+  }
+  if (evidenceExpiresAt.length > 0) {
+    const minEvidenceExpiry = Math.min(...evidenceExpiresAt);
+    if (minEvidenceExpiry < earliestExpiryMs) {
+      earliestExpiryMs = minEvidenceExpiry;
+    }
+  }
+
+  return {
+    actionLock,
+    postureLock,
+    riskFloor,
+    confidenceCeiling,
+    allowClmm,
+    capitalCap,
+    sensitivityCap,
+    posture,
+    rangeBias,
+    sensitivity,
+    maxCapital,
+    confidence,
+    riskLevel,
+    reasonCodeSet,
+    extractedSupport,
+    extractedResistance,
+    bullishCount,
+    bearishCount,
+    hasConflict,
+    positionRangeState,
+    breachQualified,
+    hardStale,
+    suitabilityBlocked,
+    baselineSensitivity,
+    baselineCapital,
+    boundedIdentifiers,
+    earliestExpiryMs
+  };
+}
+
+export function synthesizePolicyInsightV1(
+  envelope: PolicySynthesisEnvelope,
+  ruleset: PolicyRuleset
+): PolicyInsightContentDraft {
+  const synthesisAt = new Date(envelope.synthesisAtUnixMs).toISOString();
+
+  const state = evaluateSharedRules(envelope, ruleset);
+  const {
+    actionLock,
+    postureLock,
+    riskFloor,
+    confidenceCeiling,
+    allowClmm,
+    capitalCap,
+    sensitivityCap,
+    posture,
+    sensitivity,
+    maxCapital,
+    confidence,
+    riskLevel,
+    reasonCodeSet,
+    extractedSupport,
+    extractedResistance,
+    positionRangeState,
+    breachQualified,
+    hardStale,
+    suitabilityBlocked,
+    boundedIdentifiers,
+    earliestExpiryMs
+  } = state;
+
+  const compareRisk = (r1: string, r2: string): number => {
+    const order = ruleset.riskOrder;
+    return order.indexOf(r1) - order.indexOf(r2);
+  };
+
+  const compareConfidence = (c1: string, c2: string): number => {
+    const order = ruleset.confidenceOrder;
+    return order.indexOf(c1) - order.indexOf(c2);
+  };
+
+  const sensitivityOrder = ["paused", "low", "normal", "high"];
+  const compareSensitivity = (s1: string, s2: string): number => {
+    return sensitivityOrder.indexOf(s1) - sensitivityOrder.indexOf(s2);
+  };
+
+  let finalPosture = posture;
+  let finalRiskLevel = riskLevel;
+  let finalConfidence = confidence;
+  let finalSensitivity = sensitivity;
+  let finalMaxCapital = maxCapital;
+
+  if (postureLock) {
+    finalPosture = postureLock;
+  }
+  if (riskFloor) {
+    if (compareRisk(finalRiskLevel, riskFloor) < 0) {
+      finalRiskLevel = riskFloor;
+    }
+  }
+  if (confidenceCeiling) {
+    if (compareConfidence(finalConfidence, confidenceCeiling) > 0) {
+      finalConfidence = confidenceCeiling;
+    }
+  }
+  if (!allowClmm) {
+    finalMaxCapital = 0;
+    finalSensitivity = "paused";
+    finalPosture = "paused";
+  }
+
+  if (capitalCap !== null) {
+    if (finalMaxCapital > capitalCap) {
+      finalMaxCapital = capitalCap;
+    }
+  }
+
+  if (sensitivityCap !== null) {
+    if (compareSensitivity(finalSensitivity, sensitivityCap) > 0) {
+      finalSensitivity = sensitivityCap;
+    }
+  }
+
+  const expiresAtIso = new Date(earliestExpiryMs).toISOString();
+
+  const currentPrice = envelope.positionPlan?.position?.currentPrice ?? 100;
+
+  const supportSet = new Set<string>();
+  if (envelope.positionPlan) {
+    supportSet.add(toDecimalString(envelope.positionPlan.position?.lowerBoundPrice ?? 95));
+  }
+  for (const s of extractedSupport) {
+    if (s <= currentPrice && s > 0) {
+      supportSet.add(toDecimalString(s));
+    }
+  }
+  const sortedSupportArray = Array.from(supportSet)
+    .map(Number)
+    .sort((a, b) => b - a)
+    .map(toDecimalString);
+
+  const resistanceSet = new Set<string>();
+  if (envelope.positionPlan) {
+    resistanceSet.add(toDecimalString(envelope.positionPlan.position?.upperBoundPrice ?? 110));
+  }
+  for (const r of extractedResistance) {
+    if (r >= currentPrice && r > 0) {
+      resistanceSet.add(toDecimalString(r));
+    }
+  }
+  const sortedResistanceArray = Array.from(resistanceSet)
+    .map(Number)
+    .sort((a, b) => a - b)
+    .map(toDecimalString);
+
+  const hasEligiblePriceLevels = supportSet.size > 0 || resistanceSet.size > 0;
+  if (!hasEligiblePriceLevels) {
+    reasonCodeSet.add("NO_ELIGIBLE_PRICE_LEVELS");
+  }
+
+  const finalSupports = sortedSupportArray.slice(0, 16);
+  const finalResistances = sortedResistanceArray.slice(0, 16);
+
+  const sortedReasonCodes = Array.from(reasonCodeSet).sort((a, b) => {
+    const ia = ruleset.reasonOrder[a] ?? 999;
+    const ib = ruleset.reasonOrder[b] ?? 999;
+    return ia - ib;
+  });
+
   const renderedReasoning = renderPolicyReasoning({
-    orderedReasonCodes,
+    orderedReasonCodes: sortedReasonCodes,
     boundedIdentifiers,
     reasonOrder: ruleset.reasonOrder
   });
 
-  const derivedWarnings: string[] = [];
-  if (hardStale) {
-    derivedWarnings.push("market data is hard stale");
+  const warnings: Warning[] = [];
+
+  if (envelope.evidence.warnings) {
+    for (const w of envelope.evidence.warnings) {
+      warnings.push({
+        code: selectionWarningCodeToWarningCode(w.code),
+        message: w.message
+      });
+    }
   }
 
-  const renderedWarnings = renderPolicyWarnings({
-    selection: envelope.evidence,
-    derivedWarnings
+  if (hardStale) {
+    warnings.push({ code: "MARKET_DATA_HARD_STALE", message: "market data is hard stale" });
+  }
+
+  warnings.sort((a, b) => {
+    if (a.code < b.code) return -1;
+    if (a.code > b.code) return 1;
+    if (a.message < b.message) return -1;
+    if (a.message > b.message) return 1;
+    return 0;
   });
 
-  const combinedReasoning = [...renderedReasoning, ...renderedWarnings].slice(0, 16);
+  const warningsSlice = warnings.slice(0, 16);
+
+  const combinedReasoning = [
+    ...renderedReasoning,
+    ...warningsSlice.map((w) => `${w.code}: ${w.message}`)
+  ].slice(0, 16);
 
   const sortedBundleRefs = envelope.evidence.bundles
     .filter((b) => b.status === "ACCEPTED")
@@ -1107,19 +1267,10 @@ export function synthesizePolicyInsightV1(
     allowClmm
   });
 
-  const reasonCodesTuple = orderedReasonCodes.slice(
+  const reasonCodesSlice = sortedReasonCodes.slice(
     0,
     16
   ) as unknown as import("../../contract/policyInsight/v1/types.generated.js").ReasonCode[];
-
-  const warningsTuple = renderedWarnings.slice(0, 16).map((w) => {
-    const codeMatch = w.match(/^WARNING_([A-Z_]+):/);
-    const code = codeMatch
-      ? (codeMatch[1] as import("../../contract/policyInsight/v1/types.generated.js").WarningCode)
-      : "MARKET_DATA_HARD_STALE";
-    const message = w.replace(/^WARNING_[A-Z_]+: /, "");
-    return { code, message } as Warning;
-  }) as unknown as import("../../contract/policyInsight/v1/types.generated.js").Warning[];
 
   const reasoningString = combinedReasoning.join(" | ");
 
@@ -1144,17 +1295,17 @@ export function synthesizePolicyInsightV1(
     generatedAt: synthesisAt,
     asOf: synthesisAt,
     expiresAt: expiresAtIso,
-    marketRegime: regime,
+    marketRegime: envelope.market.regime,
     fundamentalRegime: "UNKNOWN",
-    posture: toUpperCasePosture(posture as LegacyPosture),
+    posture: toUpperCasePosture(finalPosture as LegacyPosture),
     recommendedAction: canonicalRecommendedAction,
-    riskLevel: toUpperCaseRiskLevel(riskLevel as LegacyRiskLevel),
+    riskLevel: toUpperCaseRiskLevel(finalRiskLevel as LegacyRiskLevel),
     clmmPolicy: {
-      rangeBias: toUpperCaseRangeBias(rangeBias as LegacyRangeBias),
+      rangeBias: toUpperCaseRangeBias(finalRiskLevel as LegacyRangeBias),
       rebalanceSensitivity: toUpperCaseRebalanceSensitivity(
-        sensitivity as LegacyRebalanceSensitivity
+        finalSensitivity as LegacyRebalanceSensitivity
       ),
-      maxCapitalDeploymentBps: maxCapital * 100
+      maxCapitalDeploymentBps: finalMaxCapital * 100
     } as ClmmPolicy,
     levels: {
       supportsUsdcPerSol: finalSupports,
@@ -1172,12 +1323,12 @@ export function synthesizePolicyInsightV1(
       selectedBundleRefs: sortedBundleRefs,
       selectedSourceRefs: sortedSourceRefs
     } as Evidence,
-    confidenceBps: toConfidenceBps(confidence as LegacyConfidence),
+    confidenceBps: toConfidenceBps(finalConfidence as LegacyConfidence),
     dataQuality: toDataQuality(hardStale, suitabilityBlocked),
     reasonCodes:
-      reasonCodesTuple as import("../../contract/policyInsight/v1/types.generated.js").ReasonCode[],
+      reasonCodesSlice as import("../../contract/policyInsight/v1/types.generated.js").ReasonCode[],
     reasoning: reasoningString,
     warnings:
-      warningsTuple as import("../../contract/policyInsight/v1/types.generated.js").Warning[]
+      warningsSlice as import("../../contract/policyInsight/v1/types.generated.js").Warning[]
   } as unknown as PolicyInsightContentDraft;
 }
