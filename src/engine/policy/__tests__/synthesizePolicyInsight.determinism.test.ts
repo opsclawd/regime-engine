@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
-  synthesizePolicyInsight,
+  synthesizePolicyInsightV1,
   type PolicySynthesisEnvelope
 } from "../synthesizePolicyInsight.js";
 import { SOL_USDC_POLICY_V1 } from "../ruleset.js";
@@ -67,8 +67,8 @@ describe("synthesizePolicyInsight - Determinism Invariants", () => {
       hashes: { inputHash: "in-1", rulesetHash: "rules-1" }
     };
 
-    const result1 = synthesizePolicyInsight(envelope, SOL_USDC_POLICY_V1);
-    const result2 = synthesizePolicyInsight(envelope, SOL_USDC_POLICY_V1);
+    const result1 = synthesizePolicyInsightV1(envelope, SOL_USDC_POLICY_V1);
+    const result2 = synthesizePolicyInsightV1(envelope, SOL_USDC_POLICY_V1);
 
     const json1 = JSON.stringify(result1);
     const json2 = JSON.stringify(result2);

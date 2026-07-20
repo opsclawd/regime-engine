@@ -29,6 +29,7 @@ export const policyInsights = regimeEngine.table(
     positionHash: varchar("position_hash", { length: 64 }).notNull(),
     selectionHash: varchar("selection_hash", { length: 64 }).notNull(),
     synthesisInputHash: varchar("synthesis_input_hash", { length: 64 }).notNull(),
+    wireContractSha256: varchar("wire_contract_sha256", { length: 64 }),
     selectionPolicyVersion: varchar("selection_policy_version", { length: 64 }).notNull(),
     synthesisInputJson: jsonb("synthesis_input_json").notNull(),
     synthesisOutputJson: jsonb("synthesis_output_json").notNull(),
@@ -53,15 +54,20 @@ export const policyInsights = regimeEngine.table(
       sql`${t.synthesisInputHash} ~ '^[0-9a-f]{64}$'`
     ),
     check("chk_policy_insight_payload_hash", sql`${t.payloadHash} ~ '^[0-9a-f]{64}$'`),
+    check(
+      "chk_policy_insight_wire_contract_sha256",
+      sql`${t.wireContractSha256} IS NULL OR ${t.wireContractSha256} ~ '^[0-9a-f]{64}$'`
+    ),
 
     uniqueIndex("uniq_policy_insights_insight_id").on(t.insightId),
     uniqueIndex("uniq_policy_insights_synthesis_input").on(
       t.schemaVersion,
+      t.wireContractSha256,
       t.rulesetVersion,
       t.synthesisInputHash
     ),
-    index("idx_policy_insights_current").on(t.pair, t.scopeKey, t.asOfUnixMs, t.id),
-    index("idx_policy_insights_history").on(t.pair, t.scopeKey, t.persistedAtUnixMs, t.id)
+    index("idx_policy_insights_current").on(t.pair, t.scopeKey, t.generatedAtUnixMs, t.id),
+    index("idx_policy_insights_history").on(t.pair, t.scopeKey, t.generatedAtUnixMs, t.id)
   ]
 );
 

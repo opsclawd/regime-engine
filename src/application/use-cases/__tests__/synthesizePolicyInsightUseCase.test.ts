@@ -23,6 +23,7 @@ import { PolicyInsightValidationError } from "../../errors/policyInsightErrors.j
 class FakePolicyInsightRepository implements PolicyInsightRepositoryPort {
   public findCalls: Array<{
     readonly schemaVersion: string;
+    readonly wireContractSha256: string;
     readonly rulesetVersion: string;
     readonly synthesisInputHash: string;
   }> = [];
@@ -32,6 +33,7 @@ class FakePolicyInsightRepository implements PolicyInsightRepositoryPort {
 
   async findBySynthesisInputHash(input: {
     readonly schemaVersion: string;
+    readonly wireContractSha256: string;
     readonly rulesetVersion: string;
     readonly synthesisInputHash: string;
   }): Promise<StoredPolicyInsight | null> {
@@ -56,6 +58,7 @@ class FakePolicyInsightRepository implements PolicyInsightRepositoryPort {
   async getCurrent(_input: {
     readonly pair: "SOL/USDC";
     readonly scopeKey: string;
+    readonly wireContractSha256: string;
   }): Promise<StoredPolicyInsight | null> {
     return (
       Array.from(this.findHits.values())
@@ -64,7 +67,14 @@ class FakePolicyInsightRepository implements PolicyInsightRepositoryPort {
     );
   }
 
-  async getHistory(): Promise<{
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  async getHistory(_: {
+    readonly pair: "SOL/USDC";
+    readonly scopeKey: string;
+    readonly limit: number;
+    readonly cursor: PolicyInsightHistoryCursor | null;
+    readonly wireContractSha256: string;
+  }): Promise<{
     readonly records: readonly StoredPolicyInsight[];
     readonly nextCursor: PolicyInsightHistoryCursor | null;
   }> {

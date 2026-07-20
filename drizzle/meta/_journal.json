@@ -50,6 +50,13 @@
       "when": 1784400000000,
       "tag": "0006_create_policy_insights",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1784403600000,
+      "tag": "0007_mark_policy_insight_wire_contract",
+      "breakpoints": true
     }
   ]
 }
