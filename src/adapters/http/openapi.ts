@@ -720,7 +720,7 @@ export const buildOpenApiDocument = () => {
               name: "limit",
               in: "query",
               required: false,
-              schema: { type: "integer", minimum: 1, maximum: 200, default: 50 }
+              schema: { type: "integer", minimum: 1, maximum: 100, default: 50 }
             },
             {
               name: "cursor",
