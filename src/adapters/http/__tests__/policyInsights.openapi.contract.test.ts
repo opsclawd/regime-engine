@@ -7,27 +7,10 @@ describe("PolicyInsights OpenAPI contract", () => {
   const doc = buildOpenApiDocument();
 
   describe("documents policy insights endpoints", () => {
-    it("exposes three separate insight paths", () => {
-      expect(doc.paths["/v1/insights/sol-usdc"]).toBeDefined();
+    it("omits the removed root insight path and retains both read paths", () => {
+      expect(doc.paths["/v1/insights/sol-usdc"]).toBeUndefined();
       expect(doc.paths["/v1/insights/sol-usdc/current"]).toBeDefined();
       expect(doc.paths["/v1/insights/sol-usdc/history"]).toBeDefined();
-    });
-
-    it("POST /v1/insights/sol-usdc has correct status codes", () => {
-      const postOp = doc.paths["/v1/insights/sol-usdc"]?.post;
-      expect(postOp).toBeDefined();
-      const responses = postOp?.responses;
-      expect(responses).toEqual(
-        expect.objectContaining({
-          "200": expect.any(Object),
-          "201": expect.any(Object),
-          "400": expect.any(Object),
-          "401": expect.any(Object),
-          "409": expect.any(Object),
-          "500": expect.any(Object),
-          "503": expect.any(Object)
-        })
-      );
     });
 
     it("GET /v1/insights/sol-usdc/current has correct status codes", () => {
