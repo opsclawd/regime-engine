@@ -1,6 +1,6 @@
 # Task Context: Task 2
 
-Title: Implement hard-guard and market-regime precedence
+Title: Enforce semantic validation, immutable hashing, and freshness projection
 ## Workspace & Scope Constraints
 
 ## WORKSPACE CONSTRAINTS
@@ -9,99 +9,103 @@ Your working directory is a dedicated git worktree with the repository's complet
 
 .ai-orchestrator.local.json, if one exists, lives only in the main checkout and is intentionally not copied into your worktree — it is operator-machine-specific and not part of your task. Do not search for it or read it outside this directory. Reason about configuration using only .ai-orchestrator.json in your own working directory; treat it as the effective config for your task.
 
-Working Directory: /home/gary/.openclaw/workspace/regime-engine/.ai-worktrees/issue-61
+Working Directory: /home/gary/.openclaw/workspace/regime-engine/.ai-worktrees/issue-63
 Repository: opsclawd/regime-engine
-Branch: ai/issue-61
-Start Commit: 8eb83b2403a525df9fbb640f75379bc56dc7bc3c
+Branch: ai/issue-63
+Start Commit: 543eadf9bf435b01023d1cdabc973036a876c595
 
 ## Task Requirements
 
 **Files:**
 
-- Create: `src/engine/policy/synthesizePolicyInsight.ts`
-- Create: `src/engine/policy/__tests__/policyFixtures.ts`
-- Create: `src/engine/policy/__tests__/synthesizePolicyInsight.precedence.test.ts`
+- Create: `src/contract/policyInsight/v1/canonical.ts`
+- Create: `src/contract/policyInsight/v1/validate.ts`
+- Create: `src/contract/policyInsight/v1/project.ts`
+- Create: `src/contract/policyInsight/v1/__tests__/validation.test.ts`
+- Create: `src/contract/policyInsight/v1/__tests__/canonicalHash.snapshot.test.ts`
+- Create: `src/contract/policyInsight/v1/__tests__/__snapshots__/canonicalHash.snapshot.test.ts.snap`
+- Create: `src/contract/policyInsight/v1/__tests__/project.test.ts`
 
-**Invariants implemented first:**
+**Exported API changes:** Add `PolicyInsightValidationIssue`, `PolicyInsightValidationError`, `parsePolicyInsightContent`, `parsePolicyInsightRead`, `parsePolicyInsightHistoryResponse`, `computePolicyInsightContentCanonicalAndHash`, `projectPolicyInsightRead`, and `projectPolicyInsightHistoryResponse`.
 
-- `hard-stale market locks pause posture and blocks CLMM despite bullish evidence`
-- `qualified lower breach remains exit_range under bullish contextual evidence`
-- `qualified upper breach remains exit_range under bearish contextual evidence`
-- `active stand-down prevents lower-precedence deployment increases`
-- `cooldown never permits higher sensitivity or capital than the baseline`
+**Behavioral invariants (write these named tests first):**
 
-- [ ] **Step 1: Build canonical fixtures and write failing precedence tests**
+- `accepts canonical content and rejects every named invalid fixture at its expected path`: structure and semantic validation agree with the fixture matrix.
+- `requires asOf <= generatedAt < expiresAt`: any reversed or equal generated/expiry relationship fails semantically.
+- `sorts no input and rejects noncanonical level reference reason and warning order`: validation never silently repairs persisted/public data.
+- `compares decimal level strings without binary floating point`: supports are strictly descending, resistances strictly ascending, and numeric equality such as `"1"` versus `"1.0"` cannot enter canonical content.
+- `requires actions with position semantics to include position identity`: monitor and exit actions fail when `position` is null; pair-scoped `HOLD` and `STAND_DOWN` remain valid.
+- `marks freshness fresh immediately before expiry`: `evaluatedAt < expiresAt` yields `FRESH`.
+- `marks freshness stale at exact expiry`: equality yields `STALE`.
+- `marks freshness stale after expiry`: later evaluation yields `STALE`.
+- `computes nonnegative floored age seconds from asOf`: negative age is rejected and fractional seconds floor deterministically.
+- `uses one evaluatedAt for every projected history item`: one supplied query instant is projected into the envelope and every item.
+- `hashes immutable content without freshness`: changing the read instant never changes content canonical JSON/hash; object-key order does not matter and array order does.
 
-  Create builders for fixed #63-valid pair scope, market snapshots, optional position/plan context, and empty/full #60 summaries. Table-drive stages 1-4: hard stale/insufficient safety data, lower and upper qualified breaches, blocked active position, stand-down, cooldown, `UP`, `DOWN`, and `CHOP`/`ALLOWED`. Assert exact advisory action, posture, risk floor, confidence ceiling, CLMM permission, reason order, and expiry.
+- [ ] **Step 1: Add the failing fixture, semantic, projection, and snapshot tests named above.** Use the published valid fixtures as bases and deep-clone/mutate one condition per case so error paths remain attributable.
 
-- [ ] **Step 2: Run the focused precedence suite and confirm RED**
+- [ ] **Step 2: Run the contract-only tests and observe failures for missing exports.**
 
-  Run: `pnpm exec vitest run src/engine/policy/__tests__/synthesizePolicyInsight.precedence.test.ts`
+  Run: `pnpm exec vitest run src/contract/policyInsight/v1/__tests__/validation.test.ts src/contract/policyInsight/v1/__tests__/canonicalHash.snapshot.test.ts src/contract/policyInsight/v1/__tests__/project.test.ts`
 
-  Expected: FAIL because the reducer is not implemented.
+  Expected: FAIL resolving `canonical.ts`, `validate.ts`, and `project.ts`.
 
-- [ ] **Step 3: Implement the pure ordered reducer**
-
-  Export a reducer with an immutable envelope and explicit lock state:
+- [ ] **Step 3: Implement canonical hashing.** Reuse the repository's sorted-key canonical JSON and SHA-256 behavior, but expose a content-specific function so freshness cannot be passed accidentally:
 
   ```ts
-  export interface PolicySynthesisEnvelope {
-    readonly synthesisAtUnixMs: number;
-    readonly pair: "SOL/USDC";
-    readonly scope: Scope;
-    readonly market: RegimeCurrentResponse;
-    readonly positionPlan: {
-      readonly position: PlanRequestPosition;
-      readonly plan: PlanResponse;
-    } | null;
-    readonly evidence: SelectedEvidenceSummary;
-    readonly hashes: PolicySynthesisHashes;
+  export function computePolicyInsightContentCanonicalAndHash(content: PolicyInsightContent) {
+    const canonical = toCanonicalJson(content);
+    return { canonical, hash: sha256Hex(canonical) };
   }
-
-  export function synthesizePolicyInsight(
-    envelope: PolicySynthesisEnvelope,
-    ruleset: PolicyRuleset
-  ): PolicyInsightV1;
   ```
 
-  Apply stages in fixed order. Represent locks explicitly (`action`, `posture`, `riskFloor`, `confidenceCeiling`, `allowClmm`, capital/sensitivity bounds) and expose no generic score that can cancel a guard. Map authoritative plan actions (`REQUEST_EXIT_CLMM`, `STAND_DOWN`, `HOLD`) without re-running breach or churn qualification. Compute expiry as the earliest ruleset, market, position, and selected-evidence boundary.
+- [ ] **Step 4: Implement AJV structural and explicit semantic validation.** Compile the published schema once with AJV 2020 and validators for the content, read, and history `$defs`. Return typed values only after checking canonical timestamps, timestamp ordering, freshness status/math, arbitrary-precision decimal ordering/uniqueness, action/position compatibility, selected-reference tuple ordering/uniqueness, precedence-then-lexicographic reason order, and code/message warning order. Never coerce, sort, round, or insert defaults.
 
-- [ ] **Step 4: Verify precedence and boundary isolation**
+- [ ] **Step 5: Implement the pure read projectors.** `projectPolicyInsightRead(content, evaluatedAtUnixMs)` must validate a nonnegative integer instant, format it once, compute exclusive-boundary status and floored age, then parse the complete read. `projectPolicyInsightHistoryResponse` must accept already ordered contents plus `limit`, cursor string/null, and one query instant; reuse `projectPolicyInsightRead` for every item and validate the final envelope.
 
-  Run: `pnpm exec vitest run src/engine/policy/__tests__/synthesizePolicyInsight.precedence.test.ts`
+- [ ] **Step 6: Run focused verification and accept snapshots.**
 
-  Run: `pnpm exec eslint src/engine/policy/synthesizePolicyInsight.ts src/engine/policy/__tests__/policyFixtures.ts src/engine/policy/__tests__/synthesizePolicyInsight.precedence.test.ts`
+  Run: `pnpm exec vitest run src/contract/policyInsight/v1/__tests__/validation.test.ts src/contract/policyInsight/v1/__tests__/canonicalHash.snapshot.test.ts src/contract/policyInsight/v1/__tests__/project.test.ts`
 
-  Run: `pnpm exec depcruise --config .dependency-cruiser.cjs --output-type err "src/engine/policy/**/*.ts"`
+  Expected: PASS with stable pair/position canonical JSON and hash snapshots.
 
-  Expected: all scenarios pass; the policy engine imports only engine/contract modules and runtime-free types.
+- [ ] **Step 7: Commit the contract runtime.**
 
-- [ ] **Step 5: Commit the task**
-
-  Run: `git add src/engine/policy/synthesizePolicyInsight.ts src/engine/policy/__tests__/policyFixtures.ts src/engine/policy/__tests__/synthesizePolicyInsight.precedence.test.ts && git commit -m "m61: enforce policy precedence guards"`
+  ```bash
+  git add src/contract/policyInsight/v1/canonical.ts src/contract/policyInsight/v1/validate.ts src/contract/policyInsight/v1/project.ts src/contract/policyInsight/v1/__tests__
+  git commit -m "m63: validate and project policy insight v1"
+  ```
 
 ## Repository Targets
 
 ### Expected Files
-- src/engine/policy/synthesizePolicyInsight.ts
-- src/engine/policy/__tests__/policyFixtures.ts
-- src/engine/policy/__tests__/synthesizePolicyInsight.precedence.test.ts
+- src/contract/policyInsight/v1/canonical.ts
+- src/contract/policyInsight/v1/validate.ts
+- src/contract/policyInsight/v1/project.ts
+- src/contract/policyInsight/v1/__tests__/validation.test.ts
+- src/contract/policyInsight/v1/__tests__/canonicalHash.snapshot.test.ts
+- src/contract/policyInsight/v1/__tests__/__snapshots__/canonicalHash.snapshot.test.ts.snap
+- src/contract/policyInsight/v1/__tests__/project.test.ts
 
 ## Validation Commands
 
 ```bash
-pnpm exec vitest run src/engine/policy/__tests__/synthesizePolicyInsight.precedence.test.ts
-pnpm exec eslint src/engine/policy/synthesizePolicyInsight.ts src/engine/policy/__tests__/policyFixtures.ts src/engine/policy/__tests__/synthesizePolicyInsight.precedence.test.ts
-pnpm exec depcruise --config .dependency-cruiser.cjs --output-type err "src/engine/policy/**/*.ts"
+pnpm exec vitest run src/contract/policyInsight/v1/__tests__/validation.test.ts src/contract/policyInsight/v1/__tests__/canonicalHash.snapshot.test.ts src/contract/policyInsight/v1/__tests__/project.test.ts
 ```
 
 ## Behavioral Invariants
 
 You MUST implement the following behavioral invariants as named tests first (TDD):
 
-- **hard stale dominates evidence**: A hard-stale or unsafe market state pauses rebalances, blocks CLMM, floors risk, and caps confidence regardless of bullish lower-priority evidence. (Test: `hard-stale market locks pause posture and blocks CLMM despite bullish evidence`)
-- **lower breach cannot reverse**: A fresh qualified below-range breach remains an advisory exit even when contextual evidence is bullish. (Test: `qualified lower breach remains exit_range under bullish contextual evidence`)
-- **upper breach cannot reverse**: A fresh qualified above-range breach remains an advisory exit even when contextual evidence is bearish. (Test: `qualified upper breach remains exit_range under bearish contextual evidence`)
-- **stand-down lock**: An active authoritative stand-down fixes pause posture and CLMM denial until its supplied boundary. (Test: `active stand-down prevents lower-precedence deployment increases`)
-- **cooldown caution floor**: Cooldown state cannot result in increased sensitivity or capital deployment. (Test: `cooldown never permits higher sensitivity or capital than the baseline`)
+- **fixture matrix validation**: Canonical fixtures pass and every named structural or semantic invalid case fails at its declared path and code. (Test: `accepts canonical content and rejects every named invalid fixture at its expected path`)
+- **immutable timestamp order**: Content is valid only when asOf is not after generatedAt and generatedAt is strictly before expiresAt. (Test: `requires asOf <= generatedAt < expiresAt`)
+- **canonical order is validated**: The validator rejects rather than repairs noncanonical levels, references, reasons, or warnings. (Test: `sorts no input and rejects noncanonical level reference reason and warning order`)
+- **exact decimal comparison**: Level ordering and uniqueness use decimal-string semantics without conversion through binary floating point. (Test: `compares decimal level strings without binary floating point`)
+- **action position compatibility**: Monitor and exit actions require a position identity while pair-scoped HOLD and STAND_DOWN are allowed. (Test: `requires actions with position semantics to include position identity`)
+- **fresh before expiry**: An evaluation instant strictly before expiresAt produces FRESH. (Test: `marks freshness fresh immediately before expiry`)
+- **stale at expiry**: An evaluation instant equal to expiresAt produces STALE. (Test: `marks freshness stale at exact expiry`)
+- **stale after expiry**: An evaluation instant after expiresAt produces STALE. (Test: `marks freshness stale after expiry`)
+- **age calculation**: ageSeconds is a nonnegative integer equal to the floor of evaluatedAt minus asOf in seconds. (Test: `computes nonnegative floored age seconds from asOf`)
+- **shared history instant**: The supplied query instant is used for queriedAt and every history item's evaluatedAt. (Test: `uses one evaluatedAt for every projected history item`)
+- **freshness excluded from hash**: Changing only the read instant leaves immutable canonical content and its hash unchanged. (Test: `hashes immutable content without freshness`)
 

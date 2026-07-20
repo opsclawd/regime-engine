@@ -163,7 +163,7 @@ function validateSemantic(
     return true;
   }
 
-  if (asOfDate.getTime() >= generatedAtDate.getTime()) {
+  if (asOfDate.getTime() > generatedAtDate.getTime()) {
     issues.push({
       path: "",
       code: "SEMANTIC",
@@ -281,9 +281,8 @@ export function parsePolicyInsightContent(raw: unknown): PolicyInsightContentVal
     };
   }
 
-  const contentForValidation = { ...obj };
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  delete contentForValidation.freshness;
+  const { freshness: _, ...contentForValidation } = obj;
   if (!validateContent(contentForValidation)) {
     const mapped = mapAjvErrors(validateContent.errors ?? []);
     issues.push(...mapped);
