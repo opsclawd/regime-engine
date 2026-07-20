@@ -1,33 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://contracts.opsclawd.dev/regime-engine/policy-insight/v1/policy-insight.schema.json",
-  "title": "PolicyInsightRead",
-  "type": "object",
-  "additionalProperties": false,
-  "required": [
-    "schemaVersion",
-    "insightId",
-    "rulesetVersion",
-    "pair",
-    "position",
-    "generatedAt",
-    "asOf",
-    "expiresAt",
-    "marketRegime",
-    "fundamentalRegime",
-    "posture",
-    "recommendedAction",
-    "riskLevel",
-    "clmmPolicy",
-    "levels",
-    "evidence",
-    "confidenceBps",
-    "dataQuality",
-    "reasonCodes",
-    "reasoning",
-    "warnings",
-    "freshness"
-  ],
+  "$ref": "#/$defs/PolicyInsightRead",
   "$defs": {
     "canonicalTimestamp": {
       "type": "string",
@@ -562,85 +536,6 @@
           "description": "Opaque cursor for fetching next page. Null when no more items exist."
         }
       }
-    }
-  },
-  "properties": {
-    "schemaVersion": {
-      "$ref": "#/$defs/schemaVersion"
-    },
-    "insightId": {
-      "$ref": "#/$defs/hex64"
-    },
-    "rulesetVersion": {
-      "$ref": "#/$defs/identifier"
-    },
-    "pair": {
-      "$ref": "#/$defs/pair"
-    },
-    "position": {
-      "anyOf": [{ "$ref": "#/$defs/positionScope" }, { "type": "null" }]
-    },
-    "generatedAt": {
-      "$ref": "#/$defs/canonicalTimestamp"
-    },
-    "asOf": {
-      "$ref": "#/$defs/canonicalTimestamp"
-    },
-    "expiresAt": {
-      "$ref": "#/$defs/canonicalTimestamp"
-    },
-    "marketRegime": {
-      "$ref": "#/$defs/marketRegime"
-    },
-    "fundamentalRegime": {
-      "$ref": "#/$defs/fundamentalRegime"
-    },
-    "posture": {
-      "$ref": "#/$defs/posture"
-    },
-    "recommendedAction": {
-      "$ref": "#/$defs/recommendedAction"
-    },
-    "riskLevel": {
-      "$ref": "#/$defs/riskLevel"
-    },
-    "clmmPolicy": {
-      "$ref": "#/$defs/clmmPolicy"
-    },
-    "levels": {
-      "$ref": "#/$defs/levels"
-    },
-    "evidence": {
-      "$ref": "#/$defs/evidence"
-    },
-    "confidenceBps": {
-      "$ref": "#/$defs/confidenceBps"
-    },
-    "dataQuality": {
-      "$ref": "#/$defs/dataQuality"
-    },
-    "reasonCodes": {
-      "type": "array",
-      "items": {
-        "$ref": "#/$defs/reasonCode"
-      },
-      "minItems": 1,
-      "maxItems": 16
-    },
-    "reasoning": {
-      "type": "string",
-      "minLength": 1,
-      "maxLength": 2048
-    },
-    "warnings": {
-      "type": "array",
-      "items": {
-        "$ref": "#/$defs/warning"
-      },
-      "maxItems": 16
-    },
-    "freshness": {
-      "$ref": "#/$defs/freshness"
     }
   }
 }

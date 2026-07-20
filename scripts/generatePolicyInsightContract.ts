@@ -31,13 +31,27 @@ function parseArgs(): CliArgs {
   return { mode };
 }
 
+function createCompilationSchema(schema: Record<string, unknown>): Record<string, unknown> {
+  const defs = schema.$defs as Record<string, unknown>;
+  const policyInsightHistoryResponse = defs.PolicyInsightHistoryResponse as Record<string, unknown>;
+
+  return {
+    $schema: "https://json-schema.org/draft/2020-12/schema",
+    type: "object",
+    additionalProperties: false,
+    ...policyInsightHistoryResponse,
+    $defs: defs
+  };
+}
+
 async function generateTypes(schemaContent: string, digest: string): Promise<string> {
   const header = `// Generated from contracts/policy-insight/v1/policy-insight.schema.json (sha256: ${digest}). Do not edit.
 `;
 
   const schema = JSON.parse(schemaContent);
+  const compileSchema = createCompilationSchema(schema) as Record<string, unknown>;
 
-  const compiledRead = await compile(schema, "PolicyInsightRead", {
+  const compiledHistory = await compile(compileSchema, "PolicyInsightHistoryResponse", {
     bannerComment: "",
     style: {
       singleQuote: false
@@ -46,17 +60,9 @@ async function generateTypes(schemaContent: string, digest: string): Promise<str
 
   const contentInterface = `export type PolicyInsightContent = Omit<PolicyInsightRead, "freshness">;
 export type PolicyInsightFreshness = Freshness;
-export interface PolicyInsightHistoryResponse {
-  schemaVersion: SchemaVersion;
-  pair: Pair;
-  queriedAt: CanonicalTimestamp;
-  limit: number;
-  items: PolicyInsightRead[];
-  nextCursor: string | null;
-}
 `;
 
-  const allCompiled = [compiledRead, "\n", contentInterface].join("\n");
+  const allCompiled = [compiledHistory, "\n", contentInterface].join("\n");
   const unformatted = header + allCompiled;
   const formatted = await prettier.format(unformatted, {
     parser: "typescript",

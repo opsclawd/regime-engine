@@ -1,8 +1,8 @@
-// Generated from contracts/policy-insight/v1/policy-insight.schema.json (sha256: 14a53110ebed2ebc56fceb7d9635981d3a5debfd1a8f7a0f3c024930b35786ed). Do not edit.
+// Generated from contracts/policy-insight/v1/policy-insight.schema.json (sha256: 80487b0a9374d0b535accf535ef9819f2b2de00e1d65980deb73c97afaa02800). Do not edit.
 export type SchemaVersion = "policy-insight.v1";
+export type Pair = "SOL/USDC";
 export type Hex64 = string;
 export type Identifier = string;
-export type Pair = "SOL/USDC";
 export type CanonicalTimestamp = string;
 export type MarketRegime = "UP" | "DOWN" | "CHOP";
 export type FundamentalRegime = "BULLISH" | "BEARISH" | "NEUTRAL" | "UNKNOWN";
@@ -46,6 +46,32 @@ export type WarningCode =
   | "EVIDENCE_NO_SELECTED_RESEARCH"
   | "NO_ELIGIBLE_PRICE_LEVELS";
 
+/**
+ * Paginated history response containing PolicyInsightRead items in reverse chronological order (newest first). Use nextCursor from last item to fetch next page.
+ */
+export interface PolicyInsightHistoryResponse {
+  schemaVersion: SchemaVersion;
+  pair: Pair;
+  /**
+   * Server timestamp when this history query was executed.
+   */
+  queriedAt: string;
+  /**
+   * Maximum number of items requested. Actual items may be fewer if fewer exist.
+   */
+  limit: number;
+  /**
+   * Array of PolicyInsightRead items, ordered newest-first by generatedAt.
+   */
+  items: PolicyInsightRead[];
+  /**
+   * Opaque cursor for fetching next page. Null when no more items exist.
+   */
+  nextCursor: string | null;
+}
+/**
+ * Complete policy insight read projection with content and freshness. This is the immutable content plus read-time freshness evaluation. Content portion is hashable; freshness is not included in hash.
+ */
 export interface PolicyInsightRead {
   schemaVersion: SchemaVersion;
   insightId: Hex64;
@@ -687,11 +713,3 @@ export interface Freshness {
 
 export type PolicyInsightContent = Omit<PolicyInsightRead, "freshness">;
 export type PolicyInsightFreshness = Freshness;
-export interface PolicyInsightHistoryResponse {
-  schemaVersion: SchemaVersion;
-  pair: Pair;
-  queriedAt: CanonicalTimestamp;
-  limit: number;
-  items: PolicyInsightRead[];
-  nextCursor: string | null;
-}
