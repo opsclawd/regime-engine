@@ -252,6 +252,72 @@ function validateSemantic(
     return false;
   }
 
+  const bundleRefs = content.evidence.selectedBundleRefs;
+  const bundleRefStrings = bundleRefs.map((r) =>
+    JSON.stringify({
+      bundleHash: r.bundleHash,
+      publisher: r.publisher,
+      runId: r.runId,
+      sourceId: r.sourceId
+    })
+  );
+  const uniqueBundleRefStrings = new Set(bundleRefStrings);
+  if (bundleRefStrings.length !== uniqueBundleRefStrings.size) {
+    issues.push({
+      path: "/evidence/selectedBundleRefs",
+      code: "SEMANTIC",
+      message: "selectedBundleRefs must be unique"
+    });
+    return false;
+  }
+
+  if (bundleRefs.length > 1) {
+    const sortedBundleRefStrings = [...bundleRefStrings].sort();
+    for (let i = 0; i < bundleRefStrings.length; i++) {
+      if (bundleRefStrings[i] !== sortedBundleRefStrings[i]) {
+        issues.push({
+          path: "/evidence/selectedBundleRefs",
+          code: "SEMANTIC",
+          message: "selectedBundleRefs must be in lexicographic order"
+        });
+        return false;
+      }
+    }
+  }
+
+  const sourceRefs = content.evidence.selectedSourceRefs;
+  const sourceRefStrings = sourceRefs.map((r) =>
+    JSON.stringify({
+      locator: r.locator,
+      observedAt: r.observedAt,
+      referenceId: r.referenceId,
+      sourceType: r.sourceType
+    })
+  );
+  const uniqueSourceRefStrings = new Set(sourceRefStrings);
+  if (sourceRefStrings.length !== uniqueSourceRefStrings.size) {
+    issues.push({
+      path: "/evidence/selectedSourceRefs",
+      code: "SEMANTIC",
+      message: "selectedSourceRefs must be unique"
+    });
+    return false;
+  }
+
+  if (sourceRefs.length > 1) {
+    const sortedSourceRefStrings = [...sourceRefStrings].sort();
+    for (let i = 0; i < sourceRefStrings.length; i++) {
+      if (sourceRefStrings[i] !== sortedSourceRefStrings[i]) {
+        issues.push({
+          path: "/evidence/selectedSourceRefs",
+          code: "SEMANTIC",
+          message: "selectedSourceRefs must be in lexicographic order"
+        });
+        return false;
+      }
+    }
+  }
+
   return true;
 }
 
@@ -264,18 +330,21 @@ export function parsePolicyInsightContent(raw: unknown): PolicyInsightContentVal
 
   const obj = raw as Record<string, unknown>;
 
-  if (typeof obj.schemaVersion !== "string" || obj.schemaVersion !== "policy-insight.v1") {
+  if (typeof obj.schemaVersion !== "string") {
+    return {
+      ok: false,
+      issues: [{ path: "/schemaVersion", code: "STRUCTURAL", message: "schemaVersion is required" }]
+    };
+  }
+
+  if (obj.schemaVersion !== "policy-insight.v1") {
     return {
       ok: false,
       issues: [
         {
           path: "/schemaVersion",
-          code:
-            obj.schemaVersion !== "policy-insight.v1" ? "UNSUPPORTED_SCHEMA_VERSION" : "STRUCTURAL",
-          message:
-            obj.schemaVersion !== "policy-insight.v1"
-              ? "Unsupported schema version"
-              : "schemaVersion is required"
+          code: "UNSUPPORTED_SCHEMA_VERSION",
+          message: "Unsupported schema version"
         }
       ]
     };
@@ -312,18 +381,21 @@ export function parsePolicyInsightRead(raw: unknown): PolicyInsightValidationRes
 
   const obj = raw as Record<string, unknown>;
 
-  if (typeof obj.schemaVersion !== "string" || obj.schemaVersion !== "policy-insight.v1") {
+  if (typeof obj.schemaVersion !== "string") {
+    return {
+      ok: false,
+      issues: [{ path: "/schemaVersion", code: "STRUCTURAL", message: "schemaVersion is required" }]
+    };
+  }
+
+  if (obj.schemaVersion !== "policy-insight.v1") {
     return {
       ok: false,
       issues: [
         {
           path: "/schemaVersion",
-          code:
-            obj.schemaVersion !== "policy-insight.v1" ? "UNSUPPORTED_SCHEMA_VERSION" : "STRUCTURAL",
-          message:
-            obj.schemaVersion !== "policy-insight.v1"
-              ? "Unsupported schema version"
-              : "schemaVersion is required"
+          code: "UNSUPPORTED_SCHEMA_VERSION",
+          message: "Unsupported schema version"
         }
       ]
     };
@@ -367,15 +439,21 @@ export function parsePolicyInsightHistoryResponse(raw: unknown): {
 
   const obj = raw as Record<string, unknown>;
 
-  if (typeof obj.schemaVersion !== "string" || obj.schemaVersion !== "policy-insight.v1") {
+  if (typeof obj.schemaVersion !== "string") {
+    return {
+      ok: false,
+      issues: [{ path: "/schemaVersion", code: "STRUCTURAL", message: "schemaVersion is required" }]
+    };
+  }
+
+  if (obj.schemaVersion !== "policy-insight.v1") {
     return {
       ok: false,
       issues: [
         {
           path: "/schemaVersion",
-          code:
-            obj.schemaVersion !== "policy-insight.v1" ? "UNSUPPORTED_SCHEMA_VERSION" : "STRUCTURAL",
-          message: "Invalid schema version"
+          code: "UNSUPPORTED_SCHEMA_VERSION",
+          message: "Unsupported schema version"
         }
       ]
     };

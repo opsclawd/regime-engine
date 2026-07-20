@@ -269,6 +269,86 @@ describe("PolicyInsight validation", () => {
       const result = parsePolicyInsightContent(fixture);
       expect(result.ok).toBe(false);
     });
+
+    it("rejects unordered selectedBundleRefs", () => {
+      const fixture = createValidPairContent();
+      fixture.evidence.selectedBundleRefs = [
+        {
+          bundleHash: "hash0000000000000000000000000000000000",
+          publisher: "pub2",
+          sourceId: "src2",
+          runId: "run2"
+        },
+        {
+          bundleHash: "hash0000000000000000000000000000000001",
+          publisher: "pub1",
+          sourceId: "src1",
+          runId: "run1"
+        }
+      ];
+      const result = parsePolicyInsightContent(fixture);
+      expect(result.ok).toBe(false);
+    });
+
+    it("rejects duplicate selectedBundleRefs", () => {
+      const fixture = createValidPairContent();
+      fixture.evidence.selectedBundleRefs = [
+        {
+          bundleHash: "hash0000000000000000000000000000000000",
+          publisher: "pub1",
+          sourceId: "src1",
+          runId: "run1"
+        },
+        {
+          bundleHash: "hash0000000000000000000000000000000000",
+          publisher: "pub1",
+          sourceId: "src1",
+          runId: "run1"
+        }
+      ];
+      const result = parsePolicyInsightContent(fixture);
+      expect(result.ok).toBe(false);
+    });
+
+    it("rejects unordered selectedSourceRefs", () => {
+      const fixture = createValidPairContent();
+      fixture.evidence.selectedSourceRefs = [
+        {
+          referenceId: "ref2",
+          sourceType: "api",
+          locator: "https://b.example.com",
+          observedAt: "2026-07-19T12:00:00.000Z"
+        },
+        {
+          referenceId: "ref1",
+          sourceType: "api",
+          locator: "https://a.example.com",
+          observedAt: "2026-07-19T12:00:00.000Z"
+        }
+      ];
+      const result = parsePolicyInsightContent(fixture);
+      expect(result.ok).toBe(false);
+    });
+
+    it("rejects duplicate selectedSourceRefs", () => {
+      const fixture = createValidPairContent();
+      fixture.evidence.selectedSourceRefs = [
+        {
+          referenceId: "ref1",
+          sourceType: "api",
+          locator: "https://a.example.com",
+          observedAt: "2026-07-19T12:00:00.000Z"
+        },
+        {
+          referenceId: "ref1",
+          sourceType: "api",
+          locator: "https://a.example.com",
+          observedAt: "2026-07-19T12:00:00.000Z"
+        }
+      ];
+      const result = parsePolicyInsightContent(fixture);
+      expect(result.ok).toBe(false);
+    });
   });
 
   describe("compares decimal level strings without binary floating point", () => {
