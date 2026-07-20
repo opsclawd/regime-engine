@@ -192,7 +192,7 @@ describe("Evidence OpenAPI contract", () => {
 
     it("keeps evidence writes separate from canonical insight reads", () => {
       expect(doc.paths["/v1/evidence/sol-usdc"]?.post).toBeDefined();
-      expect(doc.paths["/v1/insights/sol-usdc"]).toBeUndefined();
+      expect((doc.paths as Record<string, unknown>)["/v1/insights/sol-usdc"]).toBeUndefined();
       expect(doc.paths["/v1/insights/sol-usdc/current"]).toBeDefined();
       expect(doc.paths["/v1/insights/sol-usdc/history"]).toBeDefined();
     });

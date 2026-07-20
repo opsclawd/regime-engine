@@ -8,7 +8,7 @@ describe("PolicyInsights OpenAPI contract", () => {
 
   describe("documents policy insights endpoints", () => {
     it("omits the removed root insight path and retains both read paths", () => {
-      expect(doc.paths["/v1/insights/sol-usdc"]).toBeUndefined();
+      expect((doc.paths as Record<string, unknown>)["/v1/insights/sol-usdc"]).toBeUndefined();
       expect(doc.paths["/v1/insights/sol-usdc/current"]).toBeDefined();
       expect(doc.paths["/v1/insights/sol-usdc/history"]).toBeDefined();
     });
