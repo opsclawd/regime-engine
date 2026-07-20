@@ -1,4 +1,4 @@
-// Generated from contracts/policy-insight/v1/policy-insight.schema.json (sha256: 6be5c75e000b272b1df84cbc0ed0ad5b02b389804235805bc43f06db8cd7a441). Do not edit.
+// Generated from contracts/policy-insight/v1/policy-insight.schema.json (sha256: 14a53110ebed2ebc56fceb7d9635981d3a5debfd1a8f7a0f3c024930b35786ed). Do not edit.
 export type SchemaVersion = "policy-insight.v1";
 export type Hex64 = string;
 export type Identifier = string;
@@ -45,7 +45,6 @@ export type WarningCode =
   | "EVIDENCE_CONFLICTED_FAMILY"
   | "EVIDENCE_NO_SELECTED_RESEARCH"
   | "NO_ELIGIBLE_PRICE_LEVELS";
-export type FreshnessStatus = "FRESH" | "STALE";
 
 export interface PolicyInsightRead {
   schemaVersion: SchemaVersion;
@@ -668,8 +667,31 @@ export interface Warning {
   code: WarningCode;
   message: string;
 }
+/**
+ * Read-time freshness projection. ageSeconds is computed as: floor((evaluatedAtUnixMs - asOfUnixMs) / 1000). Status FRESH indicates ageSeconds < staleness threshold; STALE otherwise. This structure is explicitly excluded from content hashing since ageSeconds varies on every read.
+ */
 export interface Freshness {
-  status: FreshnessStatus;
-  evaluatedAt: CanonicalTimestamp;
+  /**
+   * FRESH if ageSeconds is below staleness threshold, STALE otherwise.
+   */
+  status: "FRESH" | "STALE";
+  /**
+   * Timestamp when freshness was evaluated. Typically the current server time.
+   */
+  evaluatedAt: string;
+  /**
+   * Age in seconds since asOf timestamp: floor((evaluatedAt - asOf) / 1000). Always >= 0.
+   */
   ageSeconds: number;
+}
+
+export type PolicyInsightContent = Omit<PolicyInsightRead, "freshness">;
+export type PolicyInsightFreshness = Freshness;
+export interface PolicyInsightHistoryResponse {
+  schemaVersion: SchemaVersion;
+  pair: Pair;
+  queriedAt: CanonicalTimestamp;
+  limit: number;
+  items: PolicyInsightRead[];
+  nextCursor: string | null;
 }

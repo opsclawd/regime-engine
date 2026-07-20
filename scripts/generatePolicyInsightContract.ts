@@ -35,14 +35,29 @@ async function generateTypes(schemaContent: string, digest: string): Promise<str
   const header = `// Generated from contracts/policy-insight/v1/policy-insight.schema.json (sha256: ${digest}). Do not edit.
 `;
 
-  const compiled = await compile(JSON.parse(schemaContent), "PolicyInsightRead", {
+  const schema = JSON.parse(schemaContent);
+
+  const compiledRead = await compile(schema, "PolicyInsightRead", {
     bannerComment: "",
     style: {
       singleQuote: false
     }
   });
 
-  const unformatted = header + compiled;
+  const contentInterface = `export type PolicyInsightContent = Omit<PolicyInsightRead, "freshness">;
+export type PolicyInsightFreshness = Freshness;
+export interface PolicyInsightHistoryResponse {
+  schemaVersion: SchemaVersion;
+  pair: Pair;
+  queriedAt: CanonicalTimestamp;
+  limit: number;
+  items: PolicyInsightRead[];
+  nextCursor: string | null;
+}
+`;
+
+  const allCompiled = [compiledRead, "\n", contentInterface].join("\n");
+  const unformatted = header + allCompiled;
   const formatted = await prettier.format(unformatted, {
     parser: "typescript",
     printWidth: 100,
