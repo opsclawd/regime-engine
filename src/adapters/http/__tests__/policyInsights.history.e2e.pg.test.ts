@@ -2,7 +2,6 @@ import { afterAll, afterEach, describe, expect, it } from "vitest";
 import { buildApp } from "../../../app.js";
 import type { Db } from "../../../ledger/pg/db.js";
 import { createDb } from "../../../ledger/pg/db.js";
-import { clmmInsights } from "../../../ledger/pg/schema/index.js";
 import { createPostgresPolicyInsightRepository } from "../../postgres/postgresPolicyInsightRepository.js";
 import type { NewPolicyInsightRecord } from "../../../application/ports/policyInsightRepositoryPort.js";
 import { sql } from "drizzle-orm";
@@ -169,7 +168,6 @@ afterEach(async () => {
   delete process.env.DATABASE_URL;
   if (db) {
     await db.execute(sql`DELETE FROM regime_engine.policy_insights`);
-    await db.execute(sql`DELETE FROM regime_engine.clmm_insights`);
   }
 });
 
@@ -180,35 +178,7 @@ setupPg("GET /v1/insights/sol-usdc/history (PG Canonical Policy History)", () =>
     process.env.PG_SSL = "false";
     const app = buildApp();
 
-    // 1. Insert a legacy row in clmm_insights
-    await db.insert(clmmInsights).values({
-      schemaVersion: "1.0",
-      pair: "SOL/USDC",
-      asOfUnixMs: 1700000000000,
-      source: "openclaw",
-      runId: "legacy-run-123",
-      marketRegime: "ranging",
-      fundamentalRegime: "neutral",
-      recommendedAction: "hold",
-      confidence: "medium",
-      riskLevel: "normal",
-      dataQuality: "complete",
-      clmmPolicyJson: {
-        posture: "neutral",
-        rangeBias: "medium",
-        rebalanceSensitivity: "normal",
-        maxCapitalDeploymentPercent: 80
-      },
-      levelsJson: { support: [100], resistance: [200] },
-      reasoningJson: ["Legacy reasoning"],
-      sourceRefsJson: [],
-      expiresAtUnixMs: 1700000005000,
-      payloadCanonical: "{}",
-      payloadHash: "g".repeat(64),
-      receivedAtUnixMs: 1700000001000
-    });
-
-    // 2. Insert a canonical row in policy_insights
+    // Insert a canonical row in policy_insights
     const record = createTestRecord({
       insightId: "1".repeat(64),
       synthesisInputHash: "1".repeat(64),

@@ -4,7 +4,6 @@ import {
   verifyPgConnection,
   verifyPgSchema,
   verifyCandleRevisionsTable,
-  verifyClmmInsightsTable,
   verifySrThesesV2Table,
   verifyEvidenceBundlesTable,
   verifyPolicyInsightsTable
@@ -27,7 +26,6 @@ const start = async (): Promise<void> => {
       await verifyPgConnection(pg);
       await verifyPgSchema(pg);
       await verifyCandleRevisionsTable(pg);
-      await verifyClmmInsightsTable(pg);
       await verifySrThesesV2Table(pg);
       await verifyEvidenceBundlesTable(pg);
       // Verify new canonical policy insights schema table

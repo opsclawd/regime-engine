@@ -7,7 +7,6 @@ import { computePolicyInsightContentCanonicalAndHash } from "../../../contract/p
 import type { PolicyInsightContent } from "../../../contract/policyInsight/v1/types.generated.js";
 import type { PolicySynthesisEnvelope } from "../../../engine/policy/synthesizePolicyInsight.js";
 import type { EvidenceSelectionDecision } from "../../../engine/evidence/selectEvidence.js";
-import { clmmInsights } from "../../../ledger/pg/schema/clmmInsights.js";
 const POLICY_INSIGHT_V1_WIRE_CONTRACT_SHA256 =
   "80487b0a9374d0b535accf535ef9819f2b2de00e1d65980deb73c97afaa02800";
 
@@ -140,7 +139,6 @@ describe.skipIf(!process.env.DATABASE_URL)("postgresPolicyInsightRepository.curr
       DELETE FROM regime_engine.policy_insights
       WHERE pair = ${TEST_PAIR}
     `);
-    await db.delete(clmmInsights).where(sql`pair = ${TEST_PAIR}`);
   });
 
   it("current returns null on no row", async () => {
@@ -189,39 +187,6 @@ describe.skipIf(!process.env.DATABASE_URL)("postgresPolicyInsightRepository.curr
     expect(current).not.toBeNull();
     expect(current!.insightId).toBe(recC.insightId);
     expect(current!.id).toBe(resC.record.id);
-  });
-
-  it("current never reads legacy clmm_insights", async () => {
-    // Insert into legacy clmm_insights
-    await db.insert(clmmInsights).values({
-      schemaVersion: "clmm-insight.v1",
-      pair: TEST_PAIR,
-      asOfUnixMs: 1700000000000,
-      source: "openclaw",
-      runId: "legacy-run",
-      marketRegime: "up",
-      fundamentalRegime: "unknown",
-      recommendedAction: "watch",
-      confidence: "medium",
-      riskLevel: "normal",
-      dataQuality: "complete",
-      clmmPolicyJson: {},
-      levelsJson: {},
-      reasoningJson: [],
-      sourceRefsJson: [],
-      payloadCanonical: "legacy-canonical-payload",
-      payloadHash: "a".repeat(64),
-      expiresAtUnixMs: 1700000005000,
-      receivedAtUnixMs: 1700000001000
-    });
-
-    // Verify getCurrent returns null if no rows in policy_insights
-    const result = await repository.getCurrent({
-      pair: TEST_PAIR,
-      scopeKey: "pair",
-      wireContractSha256: POLICY_INSIGHT_V1_WIRE_CONTRACT_SHA256
-    });
-    expect(result).toBeNull();
   });
 
   it("never returns an unmarked legacy row from current or history", async () => {
