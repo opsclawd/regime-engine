@@ -83,4 +83,15 @@ export const verifyEvidenceBundlesTable = async (db: Db): Promise<void> => {
   }
 };
 
+export const verifyPolicyInsightsTable = async (db: Db): Promise<void> => {
+  const result = await db.execute(
+    sql`SELECT tablename FROM pg_tables WHERE schemaname = 'regime_engine' AND tablename = 'policy_insights'`
+  );
+  if (result.length === 0) {
+    throw new Error(
+      "FATAL: policy_insights table not found in regime_engine schema — run migrations first"
+    );
+  }
+};
+
 export type Db = ReturnType<typeof createDb>["db"];

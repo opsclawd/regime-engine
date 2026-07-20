@@ -6,6 +6,15 @@ export default defineConfig({
     include: ["src/**/*.test.ts", "src/**/__tests__/**/*.test.ts"],
     coverage: {
       enabled: false
+    },
+    sequence: {
+      concurrent: false
+    },
+    fileParallelism: false,
+    poolOptions: {
+      threads: {
+        singleThread: true
+      }
     }
   }
 });

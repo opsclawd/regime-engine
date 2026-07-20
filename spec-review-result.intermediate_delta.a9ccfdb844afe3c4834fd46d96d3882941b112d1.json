@@ -1,0 +1,11 @@
+{
+  "result": "fail",
+  "findings": [
+    {
+      "severity": "P1",
+      "summary": "Lower-precedence stages overwrite actionLock and postureLock set by higher-precedence stages (e.g., Stage 2 Breach overwrites Stage 1 Hard Stale).",
+      "file": "src/engine/policy/synthesizePolicyInsight.ts",
+      "suggested_fix": "Use the nullish coalescing assignment operator (e.g., `actionLock ??= \"exit_range\"`) or equivalent so locks are only applied if a higher-precedence stage hasn't already set them."
+    }
+  ]
+}

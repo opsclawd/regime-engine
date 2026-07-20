@@ -984,3 +984,42 @@ Output:
   `engineVersion`, and `PlanLedgerWritePort`.
 - Plans persist with the same `(planId, planHash)` shape, so
   `/v1/execution-result` linkage is unchanged.
+
+## Milestone 61 — Policy Insight Synthesis & The Trusted Synthesis Boundary
+
+### Policy Precedence (`sol-usdc-policy.v1`)
+
+The engine enforces a strict multi-stage precedence hierarchy when synthesizing policy insights:
+
+1. **Stage 1 (Hard Stale / Insufficient Safety Data)**: Overrides everything, locking the system to a defensive posture and disabling CLMM permissions.
+2. **Stage 2 (Breaches)**: Prioritized qualified breach exits (lower/upper price bounds). Qualified breaches lock the system to `exit_range` action.
+3. **Stage 3 (Autopilot State)**: Autopilot-supplied state blocks like active stand-downs and cooldowns govern capital deployment and rebalance constraints.
+4. **Stage 4 (Regime/Evidence)**: Standard market regime indicators and selected features tighten policy fields monotonically, but can never relax locked parameters from higher-priority stages.
+
+### Exact-Scope Selection
+
+Policy insights are generated and requested for an exact scope: either a pair-level scope (`SOL/USDC`) or a specific position-level scope (`position:...` combining wallet, pool, and position identifiers). The system persists and retrieves these insights strictly aligned to the requested scope.
+
+### One-Clock Rule
+
+To prevent race conditions and time mismatches across collaborators, a single clock instant is captured at the beginning of the synthesis process. This timestamp is passed downstream to the regime read, position freshness check, selector, policy reducer, and storage persistence.
+
+### Advisory-Only Boundary
+
+Regime Engine resides on an advisory-only boundary. It synthesizes trading recommendations and parameters (`allowClmm`, risk levels, etc.) but does not trigger or execute blockchain transactions.
+
+### Append-Only & Idempotent Storage
+
+Insights are persisted in the PostgreSQL `regime_engine.policy_insights` table. This table is append-only. Replays of identical canonical inputs result in an idempotent `ON CONFLICT DO NOTHING` skip, returning the existing persisted record to guarantee audit trails.
+
+### Trusted Internal Command & No Scheduler
+
+The synthesis process is triggered by a trusted internal command within the microservice composition. The Regime Engine does not expose a public synthesis HTTP endpoint and does not run an internal scheduler.
+
+### Legacy POST Isolation
+
+The legacy `POST /v1/insights/sol-usdc` ingestion endpoint and the `clmm_insights` table remain isolated only for legacy system compatibility. They do not interact with the new canonical synthesis pipeline or get returned by the canonical GET endpoints.
+
+### Deployment Requirement
+
+Before relying on GET `/v1/insights/sol-usdc/current` reads in any deployment, a trusted orchestrator/caller must be deployed to explicitly invoke the internal synthesis command, ensuring that the database is populated with current policy insights.

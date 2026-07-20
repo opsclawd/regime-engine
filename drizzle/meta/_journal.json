@@ -43,6 +43,13 @@
       "when": 1784397600000,
       "tag": "0005_widen_evidence_scope_key",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1784400000000,
+      "tag": "0006_create_policy_insights",
+      "breakpoints": true
     }
   ]
 }

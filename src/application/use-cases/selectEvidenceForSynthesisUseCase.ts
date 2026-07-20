@@ -11,6 +11,7 @@ import { selectEvidence } from "../../engine/evidence/selectEvidence.js";
 
 export type SelectEvidenceForSynthesisUseCase = (input: {
   readonly scope: Scope;
+  readonly selectedAtUnixMs?: number;
 }) => Promise<SelectedEvidenceSummary>;
 
 export interface SelectEvidenceForSynthesisUseCaseDeps {
@@ -22,17 +23,27 @@ export interface SelectEvidenceForSynthesisUseCaseDeps {
 
 export const createSelectEvidenceForSynthesisUseCase =
   (deps: SelectEvidenceForSynthesisUseCaseDeps): SelectEvidenceForSynthesisUseCase =>
-  async ({ scope }) => {
-    const selectedAtUnixMs = deps.clock.nowUnixMs();
+  async ({ scope, selectedAtUnixMs }) => {
+    if (selectedAtUnixMs !== undefined) {
+      if (
+        typeof selectedAtUnixMs !== "number" ||
+        !Number.isFinite(selectedAtUnixMs) ||
+        !Number.isInteger(selectedAtUnixMs) ||
+        selectedAtUnixMs < 0
+      ) {
+        throw new Error("selectedAtUnixMs must be a non-negative finite integer");
+      }
+    }
+    const finalSelectedAtUnixMs = selectedAtUnixMs ?? deps.clock.nowUnixMs();
     const records = await deps.repository.getLatest({
       pair: "SOL/USDC",
       scope,
       source: null,
-      nowUnixMs: selectedAtUnixMs
+      nowUnixMs: finalSelectedAtUnixMs
     });
     return (deps.selector ?? selectEvidence)({
       records,
-      selectedAtUnixMs,
+      selectedAtUnixMs: finalSelectedAtUnixMs,
       scope,
       policy: deps.policy ?? EVIDENCE_SELECTION_POLICY_V1
     });

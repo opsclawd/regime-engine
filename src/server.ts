@@ -6,7 +6,8 @@ import {
   verifyCandleRevisionsTable,
   verifyClmmInsightsTable,
   verifySrThesesV2Table,
-  verifyEvidenceBundlesTable
+  verifyEvidenceBundlesTable,
+  verifyPolicyInsightsTable
 } from "./ledger/pg/db.js";
 
 const redactUrl = (url: string): string => url.replace(/:\/\/[^@]+@/, "://***@");
@@ -29,6 +30,8 @@ const start = async (): Promise<void> => {
       await verifyClmmInsightsTable(pg);
       await verifySrThesesV2Table(pg);
       await verifyEvidenceBundlesTable(pg);
+      // Verify new canonical policy insights schema table
+      await verifyPolicyInsightsTable(pg);
     } catch (error) {
       console.error("FATAL: Postgres connection failed at startup.", {
         url: redactUrl(pgConnectionString),

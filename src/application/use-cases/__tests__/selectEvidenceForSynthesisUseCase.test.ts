@@ -201,4 +201,43 @@ describe("SelectEvidenceForSynthesisUseCase", () => {
     const result = await useCase({ scope });
     expect(result).toEqual({ isolated: true });
   });
+
+  it("uses the supplied selectedAtUnixMs and does not call clock.nowUnixMs", async () => {
+    const clock = {
+      nowUnixMs: vi.fn().mockReturnValue(123456789)
+    };
+    const repository = new FakeEvidenceBundleRepositoryPort();
+    const scope: Scope = { kind: "pair" };
+    const selectorSpy = vi.fn().mockReturnValue({ dummy: true });
+    const useCase = createSelectEvidenceForSynthesisUseCase({
+      clock,
+      repository,
+      selector: selectorSpy
+    });
+
+    const explicitTime = 987654321;
+    await useCase({ scope, selectedAtUnixMs: explicitTime });
+
+    expect(clock.nowUnixMs).not.toHaveBeenCalled();
+    expect(repository.getLatestCalls[0].nowUnixMs).toBe(explicitTime);
+  });
+
+  it("throws Error if selectedAtUnixMs is invalid", async () => {
+    const clock = new FakeClockPort(123456789);
+    const repository = new FakeEvidenceBundleRepositoryPort();
+    const useCase = createSelectEvidenceForSynthesisUseCase({
+      clock,
+      repository
+    });
+
+    await expect(useCase({ scope: { kind: "pair" }, selectedAtUnixMs: -5 })).rejects.toThrow(
+      "selectedAtUnixMs must be a non-negative finite integer"
+    );
+    await expect(useCase({ scope: { kind: "pair" }, selectedAtUnixMs: NaN })).rejects.toThrow(
+      "selectedAtUnixMs must be a non-negative finite integer"
+    );
+    await expect(useCase({ scope: { kind: "pair" }, selectedAtUnixMs: 1.5 })).rejects.toThrow(
+      "selectedAtUnixMs must be a non-negative finite integer"
+    );
+  });
 });
