@@ -30,13 +30,11 @@ describe("Insights endpoints without DATABASE_URL", () => {
   afterEach(() => {
     delete process.env.LEDGER_DB_PATH;
     delete process.env.DATABASE_URL;
-    delete process.env.INSIGHT_INGEST_TOKEN;
   });
 
-  it("POST /v1/insights/sol-usdc returns 503 when DATABASE_URL is not configured", async () => {
+  it("POST /v1/insights/sol-usdc is not registered", async () => {
     process.env.LEDGER_DB_PATH = ":memory:";
     delete process.env.DATABASE_URL;
-    process.env.INSIGHT_INGEST_TOKEN = "test-token";
     const app = buildApp();
 
     const res = await app.inject({
@@ -45,9 +43,13 @@ describe("Insights endpoints without DATABASE_URL", () => {
       headers: { "X-Insight-Ingest-Token": "test-token" },
       payload: makePayload()
     });
-    expect(res.statusCode).toBe(503);
-    const body = res.json() as { error: { code: string } };
-    expect(body.error.code).toBe("SERVICE_UNAVAILABLE");
+    expect(res.statusCode).toBe(404);
+    expect(res.json()).toEqual(
+      expect.objectContaining({
+        error: "Not Found",
+        message: "Route POST:/v1/insights/sol-usdc not found"
+      })
+    );
 
     await app.close();
   });

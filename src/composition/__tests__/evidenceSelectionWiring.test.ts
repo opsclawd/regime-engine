@@ -22,7 +22,6 @@ describe("evidenceSelectionWiring", () => {
       ledger: store,
       pg: null,
       candleStore: null,
-      insightsStore: null,
       srThesesV2Store: null,
       close: async () => {}
     };
@@ -45,7 +44,6 @@ describe("evidenceSelectionWiring", () => {
       ledger: store,
       pg: dbDouble,
       candleStore: null,
-      insightsStore: null,
       srThesesV2Store: null,
       close: async () => {}
     };
@@ -63,7 +61,6 @@ describe("evidenceSelectionWiring", () => {
       ledger: store,
       pg: null,
       candleStore: null,
-      insightsStore: null,
       srThesesV2Store: null,
       close: async () => {}
     };

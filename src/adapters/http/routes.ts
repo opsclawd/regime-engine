@@ -8,7 +8,6 @@ import { createCandlesIngestHandler } from "./handlers/candlesIngest.js";
 import { createRegimeCurrentHandler } from "./handlers/regimeCurrent.js";
 import { createSrLevelsIngestHandler } from "./handlers/srLevelsIngest.js";
 import { createSrLevelsCurrentHandler } from "./handlers/srLevelsCurrent.js";
-import { createInsightsIngestHandler } from "./handlers/insightsIngest.js";
 import { createInsightsCurrentHandler } from "./handlers/insightsCurrent.js";
 import { createInsightsHistoryHandler } from "./handlers/insightsHistory.js";
 import { createSrLevelsV2IngestHandler } from "./handlers/srLevelsV2Ingest.js";
@@ -31,7 +30,6 @@ import type { SrThesesV2Store } from "../../ledger/srThesesV2Store.js";
 import type { GetCurrentPolicyInsightUseCase } from "../../application/use-cases/getCurrentPolicyInsightUseCase.js";
 import type { GetPolicyInsightHistoryUseCase } from "../../application/use-cases/getPolicyInsightHistoryUseCase.js";
 import type { LedgerStore } from "../../ledger/store.js";
-import type { InsightsStore } from "../../ledger/insightsStore.js";
 
 export interface VersionInfo {
   name: string;
@@ -57,7 +55,6 @@ export interface HttpRouteDependencies {
   getCurrentEvidence: GetCurrentEvidenceUseCase | null;
   getEvidenceHistory: GetEvidenceHistoryUseCase | null;
   ledgerStore: LedgerStore;
-  insightsStore: InsightsStore | null;
   getCurrentPolicyInsight: GetCurrentPolicyInsightUseCase | null;
   getPolicyInsightHistory: GetPolicyInsightHistoryUseCase | null;
   srThesesV2Store: SrThesesV2Store | null;
@@ -96,7 +93,6 @@ export const registerRoutes = (app: FastifyInstance, deps: HttpRouteDependencies
     createCandlesIngestHandler({ ingestCandles: deps.ingestCandles, clock: deps.clock })
   );
   app.get("/v1/regime/current", createRegimeCurrentHandler(deps.getCurrentRegime));
-  app.post("/v1/insights/sol-usdc", createInsightsIngestHandler(deps.insightsStore));
   app.get(
     "/v1/insights/sol-usdc/current",
     createInsightsCurrentHandler(deps.getCurrentPolicyInsight)
