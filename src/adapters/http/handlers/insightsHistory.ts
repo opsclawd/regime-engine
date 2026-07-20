@@ -107,8 +107,25 @@ export const createInsightsHistoryHandler = (useCase: GetPolicyInsightHistoryUse
         limit = parsed;
       }
 
-      // Cursor: pass string cursor directly to the use case (validation is handled inside the use case)
-      const cursor = typeof query.cursor === "string" ? query.cursor : null;
+      // Cursor: validate cursor is a string if provided
+      if (query.cursor !== undefined && typeof query.cursor !== "string") {
+        throw new ContractValidationError(400, {
+          schemaVersion: SCHEMA_VERSION,
+          error: {
+            code: ERROR_CODES.VALIDATION_ERROR,
+            message: "cursor must be a string",
+            details: [
+              {
+                path: "$.cursor",
+                code: "INVALID_TYPE",
+                message: "Expected string"
+              }
+            ]
+          }
+        });
+      }
+      const cursor =
+        query.cursor === undefined || query.cursor === null ? null : (query.cursor as string);
 
       const result = await useCase({
         pair: "SOL/USDC",
@@ -124,12 +141,18 @@ export const createInsightsHistoryHandler = (useCase: GetPolicyInsightHistoryUse
       }
 
       if (error instanceof PolicyInsightValidationError) {
+        const path = error.message.toLowerCase().includes("cursor")
+          ? "$.cursor"
+          : error.message.toLowerCase().includes("limit")
+            ? "$.limit"
+            : "$.*";
+        const code = "INVALID_VALUE";
         return reply.code(400).send({
           schemaVersion: SCHEMA_VERSION,
           error: {
             code: ERROR_CODES.VALIDATION_ERROR,
             message: error.message,
-            details: []
+            details: [{ path, code, message: error.message }]
           }
         });
       }

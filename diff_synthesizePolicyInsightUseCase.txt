@@ -1,0 +1,147 @@
+diff --git a/src/application/use-cases/synthesizePolicyInsightUseCase.ts b/src/application/use-cases/synthesizePolicyInsightUseCase.ts
+index f3a9fa5..e5ec0e5 100644
+--- a/src/application/use-cases/synthesizePolicyInsightUseCase.ts
++++ b/src/application/use-cases/synthesizePolicyInsightUseCase.ts
+@@ -9,22 +9,27 @@ import type {
+   NewPolicyInsightRecord
+ } from "../ports/policyInsightRepositoryPort.js";
+ import type { PolicyRuleset } from "../../engine/policy/ruleset.js";
+-import {
+-  parseInsightIngestRequest,
+-  computeInsightCanonicalAndHash
+-} from "../../contract/v1/insights.js";
+ import {
+   PolicyInsightStoreUnavailableError,
+   PolicyInsightValidationError
+ } from "../errors/policyInsightErrors.js";
+ import { computePolicyInsightFingerprints } from "./policyInsightFingerprints.js";
+ import {
+-  synthesizePolicyInsight,
++  synthesizePolicyInsightV1,
+   type PolicySynthesisEnvelope
+ } from "../../engine/policy/synthesizePolicyInsight.js";
+ import { sha256Hex } from "../../contract/v1/hash.js";
+ import { toCanonicalJson } from "../../contract/v1/canonical.js";
+ import { evidenceScopeKey } from "../ports/evidenceBundleRepositoryPort.js";
++import { parsePolicyInsightContent } from "../../contract/policyInsight/v1/validate.js";
++import { computePolicyInsightContentCanonicalAndHash } from "../../contract/policyInsight/v1/canonical.js";
++import type {
++  PolicyInsightContent,
++  PolicyInsightRead
++} from "../../contract/policyInsight/v1/types.generated.js";
++export const POLICY_INSIGHT_V1_WIRE_CONTRACT_SHA256 =
++  "80487b0a9374d0b535accf535ef9819f2b2de00e1d65980deb73c97afaa02800";
++import { projectPolicyInsightRead } from "../../contract/policyInsight/v1/project.js";
+ 
+ export interface SynthesizePolicyInsightInput {
+   readonly scope: Scope;
+@@ -42,7 +47,7 @@ export interface SynthesizePolicyInsightInput {
+ 
+ export type SynthesizePolicyInsightUseCase = (
+   input: SynthesizePolicyInsightInput
+-) => Promise<StoredPolicyInsight>;
++) => Promise<PolicyInsightRead>;
+ 
+ export interface SynthesizePolicyInsightUseCaseDeps {
+   readonly getCurrentRegime: GetCurrentRegimeUseCase;
+@@ -173,6 +178,7 @@ export const createSynthesizePolicyInsightUseCase = (
+     try {
+       existing = await deps.repository.findBySynthesisInputHash({
+         schemaVersion: "policy-insight.v1",
++        wireContractSha256: POLICY_INSIGHT_V1_WIRE_CONTRACT_SHA256,
+         rulesetVersion: deps.ruleset.version,
+         synthesisInputHash: fingerprints.synthesisInputHash
+       });
+@@ -183,10 +189,16 @@ export const createSynthesizePolicyInsightUseCase = (
+     }
+ 
+     if (existing) {
+-      return existing;
++      const readResult = projectPolicyInsightRead(existing.synthesisOutputJson, synthesisAtUnixMs);
++      if (!readResult.ok) {
++        throw new PolicyInsightValidationError(
++          "Failed to project policy insight: " + JSON.stringify(readResult.issues)
++        );
++      }
++      return readResult.value;
+     }
+ 
+-    // 6. Reduce via policy engine
++    // 6. Reduce via policy engine using V1 canonical synthesis
+     const envelope: PolicySynthesisEnvelope = {
+       synthesisAtUnixMs,
+       pair: "SOL/USDC",
+@@ -200,25 +212,32 @@ export const createSynthesizePolicyInsightUseCase = (
+       }
+     };
+ 
+-    const output = synthesizePolicyInsight(envelope, deps.ruleset);
++    const draft = synthesizePolicyInsightV1(envelope, deps.ruleset);
+ 
+-    // 7. Validate output with #63 schemas/rules
+-    try {
+-      parseInsightIngestRequest(output);
+-    } catch (err) {
+-      const msg = err instanceof Error ? err.message : String(err);
++    const output: PolicyInsightContent = {
++      ...draft,
++      insightId: fingerprints.synthesisInputHash
++    } as PolicyInsightContent;
++
++    // 7. Validate output with PolicyInsightContent schema
++    const validationResult = parsePolicyInsightContent(output);
++    if (!validationResult.ok) {
+       throw new PolicyInsightValidationError(
+-        `Reducer output rejected by schema validation: ${msg}`,
+-        { cause: err instanceof Error ? err : undefined }
++        `Reducer output rejected by schema validation: ${validationResult.issues.length} issue(s)`,
++        { cause: validationResult.issues }
+       );
+     }
+ 
+-    // 8. Construct NewPolicyInsightRecord and insert
++    // 8. Compute canonical and hash for the output
+     const { canonical: payloadCanonical, hash: payloadHash } =
+-      computeInsightCanonicalAndHash(output);
++      computePolicyInsightContentCanonicalAndHash(output);
++
++    // 9. Generate wire contract SHA256 (published wire contract)
++    const wireContractSha256 = POLICY_INSIGHT_V1_WIRE_CONTRACT_SHA256;
+ 
++    // 10. Construct NewPolicyInsightRecord and insert
+     const record: NewPolicyInsightRecord = {
+-      insightId: fingerprints.synthesisInputHash,
++      insightId: output.insightId,
+       schemaVersion: "policy-insight.v1",
+       rulesetVersion: deps.ruleset.version,
+       pair: "SOL/USDC",
+@@ -232,6 +251,7 @@ export const createSynthesizePolicyInsightUseCase = (
+       positionHash: fingerprints.positionHash,
+       selectionHash: fingerprints.selectionHash,
+       synthesisInputHash: fingerprints.synthesisInputHash,
++      wireContractSha256,
+       selectionPolicyVersion: evidence.selectionPolicyVersion,
+       synthesisInputJson: envelope,
+       synthesisOutputJson: output,
+@@ -243,8 +263,20 @@ export const createSynthesizePolicyInsightUseCase = (
+ 
+     try {
+       const result = await deps.repository.insertOrGet(record);
+-      return result.record;
++      const readResult = projectPolicyInsightRead(
++        result.record.synthesisOutputJson,
++        synthesisAtUnixMs
++      );
++      if (!readResult.ok) {
++        throw new PolicyInsightValidationError(
++          "Failed to project policy insight: " + JSON.stringify(readResult.issues)
++        );
++      }
++      return readResult.value;
+     } catch (err) {
++      if (err instanceof PolicyInsightValidationError) {
++        throw err;
++      }
+       throw new PolicyInsightStoreUnavailableError("Failed to persist synthesized policy insight", {
+         cause: err
+       });
