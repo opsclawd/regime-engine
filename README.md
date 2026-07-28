@@ -51,15 +51,13 @@ Today:
 - `regime-engine` is the deterministic analytics and ledger service. It stores market candles, computes regime state, stores S/R/current insight blocks, and records execution-result events.
 - `sol-usdc-clmm-intelligence` is the advisory/evidence pipeline. It pulls CLMM bundles from `clmm-v2`, runs OpenClaw-backed analysis using durable policies and memory, and currently may interact with legacy final-insight surfaces.
 
-## Open roadmap and future state
+## Evidence-based PolicyInsight synthesis
 
-Open issues #57 through #63 define the next Regime Engine architecture: external systems should publish structured research evidence, and Regime Engine should synthesize the final canonical PolicyInsight internally.
+Regime Engine synthesizes the final canonical PolicyInsight internally instead of accepting it from an external writer. This closed out issues #55 and #57 through #63: external systems publish structured research evidence, and Regime Engine selects it, synthesizes the final PolicyInsight, and serves one canonical read shape.
 
 ### Evidence contract and persistence
 
-Tracked by #58.
-
-Regime Engine should define a strict versioned research-evidence contract containing:
+Regime Engine defines a strict versioned research-evidence contract (`EvidenceBundle` v1 — see `docs/contracts/evidence-bundle.v1.md`) containing:
 
 - pair, source, run ID / idempotency key, `asOf`, and `expiresAt`;
 - deterministic feature summaries;
@@ -70,13 +68,11 @@ Regime Engine should define a strict versioned research-evidence contract contai
 - LLM research brief;
 - source refs, freshness, confidence, and provenance metadata.
 
-Evidence records should be append-only, hashable, idempotent on exact replay, conflict on same source/run ID with different payload, and stored separately from final PolicyInsights.
+Evidence records are append-only, hashable, idempotent on exact replay, conflict on same source/run ID with a different payload, and stored separately from final PolicyInsights in the `regime_engine` Postgres schema.
 
 ### Evidence ingest and query surface
 
-Tracked by #59.
-
-The planned evidence route is separate from final insights:
+The evidence route is separate from final insights:
 
 ```text
 POST /v1/evidence/sol-usdc
@@ -84,60 +80,41 @@ GET  /v1/evidence/sol-usdc/current
 GET  /v1/evidence/sol-usdc/history
 ```
 
-This replaces the architectural need for external callers to write final policy blocks. The legacy final-policy write route is expected to be retired after internal synthesis exists.
+External callers (`sol-usdc-clmm-intelligence`) no longer write final policy blocks directly. The legacy final-policy write route has been removed (see PR #75).
 
 ### Evidence selection and scoring
 
-Tracked by #60.
+Regime Engine does not blindly use the newest external payload. Deterministic selection rules score evidence on freshness, confidence, source quality, expiry, and evidence-family coverage, and record which evidence was used, which evidence was ignored, and why.
 
-Regime Engine should not blindly use the newest external payload. It needs deterministic selection rules for freshness, confidence, source quality, expiry, and evidence-family coverage. The selection result should record which evidence was used, which evidence was ignored, and why.
-
-Missing or stale research evidence should degrade explicitly. It should not block deterministic market-state reads.
+Missing or stale research evidence degrades explicitly. It does not block deterministic market-state reads.
 
 ### Internal PolicyInsight synthesis
 
-Tracked by #61.
-
-The final user-facing PolicyInsight should be generated inside Regime Engine from:
+The final user-facing PolicyInsight is generated inside Regime Engine (`src/engine/policy/synthesizePolicyInsight.ts`) from:
 
 - deterministic market regime state;
 - selected structured research evidence;
 - explicit policy rules.
 
-The output should include market regime, fundamental regime, recommended action, confidence, risk level, CLMM policy, levels, reasoning, source refs, and freshness/status metadata.
+The output includes market regime, fundamental regime, recommended action, confidence, risk level, CLMM policy, levels, reasoning, source refs, and freshness/status metadata.
 
-Hard deterministic guards remain authoritative. Research evidence can affect posture, confidence, and risk, but it should not silently bypass stale-data or safety rules.
+Hard deterministic guards remain authoritative. Research evidence can affect posture, confidence, and risk, but it cannot silently bypass stale-data or safety rules.
 
-### Legacy final-policy write removal
-
-Tracked by #62.
-
-After synthesis is implemented, external final-policy ingest should be removed. The read surface remains:
-
-```text
-GET /v1/insights/sol-usdc/current
-GET /v1/insights/sol-usdc/history
-```
-
-The write path changes from external final insight submission to evidence submission plus internal synthesis.
+Note: the synthesis use case is composed in `src/composition/buildApplication.ts` but is not yet wired to an HTTP route or a scheduled job — nothing in the running service triggers it automatically today. `GET /v1/insights/sol-usdc/current` and `/history` serve whatever was most recently written to the PolicyInsight store.
 
 ### Canonical PolicyInsights wire contract
 
-Tracked by #63.
-
-Regime Engine must publish one canonical final PolicyInsights read shape for `clmm-v2`. Known drift to resolve includes:
+Regime Engine publishes one canonical final PolicyInsights read shape for `clmm-v2` (`policy-insight.v1` — see `docs/contracts/policy-insight.v1.md`), resolving prior drift including:
 
 - `maxCapitalDeploymentPercent` vs `maxCapitalDeploymentPct`;
 - `levels.support/resistance` vs `levels.supports/resistances`;
 - percentage unit ambiguity: `0..100` vs `0..1`.
 
-The mature contract should be strict, documented, fixture-backed, and consumable by `clmm-v2` without adapter-side guessing.
+The contract is strict, documented, fixture-backed, and consumable by `clmm-v2` without adapter-side guessing.
 
 ### Candle-store consistency
 
-Tracked by #55.
-
-Weekly reports should read from the same canonical candle store as `/v1/regime/current` and `/v1/plan`. If Postgres is the active candle store, reports should not silently read a stale or empty SQLite path.
+Weekly reports read from the same canonical candle store as `/v1/regime/current` and `/v1/plan`. If Postgres is the active candle store, reports no longer silently read a stale or empty SQLite path.
 
 ## Mature system vision
 
@@ -176,6 +153,8 @@ GET  /v1/sr-levels/current?symbol=SYMBOL&source=SOURCE
 POST /v1/candles
 GET  /v1/regime/current?symbol=&source=&network=&poolAddress=&timeframe=15m|1h
 POST /v1/evidence/sol-usdc
+GET  /v1/evidence/sol-usdc/current
+GET  /v1/evidence/sol-usdc/history
 GET  /v1/insights/sol-usdc/current
 GET  /v1/insights/sol-usdc/history
 POST /v2/sr-levels
@@ -217,7 +196,7 @@ REGIME_ENGINE_INTERNAL_TOKEN=<same-shared-secret>
 REGIME_ENGINE_BASE_URL=http://localhost:8787
 ```
 
-Planned plan/result integration also uses:
+Plan/result integration also uses:
 
 ```text
 POST /v1/plan
@@ -235,7 +214,7 @@ GET /v2/sr-levels/current
 GET /v1/insights/sol-usdc/current
 ```
 
-The future `GET /v1/insights/sol-usdc/current` response should be the internally synthesized canonical PolicyInsight, not an externally authored block.
+`GET /v1/insights/sol-usdc/current` serves the internally synthesized canonical PolicyInsight rather than an externally authored block — see "Evidence-based PolicyInsight synthesis" above for the current synthesis-trigger caveat.
 
 ### From `sol-usdc-clmm-intelligence` into Regime Engine
 
@@ -274,14 +253,21 @@ pnpm run build
 pnpm run lint
 pnpm run typecheck
 pnpm run test
+pnpm run test:watch
 pnpm run test:pg
 pnpm run boundaries
 pnpm run format
 pnpm run db:migrate
 pnpm run db:generate
 pnpm run db:push
+pnpm run contract:evidence:generate
+pnpm run contract:evidence:check
+pnpm run contract:policy-insight:generate
+pnpm run contract:policy-insight:check
 pnpm run harness -- --fixture ./fixtures/demo --from 2026-01-01 --to 2026-01-31
 ```
+
+The `contract:evidence:*` and `contract:policy-insight:*` commands generate/check the versioned wire-contract artifacts (JSON Schema, hash vectors, fixtures) documented in `docs/contracts/evidence-bundle.v1.md` and `docs/contracts/policy-insight.v1.md`. `pnpm run test` runs `contract:policy-insight:check` before the test suite, so stale generated contract artifacts fail CI.
 
 ## Storage model
 
