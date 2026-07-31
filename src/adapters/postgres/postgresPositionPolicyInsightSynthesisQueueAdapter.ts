@@ -5,6 +5,7 @@ import type {
   CompletePositionPolicyInsightSynthesisInput,
   EnqueueOrReconcileInput,
   FailPositionPolicyInsightSynthesisInput,
+  FailWaitingForPlanInput,
   PositionPolicyInsightSynthesisClaim,
   PositionPolicyInsightSynthesisQueuePort,
   PositionPolicyInsightSynthesisRequest,
@@ -392,6 +393,39 @@ export const createPostgresPositionPolicyInsightSynthesisQueueAdapter = (
       return result.length > 0;
     },
 
+    failWaitingForPlan: async ({
+      scopeKey,
+      selectionHash,
+      rulesetVersion,
+      nowUnixMs,
+      errorCode,
+      errorMessage
+    }: FailWaitingForPlanInput): Promise<PositionPolicyInsightSynthesisRequest | null> => {
+      const rows = await db.execute(sql`
+        UPDATE regime_engine.policy_insight_synthesis_requests
+        SET
+          status = 'failed',
+          last_error_code = ${errorCode},
+          last_error_message = ${errorMessage},
+          updated_at_unix_ms = ${nowUnixMs}
+        WHERE id IN (
+          SELECT id
+          FROM regime_engine.policy_insight_synthesis_requests
+          WHERE scope_key = ${scopeKey}
+            AND ruleset_version = ${rulesetVersion}
+            AND status = 'waiting_for_plan'
+            ${selectionHash ? sql`AND selection_hash = ${selectionHash}` : sql``}
+          ORDER BY id DESC
+          LIMIT 1
+        )
+        RETURNING *
+      `);
+      if (rows.length === 0) {
+        return null;
+      }
+      return mapRow(rows[0] as unknown as RawRequestRow);
+    },
+
     supersede: async ({
       id,
       leaseOwner,
@@ -487,6 +521,28 @@ export const createPostgresPositionPolicyInsightSynthesisQueueAdapter = (
         ORDER BY scope_key ASC
       `);
       return (rows as unknown as Array<{ scope_key: string }>).map((r) => r.scope_key);
+    },
+
+    hasWaitingRequest: async (
+      scopeKey: string,
+      status?: PositionPolicyInsightSynthesisStatus
+    ): Promise<boolean> => {
+      const rows = status
+        ? await db.execute(sql`
+            SELECT 1
+            FROM regime_engine.policy_insight_synthesis_requests
+            WHERE scope_key = ${scopeKey}
+              AND status = ${status}
+            LIMIT 1
+          `)
+        : await db.execute(sql`
+            SELECT 1
+            FROM regime_engine.policy_insight_synthesis_requests
+            WHERE scope_key = ${scopeKey}
+              AND status IN ('waiting_for_plan', 'waiting_for_evidence')
+            LIMIT 1
+          `);
+      return rows.length > 0;
     },
 
     listEligiblePositionScopes: async (nowUnixMs: number): Promise<string[]> => {

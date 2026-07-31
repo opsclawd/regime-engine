@@ -64,6 +64,15 @@ export interface FailPositionPolicyInsightSynthesisInput {
   errorMessage: string;
 }
 
+export interface FailWaitingForPlanInput {
+  scopeKey: string;
+  selectionHash?: string | null;
+  rulesetVersion: string;
+  nowUnixMs: number;
+  errorCode: string;
+  errorMessage: string;
+}
+
 export interface SupersedePositionPolicyInsightSynthesisInput {
   id: number;
   leaseOwner: string;
@@ -93,11 +102,20 @@ export interface PositionPolicyInsightSynthesisQueuePort {
 
   fail(input: FailPositionPolicyInsightSynthesisInput): Promise<boolean>;
 
+  failWaitingForPlan(
+    input: FailWaitingForPlanInput
+  ): Promise<PositionPolicyInsightSynthesisRequest | null>;
+
   supersede(input: SupersedePositionPolicyInsightSynthesisInput): Promise<boolean>;
 
   releaseForRetry(input: ReleasePositionPolicyInsightSynthesisForRetryInput): Promise<boolean>;
 
   listWaitingScopes(): Promise<string[]>;
+
+  hasWaitingRequest(
+    scopeKey: string,
+    status?: PositionPolicyInsightSynthesisStatus
+  ): Promise<boolean>;
 
   listEligiblePositionScopes(nowUnixMs: number): Promise<string[]>;
 

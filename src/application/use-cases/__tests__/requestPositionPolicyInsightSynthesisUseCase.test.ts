@@ -3,8 +3,10 @@ import type { Scope } from "../../../contract/evidence/v1/types.generated.js";
 import type {
   PositionPolicyInsightSynthesisQueuePort,
   PositionPolicyInsightSynthesisRequest,
+  PositionPolicyInsightSynthesisStatus,
   EnqueueOrReconcileInput,
   FailPositionPolicyInsightSynthesisInput,
+  FailWaitingForPlanInput,
   PositionPolicyInsightSynthesisClaim
 } from "../../ports/positionPolicyInsightSynthesisQueuePort.js";
 import type {
@@ -198,6 +200,17 @@ class FakeQueue implements PositionPolicyInsightSynthesisQueuePort {
     return Array.from(new Set([...scopes, ...this.waitingScopes]));
   }
 
+  async hasWaitingRequest(
+    scopeKey: string,
+    status?: PositionPolicyInsightSynthesisStatus
+  ): Promise<boolean> {
+    return this.requests.some((r) => {
+      if (r.scopeKey !== scopeKey) return false;
+      if (status) return r.status === status;
+      return r.status === "waiting_for_plan" || r.status === "waiting_for_evidence";
+    });
+  }
+
   async listEligiblePositionScopes(): Promise<string[]> {
     return this.eligiblePositionScopes;
   }
@@ -207,15 +220,39 @@ class FakeQueue implements PositionPolicyInsightSynthesisQueuePort {
   }
 
   async fail(input: FailPositionPolicyInsightSynthesisInput): Promise<boolean> {
-    const req = this.requests.find((r) => r.id === input.id);
+    const req = this.requests.find(
+      (r) => r.id === input.id && r.status === "processing" && r.leaseOwner === input.leaseOwner
+    );
     if (req) {
       req.status = "failed";
+      req.leaseOwner = null;
+      req.leaseExpiresAtUnixMs = null;
       req.lastErrorCode = input.errorCode;
       req.lastErrorMessage = input.errorMessage;
       req.updatedAtUnixMs = input.nowUnixMs;
       return true;
     }
     return false;
+  }
+
+  async failWaitingForPlan(
+    input: FailWaitingForPlanInput
+  ): Promise<PositionPolicyInsightSynthesisRequest | null> {
+    const req = this.requests.find(
+      (r) =>
+        r.scopeKey === input.scopeKey &&
+        r.rulesetVersion === input.rulesetVersion &&
+        r.status === "waiting_for_plan" &&
+        (!input.selectionHash || r.selectionHash === input.selectionHash)
+    );
+    if (req) {
+      req.status = "failed";
+      req.lastErrorCode = input.errorCode;
+      req.lastErrorMessage = input.errorMessage;
+      req.updatedAtUnixMs = input.nowUnixMs;
+      return req;
+    }
+    return null;
   }
 
   async claimBatch(): Promise<PositionPolicyInsightSynthesisClaim[]> {
@@ -272,16 +309,12 @@ class FakePlanLedgerReader implements PlanLedgerReadPort {
   public plans: StoredPositionPlan[] = [];
 
   async getLatestPositionPlan(scope: PositionPlanScope): Promise<StoredPositionPlan | null> {
-    const matching = this.plans.filter(
-      (p) =>
-        p.planResponse.scope.positionId === scope.positionId &&
-        p.planResponse.scope.poolAddress === scope.poolAddress &&
-        (!scope.walletId ||
-          !p.planRequest.position.walletId ||
-          p.planRequest.position.walletId === scope.walletId)
+    const matchingPos = this.plans.filter(
+      (p) => p.planResponse.scope.positionId === scope.positionId
     );
-    if (matching.length === 0) return null;
-    return matching[matching.length - 1];
+    if (matchingPos.length > 0) return matchingPos[matchingPos.length - 1];
+    if (this.plans.length > 0) return this.plans[this.plans.length - 1];
+    return null;
   }
 
   async getPositionPlanByHash(
@@ -655,7 +688,18 @@ describe("requestPositionPolicyInsightSynthesisUseCase", () => {
       selectedAtUnixMs: nowUnixMs
     })) as RequestPositionPolicyInsightSynthesisResult;
 
+    expect(resPlanArrives.requestId).toBe(resWaiting.requestId);
     expect(resPlanArrives.status).toBe("failed");
+    const storedReq = await fakeQueue.getById(resWaiting.requestId);
+    expect(storedReq?.status).toBe("failed");
+    expect(storedReq?.lastErrorCode).toBe("POSITION_STALE");
+  });
+
+  test("explicit single-mode request without a scope throws before any queue or repository calls", async () => {
+    await expect(useCase({ mode: "single" })).rejects.toThrow(
+      "scope is required for single position policy insight synthesis request"
+    );
+    expect(fakeQueue.requests).toHaveLength(0);
   });
 
   test("a newer plan creates a distinct ready identity and leaves the older request eligible for supersession", async () => {
@@ -675,7 +719,43 @@ describe("requestPositionPolicyInsightSynthesisUseCase", () => {
     expect(res2.status).toBe("pending");
   });
 
-  test("wallet position pool or five minute skew mismatches never become pending", async () => {
+  test("position id mismatch in plan does not match and request remains waiting_for_plan", async () => {
+    const scope = makeSampleScope("pos1", "wallet1", "pool1");
+    fakeEvidenceRepo.records.push(makeSampleEvidenceBundleRecord(scope));
+    const planMismatchPos = makeSampleStoredPlan("pos2", "pool1", "wallet1", nowUnixMs);
+    fakePlanLedger.plans.push(planMismatchPos);
+
+    const result = (await useCase({ scope })) as RequestPositionPolicyInsightSynthesisResult;
+
+    expect(result.status).toBe("waiting_for_plan");
+    expect(result.planHash).toBeNull();
+  });
+
+  test("pool address mismatch in plan does not match and request remains waiting_for_plan", async () => {
+    const scope = makeSampleScope("pos1", "wallet1", "pool1");
+    fakeEvidenceRepo.records.push(makeSampleEvidenceBundleRecord(scope));
+    const planMismatchPool = makeSampleStoredPlan("pos1", "pool2", "wallet1", nowUnixMs);
+    fakePlanLedger.plans.push(planMismatchPool);
+
+    const result = (await useCase({ scope })) as RequestPositionPolicyInsightSynthesisResult;
+
+    expect(result.status).toBe("waiting_for_plan");
+    expect(result.planHash).toBeNull();
+  });
+
+  test("wallet address mismatch in plan does not match and request remains waiting_for_plan", async () => {
+    const scope = makeSampleScope("pos1", "wallet1", "pool1");
+    fakeEvidenceRepo.records.push(makeSampleEvidenceBundleRecord(scope));
+    const planMismatchWallet = makeSampleStoredPlan("pos1", "pool1", "wallet2", nowUnixMs);
+    fakePlanLedger.plans.push(planMismatchWallet);
+
+    const result = (await useCase({ scope })) as RequestPositionPolicyInsightSynthesisResult;
+
+    expect(result.status).toBe("waiting_for_plan");
+    expect(result.planHash).toBeNull();
+  });
+
+  test("five minute time skew mismatch in plan does not match and request remains waiting_for_evidence", async () => {
     const scope = makeSampleScope("pos1", "wallet1", "pool1");
     fakeEvidenceRepo.records.push(
       makeSampleEvidenceBundleRecord(scope, new Date(nowUnixMs).toISOString())
@@ -686,8 +766,9 @@ describe("requestPositionPolicyInsightSynthesisUseCase", () => {
 
     const result = (await useCase({ scope })) as RequestPositionPolicyInsightSynthesisResult;
 
-    expect(result.status).not.toBe("pending");
     expect(result.status).toBe("waiting_for_evidence");
+    expect(result.selectionHash).toBeNull();
+    expect(result.planHash).toBe(planSkewed.planResponse.planHash);
   });
 
   test("reconciles startup scopes unioning waiting, eligible, and latest plans", async () => {

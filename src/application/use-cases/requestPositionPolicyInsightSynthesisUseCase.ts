@@ -121,7 +121,8 @@ export const createRequestPositionPolicyInsightSynthesisUseCase = (
 
   const reconcileSingle = async (
     scopeInput: Scope | PositionScopeInput,
-    selectedAtUnixMsOverride?: number
+    selectedAtUnixMsOverride?: number,
+    waitingScopeSet?: Set<string>
   ): Promise<RequestPositionPolicyInsightSynthesisResult | null> => {
     const scope = toScope(scopeInput);
     const scopeKey = evidenceScopeKey(scope);
@@ -156,8 +157,11 @@ export const createRequestPositionPolicyInsightSynthesisUseCase = (
 
     // Invariant 6 check: if plan arrives when an expired waiting evidence request exists
     if (validPlanHash) {
-      const waitingScopes = await deps.queue.listWaitingScopes();
-      if (waitingScopes.includes(scopeKey)) {
+      const isWaitingForPlan = waitingScopeSet
+        ? waitingScopeSet.has(scopeKey)
+        : await deps.queue.hasWaitingRequest(scopeKey, "waiting_for_plan");
+
+      if (isWaitingForPlan) {
         // Query evidence without 5-minute restriction to see if evidence exists but is expired
         const allRecordsForScope = await deps.evidenceRepository.getLatest({
           pair: "SOL/USDC",
@@ -173,31 +177,22 @@ export const createRequestPositionPolicyInsightSynthesisUseCase = (
           );
 
         if (hasScopeRecords && allScopeRecordsExpired) {
-          const req = await deps.queue.enqueueOrReconcile({
+          const failedReq = await deps.queue.failWaitingForPlan({
             scopeKey,
-            selectionHash: null,
-            planHash: validPlanHash,
             rulesetVersion,
-            nowUnixMs
-          });
-          await deps.queue.fail({
-            id: req.id,
-            leaseOwner: req.leaseOwner ?? "system",
             nowUnixMs,
             errorCode: "POSITION_STALE",
             errorMessage: "Evidence expired before plan arrived"
           });
-          const updatedReq = (await deps.queue.getById(req.id)) ?? {
-            ...req,
-            status: "failed" as const
-          };
-          return {
-            requestId: updatedReq.id,
-            status: updatedReq.status,
-            selectionHash: null,
-            planHash: validPlanHash,
-            freshEvidenceRequired: true
-          };
+          if (failedReq) {
+            return {
+              requestId: failedReq.id,
+              status: failedReq.status,
+              selectionHash: failedReq.selectionHash,
+              planHash: validPlanHash,
+              freshEvidenceRequired: true
+            };
+          }
         }
       }
     }
@@ -268,6 +263,7 @@ export const createRequestPositionPolicyInsightSynthesisUseCase = (
       const nowUnixMs = deps.clock.nowUnixMs();
 
       const waitingScopes = await deps.queue.listWaitingScopes();
+      const waitingScopeSet = new Set(waitingScopes);
       const eligibleScopes = await deps.queue.listEligiblePositionScopes(nowUnixMs);
       const latestPlans = await deps.planLedger.listLatestPositionPlans();
 
@@ -299,7 +295,7 @@ export const createRequestPositionPolicyInsightSynthesisUseCase = (
 
       const results: RequestPositionPolicyInsightSynthesisResult[] = [];
       for (const scope of scopeMap.values()) {
-        const res = await reconcileSingle(scope, nowUnixMs);
+        const res = await reconcileSingle(scope, nowUnixMs, waitingScopeSet);
         if (res) {
           results.push(res);
         }
@@ -316,10 +312,10 @@ export const createRequestPositionPolicyInsightSynthesisUseCase = (
   ): Promise<
     RequestPositionPolicyInsightSynthesisResult | RequestPositionPolicyInsightSynthesisStartupResult
   > => {
-    if (input?.mode === "startup" || (!input?.scope && !input?.selectedAtUnixMs)) {
+    if (!input || input.mode === "startup") {
       return await reconcileStartup();
     }
-    if (!input?.scope) {
+    if (!input.scope) {
       throw new Error("scope is required for single position policy insight synthesis request");
     }
     const res = await reconcileSingle(input.scope, input.selectedAtUnixMs);
