@@ -1,6 +1,7 @@
 import { mkdirSync, readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { DatabaseSync } from "node:sqlite";
+import type { PlanRequest } from "../contract/v1/types.js";
 
 export interface LedgerStore {
   db: DatabaseSync;
@@ -12,6 +13,57 @@ const resolveSchemaSql = (): string => {
   return readFileSync(new URL("./schema.sql", import.meta.url), "utf8");
 };
 
+const migratePlanRequests = (db: DatabaseSync): void => {
+  const tableInfo = db.prepare("PRAGMA table_info(plan_requests)").all() as Array<{ name: string }>;
+  if (tableInfo.length === 0) {
+    return;
+  }
+
+  const columnNames = new Set(tableInfo.map((col) => col.name));
+  const hasPositionId = columnNames.has("position_id");
+  const hasWalletId = columnNames.has("wallet_id");
+  const hasPoolAddress = columnNames.has("pool_address");
+
+  if (hasPositionId && hasWalletId && hasPoolAddress) {
+    return;
+  }
+
+  db.exec("BEGIN");
+  try {
+    if (!hasPositionId) {
+      db.exec("ALTER TABLE plan_requests ADD COLUMN position_id TEXT");
+    }
+    if (!hasWalletId) {
+      db.exec("ALTER TABLE plan_requests ADD COLUMN wallet_id TEXT");
+    }
+    if (!hasPoolAddress) {
+      db.exec("ALTER TABLE plan_requests ADD COLUMN pool_address TEXT");
+    }
+
+    const rows = db.prepare("SELECT id, request_json FROM plan_requests").all() as Array<{
+      id: number;
+      request_json: string;
+    }>;
+
+    const updateStmt = db.prepare(
+      "UPDATE plan_requests SET position_id = ?, wallet_id = ?, pool_address = ? WHERE id = ?"
+    );
+
+    for (const row of rows) {
+      const parsed = JSON.parse(row.request_json) as PlanRequest;
+      const positionId = parsed.position?.positionId;
+      const walletId = parsed.position?.walletId ?? null;
+      const poolAddress = parsed.market?.poolAddress;
+      updateStmt.run(positionId, walletId, poolAddress, row.id);
+    }
+
+    db.exec("COMMIT");
+  } catch (error) {
+    db.exec("ROLLBACK");
+    throw error;
+  }
+};
+
 export const createLedgerStore = (databasePath: string): LedgerStore => {
   if (databasePath !== ":memory:") {
     const resolvedPath = resolve(databasePath);
@@ -20,6 +72,11 @@ export const createLedgerStore = (databasePath: string): LedgerStore => {
 
   const db = new DatabaseSync(databasePath);
   db.exec("PRAGMA busy_timeout = 2000");
+  if (databasePath !== ":memory:") {
+    db.exec("PRAGMA journal_mode = WAL");
+  }
+
+  migratePlanRequests(db);
   db.exec(resolveSchemaSql());
 
   return {
