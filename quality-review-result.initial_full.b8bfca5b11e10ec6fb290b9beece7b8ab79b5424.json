@@ -1,0 +1,11 @@
+{
+  "result": "fail",
+  "findings": [
+    {
+      "severity": "P2",
+      "summary": "scripts/predeploy.sh was not updated to skip migrations for the synthesis-worker, which can cause redundant database migrations and race conditions on deploy.",
+      "file": "scripts/predeploy.sh",
+      "suggested_fix": "Update the script to only run migrations for the api service: `if [ \"${SERVICE_TYPE:-api}\" = \"api\" ]; then pnpm run db:migrate; else echo \"${SERVICE_TYPE:-unknown}: skipping migrations\"; fi`"
+    }
+  ]
+}

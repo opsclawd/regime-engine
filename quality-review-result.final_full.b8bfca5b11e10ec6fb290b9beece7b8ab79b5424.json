@@ -1,0 +1,17 @@
+{
+  "result": "fail",
+  "findings": [
+    {
+      "severity": "P1",
+      "summary": "The Railway runbook does not set SERVICE_TYPE=collector for the collector service, causing predeploy.sh to incorrectly run db:migrate and fail the deployment due to a missing DATABASE_URL.",
+      "file": "docs/runbooks/railway-deploy.md",
+      "suggested_fix": "Add a row for Variable 'SERVICE_TYPE' with Value 'collector' to the 'Collector env vars' table."
+    },
+    {
+      "severity": "P2",
+      "summary": "The predeploy.sh script does not skip database migrations for the synthesis-worker service, risking race conditions if both the web service and the worker deploy concurrently.",
+      "file": "scripts/predeploy.sh",
+      "suggested_fix": "Update the conditional to only run migrations for the api service (or when SERVICE_TYPE is unset): if [ \"${SERVICE_TYPE:-api}\" = \"api\" ]; then pnpm run db:migrate; else echo \"skipping migrations\"; fi"
+    }
+  ]
+}
