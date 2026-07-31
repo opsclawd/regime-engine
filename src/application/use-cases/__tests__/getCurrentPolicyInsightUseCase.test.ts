@@ -6,9 +6,10 @@ import {
 import type { PolicyInsightRepositoryPort } from "../../ports/policyInsightRepositoryPort.js";
 import type { ClockPort } from "../../ports/clock.js";
 import type { PolicySynthesisEnvelope } from "../../../engine/policy/synthesizePolicyInsight.js";
-import type { PolicyInsightContent } from "../../../contract/policyInsight/v1/types.generated.js";
-const POLICY_INSIGHT_V1_WIRE_CONTRACT_SHA256 =
-  "80487b0a9374d0b535accf535ef9819f2b2de00e1d65980deb73c97afaa02800";
+import {
+  type PolicyInsightContent,
+  POLICY_INSIGHT_V1_WIRE_CONTRACT_SHA256
+} from "../../../contract/policyInsight/v1/types.generated.js";
 
 describe("getCurrentPolicyInsightUseCase", () => {
   const dummyContent: PolicyInsightContent = {

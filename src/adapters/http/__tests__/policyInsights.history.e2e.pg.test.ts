@@ -7,13 +7,13 @@ import type { NewPolicyInsightRecord } from "../../../application/ports/policyIn
 import { sql } from "drizzle-orm";
 import type { PolicySynthesisEnvelope } from "../../../engine/policy/synthesizePolicyInsight.js";
 import { computePolicyInsightContentCanonicalAndHash } from "../../../contract/policyInsight/v1/canonical.js";
-import type { PolicyInsightContent } from "../../../contract/policyInsight/v1/types.generated.js";
+import {
+  type PolicyInsightContent,
+  POLICY_INSIGHT_V1_WIRE_CONTRACT_SHA256
+} from "../../../contract/policyInsight/v1/types.generated.js";
 
 const PG_CONNECTION_STRING =
   process.env.DATABASE_URL ?? "postgres://test:test@localhost:5432/regime_engine_test";
-
-const POLICY_INSIGHT_V1_WIRE_CONTRACT_SHA256 =
-  "80487b0a9374d0b535accf535ef9819f2b2de00e1d65980deb73c97afaa02800";
 
 const testSynthesisInput = {
   synthesisAtUnixMs: 1700000000000,

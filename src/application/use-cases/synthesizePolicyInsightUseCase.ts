@@ -23,12 +23,11 @@ import { toCanonicalJson } from "../../contract/v1/canonical.js";
 import { evidenceScopeKey } from "../ports/evidenceBundleRepositoryPort.js";
 import { parsePolicyInsightContent } from "../../contract/policyInsight/v1/validate.js";
 import { computePolicyInsightContentCanonicalAndHash } from "../../contract/policyInsight/v1/canonical.js";
-import type {
-  PolicyInsightContent,
-  PolicyInsightRead
+import {
+  type PolicyInsightContent,
+  type PolicyInsightRead,
+  POLICY_INSIGHT_V1_WIRE_CONTRACT_SHA256
 } from "../../contract/policyInsight/v1/types.generated.js";
-export const POLICY_INSIGHT_V1_WIRE_CONTRACT_SHA256 =
-  "80487b0a9374d0b535accf535ef9819f2b2de00e1d65980deb73c97afaa02800";
 import { projectPolicyInsightRead } from "../../contract/policyInsight/v1/project.js";
 
 export interface SynthesizePolicyInsightInput {

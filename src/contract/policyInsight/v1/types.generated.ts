@@ -713,3 +713,5 @@ export interface Freshness {
 
 export type PolicyInsightContent = Omit<PolicyInsightRead, "freshness">;
 export type PolicyInsightFreshness = Freshness;
+export const POLICY_INSIGHT_V1_WIRE_CONTRACT_SHA256 =
+  "80487b0a9374d0b535accf535ef9819f2b2de00e1d65980deb73c97afaa02800";
