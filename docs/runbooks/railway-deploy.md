@@ -218,6 +218,7 @@ Collector env vars:
 
 | Variable                     | Value                                                 |
 | ---------------------------- | ----------------------------------------------------- |
+| `SERVICE_TYPE`               | `collector`                                           |
 | `REGIME_ENGINE_URL`          | Railway private or public URL for `regime-engine-web` |
 | `CANDLES_INGEST_TOKEN`       | same value as web service `CANDLES_INGEST_TOKEN`      |
 | `GECKO_SOURCE`               | `geckoterminal`                                       |
