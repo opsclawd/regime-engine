@@ -679,5 +679,85 @@ describe.skipIf(!process.env.DATABASE_URL)(
         await db2Obj.client.end();
       }
     });
+
+    it("replaying partial evidence enqueue after promotion returns promoted request without creating duplicate", async () => {
+      const scopeKey = `${SUITE_PREFIX}-replay-ev-promoted`;
+      const now = 1000;
+
+      const req1 = await adapter.enqueueOrReconcile({
+        scopeKey,
+        selectionHash: HASH_1,
+        rulesetVersion: RULESET_V1,
+        nowUnixMs: now
+      });
+      expect(req1.status).toBe("waiting_for_plan");
+
+      const req2 = await adapter.enqueueOrReconcile({
+        scopeKey,
+        selectionHash: HASH_1,
+        planHash: HASH_2,
+        rulesetVersion: RULESET_V1,
+        nowUnixMs: now + 100
+      });
+      expect(req2.id).toBe(req1.id);
+      expect(req2.status).toBe("pending");
+
+      const req3 = await adapter.enqueueOrReconcile({
+        scopeKey,
+        selectionHash: HASH_1,
+        rulesetVersion: RULESET_V1,
+        nowUnixMs: now + 200
+      });
+
+      expect(req3.id).toBe(req1.id);
+      expect(req3.status).toBe("pending");
+      expect(req3.planHash).toBe(HASH_2);
+
+      const allRows = await db.execute(sql`
+        SELECT * FROM regime_engine.policy_insight_synthesis_requests
+        WHERE scope_key = ${scopeKey}
+      `);
+      expect(allRows).toHaveLength(1);
+    });
+
+    it("replaying partial plan enqueue after promotion returns promoted request without creating duplicate", async () => {
+      const scopeKey = `${SUITE_PREFIX}-replay-plan-promoted`;
+      const now = 1000;
+
+      const req1 = await adapter.enqueueOrReconcile({
+        scopeKey,
+        planHash: HASH_2,
+        rulesetVersion: RULESET_V1,
+        nowUnixMs: now
+      });
+      expect(req1.status).toBe("waiting_for_evidence");
+
+      const req2 = await adapter.enqueueOrReconcile({
+        scopeKey,
+        selectionHash: HASH_1,
+        planHash: HASH_2,
+        rulesetVersion: RULESET_V1,
+        nowUnixMs: now + 100
+      });
+      expect(req2.id).toBe(req1.id);
+      expect(req2.status).toBe("pending");
+
+      const req3 = await adapter.enqueueOrReconcile({
+        scopeKey,
+        planHash: HASH_2,
+        rulesetVersion: RULESET_V1,
+        nowUnixMs: now + 200
+      });
+
+      expect(req3.id).toBe(req1.id);
+      expect(req3.status).toBe("pending");
+      expect(req3.selectionHash).toBe(HASH_1);
+
+      const allRows = await db.execute(sql`
+        SELECT * FROM regime_engine.policy_insight_synthesis_requests
+        WHERE scope_key = ${scopeKey}
+      `);
+      expect(allRows).toHaveLength(1);
+    });
   }
 );

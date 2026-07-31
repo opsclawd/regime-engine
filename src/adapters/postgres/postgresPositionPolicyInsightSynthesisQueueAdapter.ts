@@ -181,17 +181,16 @@ export const createPostgresPositionPolicyInsightSynthesisQueueAdapter = (
 
         if (effectiveSelectionHash && !effectivePlanHash) {
           // Case 2: Only selectionHash (waiting_for_plan)
-          const existingWaitingPlan = await tx.execute(sql`
+          const existingSelection = await tx.execute(sql`
             SELECT *
             FROM regime_engine.policy_insight_synthesis_requests
             WHERE scope_key = ${scopeKey}
               AND selection_hash = ${effectiveSelectionHash}
               AND ruleset_version = ${rulesetVersion}
-              AND status = 'waiting_for_plan'
             LIMIT 1
           `);
-          if (existingWaitingPlan.length > 0) {
-            return mapRow(existingWaitingPlan[0] as unknown as RawRequestRow);
+          if (existingSelection.length > 0) {
+            return mapRow(existingSelection[0] as unknown as RawRequestRow);
           }
 
           const inserted = await tx.execute(sql`
@@ -220,17 +219,16 @@ export const createPostgresPositionPolicyInsightSynthesisQueueAdapter = (
         }
 
         // Case 3: Only planHash (waiting_for_evidence)
-        const existingWaitingEvidence = await tx.execute(sql`
+        const existingPlan = await tx.execute(sql`
           SELECT *
           FROM regime_engine.policy_insight_synthesis_requests
           WHERE scope_key = ${scopeKey}
             AND plan_hash = ${effectivePlanHash}
             AND ruleset_version = ${rulesetVersion}
-            AND status = 'waiting_for_evidence'
           LIMIT 1
         `);
-        if (existingWaitingEvidence.length > 0) {
-          return mapRow(existingWaitingEvidence[0] as unknown as RawRequestRow);
+        if (existingPlan.length > 0) {
+          return mapRow(existingPlan[0] as unknown as RawRequestRow);
         }
 
         const inserted = await tx.execute(sql`
@@ -272,8 +270,8 @@ export const createPostgresPositionPolicyInsightSynthesisQueueAdapter = (
             FROM regime_engine.policy_insight_synthesis_requests
             WHERE status = 'processing' AND lease_expires_at_unix_ms > ${nowUnixMs}
           ),
-          eligible_rows AS (
-            SELECT id, scope_key
+          candidate_ids AS (
+            SELECT MIN(id) AS id
             FROM regime_engine.policy_insight_synthesis_requests
             WHERE scope_key NOT IN (SELECT scope_key FROM active_scopes)
               AND (
@@ -281,18 +279,14 @@ export const createPostgresPositionPolicyInsightSynthesisQueueAdapter = (
                 OR
                 (status = 'processing' AND lease_expires_at_unix_ms <= ${nowUnixMs})
               )
-            ORDER BY id ASC
-            FOR UPDATE SKIP LOCKED
-          ),
-          one_per_scope AS (
-            SELECT DISTINCT ON (scope_key) id
-            FROM eligible_rows
-            ORDER BY scope_key, id ASC
+            GROUP BY scope_key
           ),
           batch AS (
             SELECT id
-            FROM one_per_scope
+            FROM regime_engine.policy_insight_synthesis_requests
+            WHERE id IN (SELECT id FROM candidate_ids)
             ORDER BY id ASC
+            FOR UPDATE SKIP LOCKED
             LIMIT ${batchSize}
           )
           UPDATE regime_engine.policy_insight_synthesis_requests r
