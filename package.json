@@ -29,6 +29,9 @@
     "start": "node --env-file-if-exists=.env dist/src/server.js",
     "dev:gecko": "tsx --env-file=.env watch src/workers/geckoCollector.ts",
     "start:gecko": "node --env-file-if-exists=.env dist/src/workers/geckoCollector.js",
+    "dev:policy-insights": "tsx --env-file=.env watch src/workers/policyInsightSynthesisWorker.ts",
+    "start:policy-insights": "node --env-file-if-exists=.env dist/src/workers/policyInsightSynthesisWorker.js",
+    "backfill:pair-insights": "node --env-file-if-exists=.env dist/scripts/backfill-pair-insights.js",
     "prepare": "husky || true"
   },
   "dependencies": {

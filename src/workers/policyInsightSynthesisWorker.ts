@@ -37,6 +37,37 @@ export function startHealthServer(): Server {
   return server;
 }
 
+export type ServiceType = "api" | "collector" | "synthesis-worker";
+
+export interface ServiceDispatchHandlers {
+  api?: () => Promise<unknown> | unknown;
+  collector?: () => Promise<unknown> | unknown;
+  synthesisWorker: () => Promise<unknown> | unknown;
+}
+
+export async function dispatchService(
+  serviceType: string | undefined,
+  handlers: ServiceDispatchHandlers
+): Promise<unknown> {
+  const resolvedType = serviceType ?? "api";
+  switch (resolvedType) {
+    case "api":
+      if (handlers.api) {
+        return await handlers.api();
+      }
+      return { service: "api" };
+    case "collector":
+      if (handlers.collector) {
+        return await handlers.collector();
+      }
+      return { service: "collector" };
+    case "synthesis-worker":
+      return await handlers.synthesisWorker();
+    default:
+      throw new Error(`Unknown SERVICE_TYPE: ${resolvedType}`);
+  }
+}
+
 function sleepWithSignal(signal?: AbortSignal): (ms: number) => Promise<void> {
   return (ms: number) =>
     new Promise<void>((resolve, reject) => {

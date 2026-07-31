@@ -259,3 +259,64 @@ Token management:
 3. Restart the web service, then restart the collector service.
 4. Confirm collector logs show successful ingest after rotation.
 5. Treat suspected token exposure as a same-day rotation event.
+
+## Policy Insight synthesis worker Railway service
+
+Prerequisite: The companion pair-safe publisher (`sol-usdc-clmm-intelligence`) must be live and publishing evidence bundles to `POST /v1/evidence/sol-usdc` before enabling the synthesis worker.
+
+Create a third service from the same repo:
+
+| Setting       | Value                            |
+| ------------- | -------------------------------- |
+| Service name  | `regime-engine-synthesis-worker` |
+| Build command | `pnpm build`                     |
+| Start command | `pnpm start:policy-insights`     |
+
+Synthesis worker env vars:
+
+| Variable                                    | Value                                         |
+| ------------------------------------------- | --------------------------------------------- |
+| `SERVICE_TYPE`                              | `synthesis-worker`                            |
+| `DATABASE_URL`                              | `${{Postgres.DATABASE_URL}}`                  |
+| `CANONICAL_SOL_USDC_POOL_ADDRESS`           | confirmed GeckoTerminal SOL/USDC pool address |
+| `POLICY_INSIGHT_SYNTHESIS_POLL_INTERVAL_MS` | `5000`                                        |
+| `POLICY_INSIGHT_SYNTHESIS_LEASE_MS`         | `60000`                                       |
+| `POLICY_INSIGHT_SYNTHESIS_RETRY_MS`         | `5000`                                        |
+| `POLICY_INSIGHT_SYNTHESIS_MAX_ATTEMPTS`     | `5`                                           |
+
+Health check:
+
+The synthesis worker exposes a standalone HTTP health server on `PORT` (defaults to 8787). Configure the Railway health check path to `/health`.
+
+One-shot backfill deployment command:
+
+Before enabling continuous synthesis, run an explicit backfill for historical evidence:
+
+```bash
+pnpm run backfill:pair-insights
+```
+
+This processes the latest historical pair evidence when the cursor is absent without resetting or rewinding existing progress.
+
+Log monitoring:
+
+Monitor structured JSON logs for the following key events:
+
+- `policy_insight_synthesis_succeeded` — Successful synthesis cycle and cursor advance
+- `policy_insight_synthesis_transient_failure` — Transient failure released for retry
+- `policy_insight_synthesis_failed` / `policy_insight_synthesis_retry_budget_exhausted` — Permanent failure or exhausted retries
+- `backfill_complete` / `backfill_failed` — One-shot backfill execution outcome
+- `health_server_listening` — Health server startup
+
+Current-insight smoke check:
+
+```bash
+curl -fsS "$RE_URL/v1/insights/sol-usdc/current"
+```
+
+Expect a 200 response returning the latest synthesized canonical PolicyInsight.
+
+Restart recovery & Rollback:
+
+- **Restart Recovery**: The synthesis worker uses Postgres advisory leases (`POLICY_INSIGHT_SYNTHESIS_LEASE_MS`). Upon restart, a worker re-claims expired leases or picks up from the latest stored cursor safely.
+- **Rollback Guidance**: Schema changes and synthesis cursors are strictly forward-only. If a rollback is required, redeploy the previous code version; do not attempt destructive database resets.

@@ -1,5 +1,10 @@
 import { describe, it, expect, vi } from "vitest";
-import { runPolicyInsightSynthesisWorker } from "../policyInsightSynthesisWorker.js";
+import {
+  runPolicyInsightSynthesisWorker,
+  dispatchService
+} from "../policyInsightSynthesisWorker.js";
+import { runBackfillPairInsights } from "../../../scripts/backfill-pair-insights.js";
+import type { BackfillPairInsightsDeps } from "../../../scripts/backfill-pair-insights.js";
 import type { PolicyInsightSynthesisWorkerDeps } from "../policyInsightSynthesisWorker.js";
 import type { PolicyInsightSynthesisWorkerConfig } from "../policyInsight/config.js";
 import type { WorkerLogger } from "../gecko/logger.js";
@@ -249,5 +254,85 @@ describe("runPolicyInsightSynthesisWorker", () => {
     await runPolicyInsightSynthesisWorker(BASE_CONFIG, deps);
 
     expect(mockStoreContext.close).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("runBackfillPairInsights", () => {
+  it("backfill exits zero after success or idle", async () => {
+    const mockStoreContext = {
+      close: vi.fn().mockResolvedValue(undefined)
+    } as unknown as RuntimeStoreContext;
+
+    const runCycleFn = vi.fn().mockResolvedValue({ outcome: "idle" });
+
+    const deps: BackfillPairInsightsDeps = createMockDeps({
+      storeContext: mockStoreContext,
+      runCycleFn
+    });
+
+    const exitCode = await runBackfillPairInsights(BASE_CONFIG, deps);
+
+    expect(exitCode).toBe(0);
+    expect(runCycleFn).toHaveBeenCalledTimes(1);
+    expect(mockStoreContext.close).toHaveBeenCalledTimes(1);
+  });
+
+  it("backfill exits nonzero after transient failure", async () => {
+    const mockStoreContext = {
+      close: vi.fn().mockResolvedValue(undefined)
+    } as unknown as RuntimeStoreContext;
+
+    const runCycleFn = vi.fn().mockResolvedValue({
+      outcome: "transient_failure",
+      receiptId: 10,
+      errorCode: "TEMP_ERR",
+      errorMessage: "Transient error"
+    });
+
+    const deps: BackfillPairInsightsDeps = createMockDeps({
+      storeContext: mockStoreContext,
+      runCycleFn
+    });
+
+    const exitCode = await runBackfillPairInsights(BASE_CONFIG, deps);
+
+    expect(exitCode).toBe(1);
+    expect(runCycleFn).toHaveBeenCalledTimes(1);
+    expect(mockStoreContext.close).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("dispatchService", () => {
+  it("service dispatch starts the synthesis worker only for synthesis-worker service type", async () => {
+    const synthesisWorkerFn = vi.fn().mockResolvedValue(undefined);
+    const collectorFn = vi.fn().mockResolvedValue(undefined);
+    const apiFn = vi.fn().mockResolvedValue(undefined);
+
+    const handlers = {
+      synthesisWorker: synthesisWorkerFn,
+      collector: collectorFn,
+      api: apiFn
+    };
+
+    await dispatchService("synthesis-worker", handlers);
+    expect(synthesisWorkerFn).toHaveBeenCalledTimes(1);
+    expect(collectorFn).not.toHaveBeenCalled();
+    expect(apiFn).not.toHaveBeenCalled();
+
+    await dispatchService("collector", handlers);
+    expect(synthesisWorkerFn).toHaveBeenCalledTimes(1);
+    expect(collectorFn).toHaveBeenCalledTimes(1);
+
+    await dispatchService("api", handlers);
+    expect(synthesisWorkerFn).toHaveBeenCalledTimes(1);
+    expect(apiFn).toHaveBeenCalledTimes(1);
+
+    await dispatchService(undefined, handlers);
+    expect(synthesisWorkerFn).toHaveBeenCalledTimes(1);
+    expect(apiFn).toHaveBeenCalledTimes(2);
+
+    await expect(dispatchService("unknown-service", handlers)).rejects.toThrow(
+      "Unknown SERVICE_TYPE: unknown-service"
+    );
   });
 });
