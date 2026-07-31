@@ -1,49 +1,45 @@
-# Trigger pair-scoped PolicyInsight synthesis on evidence ingest
+# Add durable position-scoped PolicyInsight synthesis pipeline (blocked on clmm-v2 plan submission)
 
-## Correction (verified against real code before rewriting)
+## Corrections (verified against real code before rewriting)
 
-The original version of this issue was scope-broken. Verified directly:
+This issue's original queue design had real gaps, confirmed against the actual synthesis code:
 
-- `selectEvidenceForSynthesisUseCase` calls `repository.getLatest({ pair, scope, ... })`, and the Postgres query is scope-exact: `WHERE pair = ? AND scope_key = ?`.
-- `evidenceScopeKey({kind:"pair"})` → `"pair"`. `evidenceScopeKey({kind:"position",...})` → `"position:<len-prefixed wallet><len-prefixed pool><len-prefixed positionId>"`. Completely different strings.
-- `sol-usdc-clmm-intelligence` only ever publishes `scope.kind: "position"` bundles.
+**Queue identity was insufficient.** `computePolicyInsightFingerprints` already hashes `positionPlan` (via `positionHash`) into `synthesisInputHash`, alongside evidence selection. A queue keyed on `scopeKey + evidenceHash + rulesetVersion` alone cannot represent "same evidence, newer plan" — after a first synthesis completes, a fresh plan against unchanged evidence needs to produce a new synthesis input. Key on `scopeKey + selectionHash + planHash + rulesetVersion` (or an equivalent "latest desired evidence+plan version" coordinator per scope), not a single evidence hash.
 
-So a naive "trigger pair-scoped synthesis on any evidence ingest" would query for `scope_key = "pair"`, find zero rows of the position evidence we just spent days getting to publish, and either fail or produce a market-only insight that silently uses none of it. That would clear the UI's "No policy insight available yet" message while being misleading about what's actually informing it — don't ship that.
+**One claim from the original review that I checked and is false — do not implement it:** it stated "Regime Engine rejects plan positions older than sixty seconds." Checked `src/engine/policy/ruleset.ts` directly: `positionMaxAgeMs: 86400000` (24 hours), not 60 seconds. `clmm-v2`'s current 5-minute observation staleness tolerance is well within this. No freshness-limit alignment is needed here.
 
-Also corrected: `GET /v1/insights/sol-usdc/current` only accepts `scope` of `pair` or `position` (see `insightsCurrent.ts` — `"whirlpool"` throws `Invalid scope kind`). Drop "whirlpool scope" from this issue entirely; use pair scope.
+## This issue remains blocked
+
+Confirmed via a 30-day production HTTP log search: `POST /v1/plan` has never been called. This issue cannot be completed independent of the companion `clmm-v2` issue (which turned out to require substantially more work than "start calling an endpoint" — see that issue for the real scope: endpoint mismatch, contract mismatch, missing auth, plan-identity handling).
 
 ## Revised scope
 
-Pick one explicitly — do not let the implementation silently default to the degraded option while looking like the good one:
+1. **`PlanLedgerReadPort`** — read the exact stored `PlanRequest`/`PlanResponse` (not a lossy reconstruction; `planHash` is verified via `sha256Hex(toCanonicalJson(planWithoutHash))`).
+2. **Plan storage topology — needs an explicit decision, not an assumption.** Plans are currently written to a local SQLite store (`plan_requests` table via `writePlanLedgerEntry`), separate from the Postgres `regime_engine` schema evidence/insights live in. A separately-deployed worker process cannot assume filesystem access to the HTTP service's SQLite volume. Either:
+   - run the synthesis worker in the same service/container as the HTTP API (simplest), or
+   - move/mirror plan storage into Postgres so plan persistence and queue wake-up can be transactional (cleaner long-term, avoids a cross-database dual-write gap).
+   Decide and document this before writing the worker.
+3. **SQLite plan schema lacks position-indexed lookup columns** (`plan_requests` only has `plan_id`, `request_json`, `plan_json`, timestamps — no `position_id`/`wallet_id`/`pool_address` columns). If keeping SQLite (option A above), add a migration with denormalized lookup columns; `PlanLedgerReadPort.getLatestPositionPlan()` otherwise requires JSON scans.
+4. **Durable synthesis-request queue** (Postgres table, e.g. `policy_insight_synthesis_requests`) keyed as corrected above, enqueued from both the evidence-ingest and plan-write paths, with lease-recovery fields (`lockedAt`, `lockedBy`, `leaseExpiresAt`) — `FOR UPDATE SKIP LOCKED` alone doesn't recover a row a crashed process left `processing`.
+5. **Worker** (`src/workers/policyInsightSynthesizer.ts`, `pnpm start:policy-synthesis`) — claims requests, resolves the latest eligible evidence + matching plan, invokes `synthesizePolicyInsightUseCase`.
+6. **Internal trigger endpoint**: protected `POST /v1/internal/insights/sol-usdc/synthesis-requests`, returns `202` with the request ID, doesn't synthesize inline. Backfill/replay/deployment-verification use only.
+7. **Temporal compatibility rules** — specify explicitly: exact wallet/position/pool equality; max evidence↔position observation skew; behavior when evidence expires while waiting on a plan; whether a newer plan supersedes an older queued request.
+8. **Structured error codes** on `PolicyInsightValidationError`/`PolicyInsightStoreUnavailableError` (currently message-only) so the worker classifies retryable vs. permanent without string matching: `POSITION_PLAN_MISSING`, `POSITION_STALE`, `PLAN_HASH_INVALID`, `POSITION_SCOPE_MISMATCH`, `POOL_SCOPE_MISMATCH`, `MARKET_DATA_UNAVAILABLE`, `EVIDENCE_STORE_UNAVAILABLE`, `POLICY_STORE_UNAVAILABLE`, `OUTPUT_SCHEMA_INVALID`.
 
-1. **Preferred**: file/build a companion change in `sol-usdc-clmm-intelligence` to additionally publish a pair-scoped evidence bundle containing only pair-safe evidence (no wallet/position/inventory/range data) — see companion issue in that repo.
-2. Add a formal position→pair projection policy in `regime-engine` that strips position-specific fields before aggregating into a pair-level view.
-3. Ship a regime-data-only pair insight now and be explicit in the UI/docs that intelligence evidence isn't reflected in it yet.
+## Explicitly out of scope for this issue
 
-## Market selector
-
-Pair scope carries no pool address, but `synthesizePolicyInsightUseCase`'s `marketSelector` always requires `{ source, network, poolAddress, timeframe }`. Define the canonical values (matching what `geckoCollector.ts` actually ingests candles under) as config, e.g.:
-
-```
-source      = geckoterminal
-network     = solana
-poolAddress = <configured canonical SOL/USDC pool>
-timeframe   = 1h
-```
-
-## Trigger mechanics
-
-Replace "fire-and-forget on evidence ingest" with something that survives a restart between the 201 response and synthesis:
-- Only trigger after `ingestEvidenceBundleUseCase` returns `created` (not `already_ingested`).
-- Catch and classify every synthesis failure — do not let it affect the evidence-ingest HTTP response (durability and insight availability are different concerns).
-- Coalesce concurrent pair-synthesis attempts.
-- Log evidence receipt ID, scope, `synthesisInputHash`, resulting insight ID, and duration.
-- Add an explicit deployment/startup backfill step so this works against evidence already ingested, not only future publications.
+- Pair/whirlpool-scoped synthesis (#78 — independent, no plan dependency).
+- Anything in `clmm-v2` (tracked in that repo's companion issue).
 
 ## Acceptance criteria
 
-1. Pair-scoped synthesis actually incorporates the pair-safe evidence path chosen above (verify this isn't silently empty).
-2. `GET /v1/insights/sol-usdc/current` (no params — what `clmm-v2`'s app actually calls) returns real, evidence-informed data.
-3. Duplicate evidence ingestion does not create duplicate insights (verify `synthesisInputHash` replay detection still holds under the new trigger).
-4. Evidence ingest continues to return 201 even if synthesis fails or regime/candle data is temporarily unavailable.
-5. A backfill run against already-ingested evidence produces a real insight without waiting for a new publish.
+1. A newly published position evidence bundle creates a durable synthesis request.
+2. A matching recent position plan causes one canonical `PolicyInsight` to be persisted.
+3. `GET /v1/insights/sol-usdc/current?scope=position&walletAddress=...&whirlpoolAddress=...&positionId=...` returns that insight.
+4. Duplicate evidence publication does not create duplicate insights.
+5. A new plan against unchanged evidence produces a new synthesis (queue identity fix, not just evidence replay detection).
+6. Two positions from the same intelligence pipeline run synthesize independently.
+7. Evidence arriving before the plan waits and later completes; plan arriving before evidence later completes.
+8. A worker restart does not lose or duplicate work (lease recovery verified, not just SKIP LOCKED).
+9. Missing/stale candles and invalid plan hashes are classified via structured codes, not uniformly retried.
+10. Enqueue every currently eligible, unexpired position scope on deployment; for scopes with no eligible evidence, trigger a fresh intelligence run rather than treating it as a backfill gap.

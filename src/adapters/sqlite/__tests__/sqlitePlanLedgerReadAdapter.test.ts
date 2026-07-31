@@ -298,4 +298,38 @@ describe("SqlitePlanLedgerReadAdapter", () => {
       store.close();
     }
   });
+
+  it("returns the latest position plan when walletId is null/undefined", async () => {
+    const store = createLedgerStore(":memory:");
+    try {
+      const adapter = new SqlitePlanLedgerReadAdapter(store);
+
+      const f1 = makeFixture({
+        positionId: "pos-no-wallet",
+        poolAddress: "pool-no-wallet",
+        asOfUnixMs: 1000,
+        planIdSuffix: "-old"
+      });
+      const f2 = makeFixture({
+        positionId: "pos-no-wallet",
+        poolAddress: "pool-no-wallet",
+        asOfUnixMs: 2000,
+        planIdSuffix: "-new"
+      });
+
+      writePlanLedgerEntry(store, f1);
+      writePlanLedgerEntry(store, f2);
+
+      const res = await adapter.getLatestPositionPlan({
+        positionId: "pos-no-wallet",
+        poolAddress: "pool-no-wallet"
+      });
+
+      expect(res).not.toBeNull();
+      expect(res?.planResponse.planId).toBe("plan-2000-new");
+      expect(res?.planRequest.position.walletId).toBeUndefined();
+    } finally {
+      store.close();
+    }
+  });
 });

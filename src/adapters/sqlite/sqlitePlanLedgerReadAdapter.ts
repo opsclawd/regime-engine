@@ -24,7 +24,7 @@ export class SqlitePlanLedgerReadAdapter implements PlanLedgerReadPort {
         WHERE pr.position_id = ?
           AND pr.wallet_id = ?
           AND pr.pool_address = ?
-        ORDER BY p.as_of_unix_ms DESC, p.id DESC
+        ORDER BY pr.as_of_unix_ms DESC, pr.id DESC
         LIMIT 1
       `
       : `
@@ -34,7 +34,7 @@ export class SqlitePlanLedgerReadAdapter implements PlanLedgerReadPort {
         WHERE pr.position_id = ?
           AND pr.wallet_id IS NULL
           AND pr.pool_address = ?
-        ORDER BY p.as_of_unix_ms DESC, p.id DESC
+        ORDER BY pr.as_of_unix_ms DESC, pr.id DESC
         LIMIT 1
       `;
 
@@ -67,7 +67,7 @@ export class SqlitePlanLedgerReadAdapter implements PlanLedgerReadPort {
           AND pr.wallet_id = ?
           AND pr.pool_address = ?
           AND p.plan_hash = ?
-        ORDER BY p.as_of_unix_ms DESC, p.id DESC
+        ORDER BY pr.as_of_unix_ms DESC, pr.id DESC
         LIMIT 1
       `
       : `
@@ -78,7 +78,7 @@ export class SqlitePlanLedgerReadAdapter implements PlanLedgerReadPort {
           AND pr.wallet_id IS NULL
           AND pr.pool_address = ?
           AND p.plan_hash = ?
-        ORDER BY p.as_of_unix_ms DESC, p.id DESC
+        ORDER BY pr.as_of_unix_ms DESC, pr.id DESC
         LIMIT 1
       `;
 
@@ -103,11 +103,11 @@ export class SqlitePlanLedgerReadAdapter implements PlanLedgerReadPort {
         SELECT
           pr.request_json,
           p.plan_json,
-          p.as_of_unix_ms,
-          p.id,
+          pr.as_of_unix_ms,
+          pr.id,
           ROW_NUMBER() OVER (
             PARTITION BY pr.position_id, pr.wallet_id, pr.pool_address
-            ORDER BY p.as_of_unix_ms DESC, p.id DESC
+            ORDER BY pr.as_of_unix_ms DESC, pr.id DESC
           ) AS rn
         FROM plan_requests pr
         JOIN plans p ON pr.plan_id = p.plan_id

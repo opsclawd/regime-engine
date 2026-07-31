@@ -1,100 +1,86 @@
-# Trigger Pair-Scoped PolicyInsight Synthesis on Evidence Ingest: Design Document
+# Design Document: Durable Position-Scoped PolicyInsight Synthesis Pipeline
 
-## 1. The Problem Being Solved and Why It Matters
+## 1. Problem and Context
 
-The application needs to automatically synthesize `PolicyInsight` records when new intelligence evidence is ingested, so that the UI can display up-to-date, evidence-backed insights to the user.
+The `clmm-v2` plan submission pipeline is blocked because the position-scoped PolicyInsight synthesis pipeline lacks durable, queued execution. Currently, `POST /v1/plan` is unused. For the system to react to position evidence and matching plans by synthesizing canonical `PolicyInsight` records, we need a reliable background worker.
 
-The original concept of a naive trigger had two critical flaws:
+The previous queue design was flawed because it keyed requests on `scopeKey + evidenceHash + rulesetVersion`, which fails to trigger a new synthesis when a new plan is submitted against unchanged evidence. Furthermore, the plan storage uses a SQLite ledger that lacks lookup columns for position/wallet/pool, making it inefficient to fetch the latest plan for a position. We need a robust architecture to enqueue, process, and persist position-scoped synthesis requests.
 
-1. **Scope Disconnect**: Upstream (`sol-usdc-clmm-intelligence`) currently only publishes position-scoped evidence, but the UI expects a pair-scoped insight. A naive trigger querying for pair-scoped evidence would find zero rows, resulting in an empty or degraded insight that silently ignores the ingested position evidence.
-2. **Durability and Isolation**: A simple fire-and-forget trigger in the HTTP handler ties the ingest HTTP response to the synthesis process. If synthesis fails or the server restarts immediately after a `201 Created` response, the insight is never generated.
+## 2. Key Design Decisions and Trade-offs
 
-We must implement a durable trigger mechanism that successfully generates pair-scoped insights based on correct evidence, survives restarts, and completely decouples evidence ingestion from synthesis.
+### 2.1. Plan Storage Topology
 
-## 2. Key Design Decisions and Trade-offs Considered
+**Decision:** We will adopt **Option A: Run the synthesis worker in the same service/container as the HTTP API.**
 
-### Scope Resolution
+- **Trade-offs:**
+  - _Option A (Co-location)_ is the simplest approach and requires the least architectural churn. It avoids the complexity of dual-writes or a massive migration of the ledger from SQLite to Postgres.
+  - _Option B (Move/mirror to Postgres)_ would allow transactional boundaries between plan persistence and queue wake-ups, which is cleaner long-term, but it introduces cross-database sync issues if we mirror, or requires significant rewrites if we move completely.
+- **Rationale:** The HTTP service already manages connections to both SQLite (for ledger) and Postgres (for evidence/insights). Running the worker (`policyInsightSynthesizer`) as part of the same deployment (or as a background thread/process in the same container) guarantees filesystem access to the SQLite volume, avoiding distributed system complexity for now.
 
-We must choose how to reconcile the fact that upstream sends position-scoped data, but we need pair-scoped insights.
+### 2.2. Queue Identity
 
-- _Option A: Projection Policy in Regime Engine._ We could build a formal projection in `regime-engine` to strip position-specific fields and aggregate them into a pair view. **Trade-off:** This adds significant complexity to the `regime-engine` synthesis logic and forces it to understand how to safely generalize position data.
-- _Option B (Preferred): Upstream Publishes Pair Scope._ We modify `sol-usdc-clmm-intelligence` to explicitly publish a pair-scoped evidence bundle containing only pair-safe data. **Trade-off:** Requires a cross-repository change, but keeps `regime-engine` logic pure, exact, and strictly aligned with the requested scope.
-  **Decision:** We are explicitly selecting Option B (Preferred).
+**Decision:** The durable queue in Postgres (`policy_insight_synthesis_requests`) will use a unique constraint based on:
+`scopeKey + selectionHash + planHash + rulesetVersion`
 
-### Trigger Durability
+- **Rationale:** This fixes the identity gap. If a new plan arrives for existing evidence, `planHash` changes, resulting in a new queue entry. This ensures that every unique combination of evidence and plan produces a synthesis attempt.
 
-The trigger must survive a restart between the `201` response and synthesis.
+### 2.3. Temporal Compatibility Rules
 
-- _Option A: In-memory Event Bus (EventEmitter)._ Fast and easy to implement in the HTTP handler. **Trade-off:** Fails the durability requirement; lost on restart.
-- _Option B: Outbox Pattern / Queue Table._ Insert a trigger record into a Postgres queue table within the same transaction as the evidence ingestion. **Trade-off:** Requires schema migrations and transaction coordination.
-- _Option C: Cursor-based Polling Worker._ A background worker periodically queries the evidence repository for bundles newer than a persisted cursor (e.g., the last processed `receiptId`). **Trade-off:** Introduces a slight polling delay, but natively solves durability (cursor is saved), natively coalesces concurrent updates (processes the latest bundle since the last poll), and requires minimal schema changes.
-  **Decision:** A Cursor-based Polling Worker or an Outbox table. Given the need to coalesce concurrent pair-synthesis attempts, a queue/outbox table with deduplication or a polling worker tracking the latest state is ideal.
+**Decision:**
 
-## 3. Proposed Approach with Rationale
+- **Equality:** Exact wallet, position, and pool address equality must exist between the evidence scope and the plan.
+- **Observation Skew:** Evidence age must be within 5 minutes of the plan's `asOfUnixMs` (aligned with `clmm-v2`'s staleness tolerance).
+- **Expiration:** If evidence expires while waiting for a plan, the queued request permanently fails with `POSITION_STALE`. A fresh intelligence run will provide new evidence.
+- **Superseding:** Since the queue identity includes `planHash`, a newer plan creates a new queue request. The worker will always resolve the _latest_ eligible plan. If an older request is processed, it will detect that a newer plan exists and can be skipped or naturally produce a superseded insight.
 
-**1. Explicit Pair-Scope Publication (Companion Issue)**
-We will assume the companion issue in `sol-usdc-clmm-intelligence` is completed, meaning `regime-engine` will naturally begin receiving evidence bundles where `scope.kind === "pair"`.
+## 3. Proposed Approach
 
-**2. Canonical Market Selector Configuration**
-Pair-scoped synthesis lacks a `poolAddress` (unlike position scope). We will define the canonical SOL/USDC market values in the application configuration to feed into `synthesizePolicyInsightUseCase`:
-
-```typescript
-{
-  source: "geckoterminal",
-  network: "solana",
-  poolAddress: process.env.CANONICAL_SOL_USDC_POOL_ADDRESS,
-  timeframe: "1h"
-}
-```
-
-**3. Durable Trigger Worker**
-To satisfy the restart survival and coalescing requirements:
-
-- We will implement a `SynthesisTriggerWorker` that runs in the background.
-- It will track a cursor (the highest `receiptId` or `receivedAtUnixMs` processed) in the database (e.g., a simple key-value state table or an outbox table).
-- When `ingestEvidenceBundleUseCase` returns `created`, it can optionally signal the worker to wake up immediately (to minimize polling delay), but the worker's source of truth is the database.
-- The worker fetches all new pair-scoped evidence since the last cursor. If multiple exist, it only calls `synthesizePolicyInsightUseCase` for the latest one (coalescing).
-- The worker updates its cursor only after a successful synthesis or after permanently classifying a failure.
-
-**4. Error Isolation and Logging**
-
-- The HTTP handler (`evidenceIngest.ts`) will no longer attempt to run synthesis. It will only return `201` upon successful evidence insertion.
-- The worker will wrap `synthesizePolicyInsightUseCase` in a `try/catch`.
-- Upon success or failure, it will log: evidence receipt ID, scope, `synthesisInputHash`, resulting insight ID (if successful), and duration.
-- Failures in the worker will not affect the `201` status of the original HTTP request.
-
-**5. Backfill Script**
-We will create a script `scripts/backfill-pair-insights.ts` that:
-
-- Queries the latest ingested pair-scoped evidence.
-- Invokes `synthesizePolicyInsightUseCase` directly.
-- Can be run manually during deployment to catch up on evidence ingested prior to this feature.
+1.  **SQLite Migration:**
+    We will add denormalized columns to the `plan_requests` SQLite table: `position_id`, `wallet_id`, and `pool_address`. This allows `PlanLedgerReadPort.getLatestPositionPlan()` to do indexed lookups rather than full JSON table scans.
+2.  **Durable Queue (Postgres):**
+    Create `policy_insight_synthesis_requests` in Postgres with:
+    - `id` (PK)
+    - `scope_key`, `selection_hash`, `plan_hash`, `ruleset_version` (Unique Constraint)
+    - `status` (pending, processing, completed, failed)
+    - `locked_at`, `locked_by`, `lease_expires_at` (for robust lease recovery, allowing crashed workers to drop leases)
+    - `error_code`, `error_message`
+3.  **Synthesis Worker (`src/workers/policyInsightSynthesizer.ts`):**
+    A new worker that polls `policy_insight_synthesis_requests` using `FOR UPDATE SKIP LOCKED`. It will:
+    - Claim a batch of requests by updating `locked_at`, `locked_by`, and `lease_expires_at`.
+    - Read the exact `PlanRequest`/`PlanResponse` from SQLite using the new indexed columns.
+    - Invoke `synthesizePolicyInsightUseCase`.
+    - Classify errors using structured error codes to decide between retry and permanent failure.
+4.  **Structured Error Codes:**
+    We will add an `errorCode` string literal to `PolicyInsightValidationError` and `PolicyInsightStoreUnavailableError`. The worker will match on codes like `POSITION_PLAN_MISSING`, `PLAN_HASH_INVALID`, etc., rather than string-matching the message.
+5.  **Internal Trigger Endpoint:**
+    Implement `POST /v1/internal/insights/sol-usdc/synthesis-requests` in the HTTP adapter. It will enqueue requests into the Postgres table and return `202 Accepted` with a request ID.
 
 ## 4. Assumptions Made
 
-- The upstream publisher (`sol-usdc-clmm-intelligence`) will be updated to publish `scope.kind: "pair"` evidence bundles.
-- A canonical `SOL/USDC` pool address will be provided via environment variables (e.g., `CANONICAL_SOL_USDC_POOL_ADDRESS`).
-- The system has a mechanism to persist a cursor (e.g., a small state table in Postgres) for the background worker to resume from after a restart.
-- The `synthesisInputHash` replay detection in `synthesizePolicyInsightUseCase` is functioning correctly and provides a secondary defense against duplicate insights.
-- "Whirlpool" scope is fully deprecated and out of scope for this implementation.
+- The SQLite database file is physically accessible to the worker process (guaranteed by our decision to co-locate the worker with the HTTP service).
+- The 5-minute staleness tolerance for evidence vs plan is a hard limit; anything older is rejected.
+- The `plan_requests` table can be safely migrated without downtime (or downtime is acceptable for this deployment).
+- We only need to enqueue position scopes that are unexpired on deployment; scopes without eligible evidence will just wait for the next intelligence run.
 
-## 5. Scope
+## 5. Scope Definition
 
-**In Scope:**
+### 5.1. In Scope
 
-- Creating the durable background worker/polling mechanism.
-- Wiring the canonical market selector for pair-scoped synthesis.
-- Implementing the comprehensive logging for synthesis outcomes.
-- Ensuring the HTTP ingest handler remains isolated from synthesis failures.
-- Creating the `scripts/backfill-pair-insights.ts` script.
+- Updating SQLite `plan_requests` schema with `position_id`, `wallet_id`, `pool_address`.
+- Creating Postgres table `policy_insight_synthesis_requests`.
+- Implementing the worker `policyInsightSynthesizer`.
+- Implementing the internal `POST` trigger endpoint.
+- Enforcing temporal compatibility and structured error codes.
 
-**Out of Scope:**
+### 5.2. Out of Scope
 
-- Making changes to the upstream `sol-usdc-clmm-intelligence` repository.
-- Implementing a position-to-pair projection policy in `regime-engine`.
-- Generating insights for anything other than pair-scope in this specific trigger.
+- Pair/whirlpool-scoped synthesis (tracked in #78).
+- Any changes to `clmm-v2` or its smart contracts.
+- Modifying the HTTP `POST /v1/plan` endpoint (aside from having it trigger enqueueing).
+- Moving plan storage completely to Postgres.
 
-## 6. Risks or Concerns Identified from Code Analysis
+## 6. Risks and Concerns
 
-- **Cursor Persistence:** The application currently has ledger adapters for SQLite and repositories for Postgres. If the background worker needs to store a cursor to survive restarts, we need a clean, consistent place to store it (likely in Postgres alongside the evidence repository) to prevent race conditions in multi-instance deployments.
-- **Backfill Interference:** The `backfill-pair-insights.ts` script must be careful not to trigger duplicate work if the background worker is simultaneously processing the same evidence. The `synthesisInputHash` replay detection handles this, but we may see `PolicyInsightStoreUnavailableError` or constraint violations if they race.
+- **Co-location Coupling:** While running the worker in the same service avoids Postgres migration, it tightly couples the worker's scaling to the HTTP API's scaling. If the HTTP API scales horizontally, multiple workers might fight over the SQLite lock (since SQLite concurrency is limited), though SQLite is currently only used for plan ledger appends.
+- **SQLite Concurrency:** If the synthesis worker does heavy reads on the SQLite db while the HTTP API does writes, it could cause `SQLITE_BUSY` errors. We need to ensure WAL (Write-Ahead Logging) is enabled.
+- **Lease Expiration Tuning:** The `lease_expires_at` window needs to be tuned correctly. If it's too short, a long-running synthesis might have its lease stolen; if too long, crashed workers will stall requests.
