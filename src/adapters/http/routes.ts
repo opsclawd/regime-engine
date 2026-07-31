@@ -15,6 +15,7 @@ import { createSrLevelsV2CurrentHandler } from "./handlers/srLevelsV2Current.js"
 import { createEvidenceIngestHandler } from "./handlers/evidenceIngest.js";
 import { createEvidenceCurrentHandler } from "./handlers/evidenceCurrent.js";
 import { createEvidenceHistoryHandler } from "./handlers/evidenceHistory.js";
+import { createPositionSynthesisRequestHandler } from "./handlers/positionSynthesisRequest.js";
 import { EVIDENCE_BODY_LIMIT_BYTES } from "./evidenceHttp.js";
 import type { ClockPort } from "../../application/ports/clock.js";
 import type { GetCurrentRegimeUseCase } from "../../application/use-cases/getCurrentRegimeUseCase.js";
@@ -29,6 +30,7 @@ import type { GetEvidenceHistoryUseCase } from "../../application/use-cases/getE
 import type { SrThesesV2Store } from "../../ledger/srThesesV2Store.js";
 import type { GetCurrentPolicyInsightUseCase } from "../../application/use-cases/getCurrentPolicyInsightUseCase.js";
 import type { GetPolicyInsightHistoryUseCase } from "../../application/use-cases/getPolicyInsightHistoryUseCase.js";
+import type { RequestPositionPolicyInsightSynthesisUseCase } from "../../application/use-cases/requestPositionPolicyInsightSynthesisUseCase.js";
 import type { LedgerStore } from "../../ledger/store.js";
 
 export interface VersionInfo {
@@ -57,6 +59,7 @@ export interface HttpRouteDependencies {
   ledgerStore: LedgerStore;
   getCurrentPolicyInsight: GetCurrentPolicyInsightUseCase | null;
   getPolicyInsightHistory: GetPolicyInsightHistoryUseCase | null;
+  requestPositionPolicyInsightSynthesis: RequestPositionPolicyInsightSynthesisUseCase | null;
   srThesesV2Store: SrThesesV2Store | null;
   versionInfo: VersionInfo;
   checkHealth(): Promise<HealthResult>;
@@ -110,4 +113,8 @@ export const registerRoutes = (app: FastifyInstance, deps: HttpRouteDependencies
   );
   app.get("/v1/evidence/sol-usdc/current", createEvidenceCurrentHandler(deps.getCurrentEvidence));
   app.get("/v1/evidence/sol-usdc/history", createEvidenceHistoryHandler(deps.getEvidenceHistory));
+  app.post(
+    "/v1/internal/insights/sol-usdc/synthesis-requests",
+    createPositionSynthesisRequestHandler(deps.requestPositionPolicyInsightSynthesis)
+  );
 };
