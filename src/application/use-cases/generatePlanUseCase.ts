@@ -14,6 +14,8 @@ import {
   PlanPositionStateStaleError
 } from "../errors/planErrors.js";
 
+import type { RequestPositionPolicyInsightSynthesisUseCase } from "./requestPositionPolicyInsightSynthesisUseCase.js";
+
 export type GeneratePlanUseCase = (body: PlanRequest) => Promise<PlanResponse>;
 
 const POSITION_OBSERVATION_MAX_AGE_MS = 60_000;
@@ -21,6 +23,7 @@ const POSITION_OBSERVATION_MAX_AGE_MS = 60_000;
 export interface GeneratePlanUseCaseDeps {
   candleReadPort: CandleReadPort;
   planLedgerWritePort: PlanLedgerWritePort;
+  requestPositionSynthesis?: RequestPositionPolicyInsightSynthesisUseCase;
 }
 
 export const createGeneratePlanUseCase = (deps: GeneratePlanUseCaseDeps): GeneratePlanUseCase => {
@@ -171,6 +174,20 @@ export const createGeneratePlanUseCase = (deps: GeneratePlanUseCaseDeps): Genera
     });
 
     await deps.planLedgerWritePort.writePlan({ planRequest: body, planResponse: plan });
+
+    if (deps.requestPositionSynthesis && body.position.walletId) {
+      await deps.requestPositionSynthesis({
+        scope: {
+          kind: "position",
+          network: "solana-mainnet",
+          positionId: body.position.positionId,
+          whirlpoolAddress: body.market.poolAddress,
+          walletAddress: body.position.walletId
+        },
+        wakeUpIdentity: plan.planId
+      });
+    }
+
     return plan;
   };
 };

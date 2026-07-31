@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -174,5 +174,91 @@ describe("IngestEvidenceBundleUseCase", () => {
 
     await expect(useCase(DETERMINISTIC_ONLY_FIXTURE)).rejects.toThrow(EvidenceRunConflictError);
     await expect(useCase(DETERMINISTIC_ONLY_FIXTURE)).rejects.toThrow("Run ID already exists");
+  });
+
+  it("new and idempotently replayed position evidence both wake reconciliation", async () => {
+    const repo = new FakeEvidenceBundleRepositoryPort();
+    const receipt: EvidenceBundleReceipt = {
+      id: 10,
+      evidenceHash: vector.sha256,
+      receivedAtUnixMs: CLOCK_TIME,
+      scopeKey: "position:15:wallet12345678:19:whirlpool123456789:10:position123"
+    };
+    repo.nextOutcome = { status: "created", receipt };
+
+    const positionFixture = {
+      ...DETERMINISTIC_ONLY_FIXTURE,
+      scope: {
+        kind: "position",
+        network: "solana-mainnet",
+        walletAddress: "wallet12345678",
+        whirlpoolAddress: "whirlpool123456789",
+        positionId: "position123"
+      }
+    };
+
+    const requestPositionSynthesisFn = vi.fn().mockResolvedValue({
+      requestId: 1,
+      status: "pending",
+      selectionHash: "hash",
+      planHash: "planHash",
+      freshEvidenceRequired: false
+    });
+    const requestPositionSynthesis = Object.assign(requestPositionSynthesisFn, {
+      reconcileStartup: vi.fn()
+    });
+
+    const clock = new FakeClockPort(CLOCK_TIME);
+    const useCase = createIngestEvidenceBundleUseCase({
+      repository: repo,
+      clock,
+      requestPositionSynthesis
+    });
+
+    // First call: new evidence ("created")
+    const res1 = await useCase(positionFixture);
+    expect(res1.status).toBe("created");
+    expect(requestPositionSynthesis).toHaveBeenCalledTimes(1);
+    expect(requestPositionSynthesis).toHaveBeenLastCalledWith({
+      scope: positionFixture.scope,
+      wakeUpIdentity: positionFixture.runId
+    });
+
+    // Second call: replayed evidence ("already_ingested")
+    repo.nextOutcome = { status: "already_ingested", receipt };
+    const res2 = await useCase(positionFixture);
+    expect(res2.status).toBe("already_ingested");
+    expect(requestPositionSynthesis).toHaveBeenCalledTimes(2);
+    expect(requestPositionSynthesis).toHaveBeenLastCalledWith({
+      scope: positionFixture.scope,
+      wakeUpIdentity: positionFixture.runId
+    });
+  });
+
+  it("non-position evidence never wakes the position queue", async () => {
+    const repo = new FakeEvidenceBundleRepositoryPort();
+    repo.nextOutcome = {
+      status: "created",
+      receipt: {
+        id: 1,
+        evidenceHash: vector.sha256,
+        receivedAtUnixMs: CLOCK_TIME,
+        scopeKey: "pair"
+      }
+    };
+
+    const requestPositionSynthesis = Object.assign(vi.fn(), {
+      reconcileStartup: vi.fn()
+    });
+    const clock = new FakeClockPort(CLOCK_TIME);
+    const useCase = createIngestEvidenceBundleUseCase({
+      repository: repo,
+      clock,
+      requestPositionSynthesis
+    });
+
+    await useCase(DETERMINISTIC_ONLY_FIXTURE);
+
+    expect(requestPositionSynthesis).not.toHaveBeenCalled();
   });
 });

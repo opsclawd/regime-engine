@@ -4,6 +4,7 @@ import type { IngestEvidenceBundleUseCase } from "../../../application/use-cases
 import { EvidenceBundleValidationError } from "../../../contract/evidence/v1/validate.js";
 import { EvidenceRunConflictError } from "../../../application/ports/evidenceBundleRepositoryPort.js";
 import { EvidenceStoreUnavailableError } from "../../../application/errors/evidenceErrors.js";
+import { PolicyInsightStoreUnavailableError } from "../../../application/errors/policyInsightErrors.js";
 
 const SCHEMA_VERSION = "evidence-bundle.v1" as const;
 
@@ -68,12 +69,20 @@ export const createEvidenceIngestHandler = (useCase: IngestEvidenceBundleUseCase
         });
       }
 
-      if (error instanceof EvidenceStoreUnavailableError) {
+      if (
+        error instanceof EvidenceStoreUnavailableError ||
+        error instanceof PolicyInsightStoreUnavailableError
+      ) {
+        const isEvidenceError = error instanceof EvidenceStoreUnavailableError;
+        const code = isEvidenceError ? "EVIDENCE_STORE_UNAVAILABLE" : error.errorCode;
+        const message = isEvidenceError
+          ? "Evidence store is temporarily unavailable"
+          : "Policy insight store is temporarily unavailable";
         return reply.code(503).send({
           schemaVersion: SCHEMA_VERSION,
           error: {
-            code: "EVIDENCE_STORE_UNAVAILABLE",
-            message: "Evidence store is temporarily unavailable",
+            code,
+            message,
             details: []
           }
         });
