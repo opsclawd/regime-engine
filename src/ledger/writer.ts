@@ -44,13 +44,16 @@ export const writePlanLedgerEntry = (
       .prepare(
         `
           INSERT INTO plan_requests
-            (plan_id, as_of_unix_ms, request_hash, request_json, created_at_unix_ms)
+            (plan_id, position_id, wallet_id, pool_address, as_of_unix_ms, request_hash, request_json, created_at_unix_ms)
           VALUES
-            (?, ?, ?, ?, ?)
+            (?, ?, ?, ?, ?, ?, ?, ?)
         `
       )
       .run(
         input.planResponse.planId,
+        input.planRequest.position.positionId,
+        input.planRequest.position.walletId ?? null,
+        input.planRequest.market.poolAddress,
         input.planRequest.asOfUnixMs,
         sha256Hex(canonicalRequest),
         canonicalRequest,

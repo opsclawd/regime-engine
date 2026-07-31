@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { createGeneratePlanUseCase } from "../generatePlanUseCase.js";
 import { FakePlanLedgerWritePort } from "./fakes/fakePlanLedgerWritePort.js";
 import { FakeCandleReadPort } from "./fakes/fakeCandleReadPort.js";
@@ -188,5 +188,76 @@ describe("GeneratePlanUseCase", () => {
     });
     const plan = await useCase(body);
     expect(plan.actions[0].type).toBe("REQUEST_EXIT_CLMM");
+  });
+
+  it("a persisted plan with wallet identity wakes reconciliation after SQLite commit", async () => {
+    const { candleReadPort, planLedgerWritePort } = buildDeps(enoughDerived1hSourceRows());
+    const callOrder: string[] = [];
+
+    const originalWritePlan = planLedgerWritePort.writePlan.bind(planLedgerWritePort);
+    planLedgerWritePort.writePlan = async (input) => {
+      callOrder.push("writePlan");
+      return await originalWritePlan(input);
+    };
+
+    const requestPositionSynthesisFn = vi.fn().mockImplementation(async () => {
+      callOrder.push("requestPositionSynthesis");
+      return { requestId: 1, status: "pending" };
+    });
+    const requestPositionSynthesis = Object.assign(requestPositionSynthesisFn, {
+      reconcileStartup: vi.fn()
+    });
+
+    const useCase = createGeneratePlanUseCase({
+      candleReadPort,
+      planLedgerWritePort,
+      requestPositionSynthesis
+    });
+
+    const body = makeRequest({
+      position: {
+        ...makeRequest().position,
+        walletId: "wallet123"
+      }
+    });
+
+    const plan = await useCase(body);
+    expect(plan).toBeDefined();
+
+    expect(callOrder).toEqual(["writePlan", "requestPositionSynthesis"]);
+    expect(requestPositionSynthesis).toHaveBeenCalledWith({
+      scope: {
+        kind: "position",
+        network: "solana-mainnet",
+        positionId: "pos-uc-1",
+        whirlpoolAddress: "PoolUC1",
+        walletAddress: "wallet123"
+      },
+      wakeUpIdentity: plan.planId
+    });
+  });
+
+  it("a plan without wallet identity remains valid but cannot form a position evidence scope", async () => {
+    const { candleReadPort, planLedgerWritePort } = buildDeps(enoughDerived1hSourceRows());
+    const requestPositionSynthesis = Object.assign(vi.fn(), {
+      reconcileStartup: vi.fn()
+    });
+
+    const useCase = createGeneratePlanUseCase({
+      candleReadPort,
+      planLedgerWritePort,
+      requestPositionSynthesis
+    });
+
+    const body = makeRequest({
+      position: {
+        ...makeRequest().position,
+        walletId: undefined
+      }
+    });
+
+    const plan = await useCase(body);
+    expect(plan).toBeDefined();
+    expect(requestPositionSynthesis).not.toHaveBeenCalled();
   });
 });

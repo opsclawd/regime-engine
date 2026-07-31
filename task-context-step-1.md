@@ -1,6 +1,6 @@
 # Task Context: Task 1
 
-Title: Validate canonical pair synthesis configuration
+Title: Add the indexed SQLite position-plan read model
 ## Workspace & Scope Constraints
 
 ## WORKSPACE CONSTRAINTS
@@ -9,49 +9,87 @@ Your working directory is a dedicated git worktree with the repository's complet
 
 .ai-orchestrator.local.json, if one exists, lives only in the main checkout and is intentionally not copied into your worktree — it is operator-machine-specific and not part of your task. Do not search for it or read it outside this directory. Reason about configuration using only .ai-orchestrator.json in your own working directory; treat it as the effective config for your task.
 
-Working Directory: /home/gary/.openclaw/workspace/regime-engine/.ai-worktrees/issue-78
+Working Directory: /home/gary/.openclaw/workspace/regime-engine/.ai-worktrees/issue-79
 Repository: opsclawd/regime-engine
-Branch: ai/issue-78
-Start Commit: c8bcac54261f45e46e11f79b38cc9d55167fe4f5
+Branch: ai/issue-79
+Start Commit: d64e12669d308cc998d484d6eb84f9e0cbc35898
 
 ## Task Requirements
 
 **Files:**
 
-- Create: `src/workers/policyInsight/config.ts`
-- Create: `src/workers/policyInsight/__tests__/config.test.ts`
-- Reference: `src/workers/gecko/config.ts`
-- Reference: `src/engine/marketRegime/config.ts`
+- Modify: `src/ledger/schema.sql`
+- Modify: `src/ledger/store.ts`
+- Modify: `src/ledger/writer.ts`
+- Modify: `src/application/ports/planLedgerPort.ts`
+- Create: `src/adapters/sqlite/sqlitePlanLedgerReadAdapter.ts`
+- Create: `src/ledger/__tests__/planLedgerPositionMigration.test.ts`
+- Create: `src/adapters/sqlite/__tests__/sqlitePlanLedgerReadAdapter.test.ts`
 
-- [ ] **Step 1: Write failing configuration tests.** Define exact tests named `rejects a missing canonical SOL/USDC pool address`, `rejects placeholder pool addresses`, `returns the canonical pair market selector`, and `validates positive poll lease retry intervals and max attempts budget`. Cover defaults of source `geckoterminal`, network `solana`, timeframe `1h`, a 5-second poll, a 60-second lease, a bounded retry interval no greater than the lease, and default `maxAttempts` of 5.
-- [ ] **Step 2: Verify the focused test fails because the parser does not exist.** Run `pnpm exec vitest run src/workers/policyInsight/__tests__/config.test.ts`; expect module-resolution/test failures.
-- [ ] **Step 3: Implement the typed parser.** Export `PolicyInsightSynthesisWorkerConfig` and `parsePolicyInsightSynthesisWorkerConfig(env)`. Require `CANONICAL_SOL_USDC_POOL_ADDRESS`, reject empty strings and `<`/`>` placeholders, keep source/network/timeframe as literal canonical values, and parse positive integer `POLICY_INSIGHT_SYNTHESIS_POLL_INTERVAL_MS`, `POLICY_INSIGHT_SYNTHESIS_LEASE_MS`, `POLICY_INSIGHT_SYNTHESIS_RETRY_MS`, and `POLICY_INSIGHT_SYNTHESIS_MAX_ATTEMPTS` (default 5) values. The returned config must contain a reusable `marketSelector` matching `SynthesizePolicyInsightInput["marketSelector"]` and positive `maxAttempts` budget.
-- [ ] **Step 4: Run focused verification.** Run `pnpm exec vitest run src/workers/policyInsight/__tests__/config.test.ts` and `pnpm exec eslint src/workers/policyInsight/config.ts src/workers/policyInsight/__tests__/config.test.ts`; expect all checks to pass with zero warnings.
-- [ ] **Step 5: Commit.** Commit as `m78: add pair synthesis worker configuration`.
+**Exported API changes:** Add `StoredPositionPlan` and `PlanLedgerReadPort`, with `getLatestPositionPlan(scope)`, `getPositionPlanByHash(scope, planHash)`, and `listLatestPositionPlans()`. Keep `PlanLedgerWritePort.writePlan` unchanged.
+
+**Behavioral invariants / tests written first:**
+
+- `migrates an existing plan ledger and backfills position lookup columns from canonical request JSON`: an old database gains `position_id`, `wallet_id`, and `pool_address` without losing rows.
+- `enables WAL for a file-backed ledger used by the HTTP process and worker`: a file ledger reports `journal_mode=wal`; `:memory:` remains supported.
+- `writes denormalized position identity with the canonical request and plan in one transaction`: either both ledger rows exist or neither does.
+- `returns the exact latest request and response for a matching wallet position and pool`: ordering is `plans.as_of_unix_ms DESC, plans.id DESC` and no JSON scan is used.
+- `returns the exact historical plan selected by plan hash`: the adapter does not reconstruct or substitute fields.
+- `lists one latest wallet identified plan per position and pool for deployment reconciliation`: plan-only scopes are discoverable even when Postgres has no evidence.
+- `does not match a missing wallet or a different position or pool`: exact identity is mandatory.
+
+- [ ] Add failing migration and adapter tests. Construct a legacy SQLite file with the old table shape, reopen it through `createLedgerStore`, and assert the backfill and query plan via `EXPLAIN QUERY PLAN` uses `idx_plan_requests_position_lookup`.
+- [ ] Run `pnpm exec vitest run src/ledger/__tests__/planLedgerPositionMigration.test.ts src/adapters/sqlite/__tests__/sqlitePlanLedgerReadAdapter.test.ts`; expect failures for absent columns/read adapter.
+- [ ] Change the fresh-install `plan_requests` definition to include the three lookup columns and an index on `(position_id, wallet_id, pool_address, as_of_unix_ms DESC, id DESC)`. In `createLedgerStore`, run a transactionally guarded compatibility migration that inspects `PRAGMA table_info(plan_requests)`, adds missing columns, parses each canonical `request_json`, backfills identities, then creates the index. Set `PRAGMA journal_mode=WAL` for file databases before normal traffic.
+- [ ] Extend the writer insert to store `planRequest.position.positionId`, `planRequest.position.walletId ?? null`, and `planRequest.market.poolAddress`. Implement both read methods by joining `plan_requests` and `plans` on `plan_id`, parsing the stored JSON, and returning the exact pair:
+
+```ts
+export interface StoredPositionPlan {
+  readonly planRequest: PlanRequest;
+  readonly planResponse: PlanResponse;
+}
+
+export interface PlanLedgerReadPort {
+  getLatestPositionPlan(scope: PositionPlanScope): Promise<StoredPositionPlan | null>;
+  getPositionPlanByHash(
+    scope: PositionPlanScope,
+    planHash: string
+  ): Promise<StoredPositionPlan | null>;
+  listLatestPositionPlans(): Promise<readonly StoredPositionPlan[]>;
+}
+```
+
+- [ ] Re-run the targeted Vitest command and `pnpm exec eslint src/ledger/store.ts src/ledger/writer.ts src/application/ports/planLedgerPort.ts src/adapters/sqlite/sqlitePlanLedgerReadAdapter.ts src/ledger/__tests__/planLedgerPositionMigration.test.ts src/adapters/sqlite/__tests__/sqlitePlanLedgerReadAdapter.test.ts`; expect all checks to pass. The automatic implementation gate then runs `pnpm -r typecheck`.
+- [ ] Commit with `git add src/ledger/schema.sql src/ledger/store.ts src/ledger/writer.ts src/application/ports/planLedgerPort.ts src/adapters/sqlite/sqlitePlanLedgerReadAdapter.ts src/ledger/__tests__/planLedgerPositionMigration.test.ts src/adapters/sqlite/__tests__/sqlitePlanLedgerReadAdapter.test.ts && git commit -m "m79: index and read position plans"`.
 
 ## Repository Targets
 
 ### Expected Files
-- src/workers/policyInsight/config.ts
-- src/workers/policyInsight/__tests__/config.test.ts
+- src/ledger/schema.sql
+- src/ledger/store.ts
+- src/ledger/writer.ts
+- src/application/ports/planLedgerPort.ts
+- src/adapters/sqlite/sqlitePlanLedgerReadAdapter.ts
+- src/ledger/__tests__/planLedgerPositionMigration.test.ts
+- src/adapters/sqlite/__tests__/sqlitePlanLedgerReadAdapter.test.ts
 
 ### Reference Files
-- src/workers/gecko/config.ts
-- src/engine/marketRegime/config.ts
-- src/application/use-cases/synthesizePolicyInsightUseCase.ts
+- src/contract/v1/types.ts
+- src/contract/v1/validation.ts
 
 ## Validation Commands
 
 ```bash
-["pnpm","exec","vitest","run","src/workers/policyInsight/__tests__/config.test.ts"]
-["pnpm","exec","eslint","src/workers/policyInsight/config.ts","src/workers/policyInsight/__tests__/config.test.ts"]
+pnpm exec vitest run src/ledger/__tests__/planLedgerPositionMigration.test.ts src/adapters/sqlite/__tests__/sqlitePlanLedgerReadAdapter.test.ts
+pnpm exec eslint src/ledger/store.ts src/ledger/writer.ts src/application/ports/planLedgerPort.ts src/adapters/sqlite/sqlitePlanLedgerReadAdapter.ts src/ledger/__tests__/planLedgerPositionMigration.test.ts src/adapters/sqlite/__tests__/sqlitePlanLedgerReadAdapter.test.ts
 ```
 
 ## Behavioral Invariants
 
 You MUST implement the following behavioral invariants as named tests first (TDD):
 
-- **canonical market selector**: Valid configuration always selects geckoterminal, solana, the configured canonical pool, and the 1h regime timeframe. (Test: `returns the canonical pair market selector`)
-- **invalid pool fails closed**: A missing, empty, or placeholder canonical pool address prevents worker startup. (Test: `rejects placeholder pool addresses`)
-- **positive bounded timings and retry budget**: Poll, lease, and retry intervals are positive integers, retry delay does not exceed lease duration, and max attempts budget defaults to positive integer. (Test: `validates positive poll lease retry intervals and max attempts budget`)
+- **legacy ledger backfill**: Opening an old ledger adds and backfills position lookup columns without losing canonical rows. (Test: `migrates an existing plan ledger and backfills position lookup columns from canonical request JSON`)
+- **atomic denormalized write**: Canonical request/plan rows and denormalized position identity commit or roll back together. (Test: `writes denormalized position identity with the canonical request and plan in one transaction`)
+- **exact latest lookup**: Latest lookup matches wallet, position, and pool and returns the exact stored JSON pair through the index. (Test: `returns the exact latest request and response for a matching wallet position and pool`)
+- **plan scope discovery**: Deployment reconciliation can discover the latest wallet-identified plan even when evidence is absent. (Test: `lists one latest wallet identified plan per position and pool for deployment reconciliation`)
 

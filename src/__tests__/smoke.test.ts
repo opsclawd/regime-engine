@@ -73,7 +73,7 @@ describe("GET /v1/openapi.json", () => {
     const doc = response.json() as { openapi: string; paths: Record<string, unknown> };
     expect(doc.openapi).toMatch(/^3\./);
     const paths = Object.keys(doc.paths);
-    expect(paths).toHaveLength(18);
+    expect(paths).toHaveLength(19);
     expect(paths).toEqual(
       expect.arrayContaining([
         "/health",
@@ -93,7 +93,8 @@ describe("GET /v1/openapi.json", () => {
         "/v2/sr-levels/current",
         "/v1/evidence/sol-usdc",
         "/v1/evidence/sol-usdc/current",
-        "/v1/evidence/sol-usdc/history"
+        "/v1/evidence/sol-usdc/history",
+        "/v1/internal/insights/sol-usdc/synthesis-requests"
       ])
     );
   });

@@ -1,6 +1,6 @@
 # Task Context: Task 6
 
-Title: Add explicit backfill and deployment wiring
+Title: Wake the queue from evidence and plan persistence
 ## Workspace & Scope Constraints
 
 ## WORKSPACE CONSTRAINTS
@@ -9,61 +9,75 @@ Your working directory is a dedicated git worktree with the repository's complet
 
 .ai-orchestrator.local.json, if one exists, lives only in the main checkout and is intentionally not copied into your worktree — it is operator-machine-specific and not part of your task. Do not search for it or read it outside this directory. Reason about configuration using only .ai-orchestrator.json in your own working directory; treat it as the effective config for your task.
 
-Working Directory: /home/gary/.openclaw/workspace/regime-engine/.ai-worktrees/issue-78
+Working Directory: /home/gary/.openclaw/workspace/regime-engine/.ai-worktrees/issue-79
 Repository: opsclawd/regime-engine
-Branch: ai/issue-78
-Start Commit: c8bcac54261f45e46e11f79b38cc9d55167fe4f5
+Branch: ai/issue-79
+Start Commit: d64e12669d308cc998d484d6eb84f9e0cbc35898
 
 ## Task Requirements
 
 **Files:**
 
-- Create: `scripts/backfill-pair-insights.ts`
-- Modify: `src/workers/__tests__/policyInsightSynthesisWorker.test.ts`
-- Modify: `package.json`
-- Modify: `.env.example`
-- Modify: `scripts/start.sh`
-- Modify: `scripts/predeploy.sh`
-- Modify: `docs/runbooks/railway-deploy.md`
-- Reference: `src/workers/policyInsightSynthesisWorker.ts`
-- Reference: `src/workers/policyInsight/runSynthesisCycle.ts`
+- Modify: `src/application/use-cases/ingestEvidenceBundleUseCase.ts`
+- Modify: `src/application/use-cases/generatePlanUseCase.ts`
+- Modify: `src/application/use-cases/__tests__/ingestEvidenceBundleUseCase.test.ts`
+- Modify: `src/application/use-cases/__tests__/generatePlanUseCase.test.ts`
+- Modify: `src/adapters/http/handlers/evidenceIngest.ts`
+- Modify: `src/adapters/http/handlers/plan.ts`
+- Create: `src/adapters/http/handlers/__tests__/evidenceIngest.positionSynthesis.test.ts`
+- Create: `src/adapters/http/__tests__/plan.positionSynthesis.e2e.test.ts`
+- Modify: `src/composition/buildApplication.ts`
+- Create: `src/composition/__tests__/positionPolicyInsightWiring.test.ts`
 
-- [ ] **Step 1: Write script-level contract tests in the existing worker test file.** Keep executable dispatch behind small exported functions and add the exact cases `backfill exits zero after success or idle`, `backfill exits nonzero after transient failure`, and `service dispatch starts the synthesis worker only for synthesis-worker service type`.
-- [ ] **Step 2: Implement the one-shot backfill command.** Compose the same config, store, trigger adapter, and synthesis use case as the worker; run exactly one cycle (which selects the newest historical pair receipt when the cursor is absent); emit a structured result; close resources in `finally`; return nonzero for transient/fatal setup failures. Do not reset or rewind an existing cursor.
-- [ ] **Step 3: Add package and shell dispatch.** Add `dev:policy-insights`, `start:policy-insights`, and `backfill:pair-insights` scripts. Extend `scripts/start.sh` with explicit `api`, `collector`, and `synthesis-worker` cases and reject unknown service types. Ensure `scripts/predeploy.sh` skips migrations only for the collector, while API/synthesis-worker deployments still use the shared migration history safely.
-- [ ] **Step 4: Document configuration and rollout.** Add the canonical pool, polling, lease, retry, and max attempts (`POLICY_INSIGHT_SYNTHESIS_MAX_ATTEMPTS`) variables to `.env.example`. Extend the Railway runbook with a synthesis-worker service, its health check, the explicit `pnpm run backfill:pair-insights` deployment command, log fields, a current-insight smoke check, restart recovery, and forward-only rollback guidance. State that the companion pair-safe publisher must be live before enabling the worker.
-- [ ] **Step 5: Run focused verification.** Run `pnpm exec vitest run src/workers/__tests__/policyInsightSynthesisWorker.test.ts`, `pnpm exec eslint scripts/backfill-pair-insights.ts src/workers/policyInsightSynthesisWorker.ts`, `pnpm exec prettier --check package.json .env.example scripts/start.sh scripts/predeploy.sh docs/runbooks/railway-deploy.md`, and `bash -n scripts/start.sh scripts/predeploy.sh`; expect all checks to pass.
-- [ ] **Step 6: Commit.** Commit as `m78: wire policy insight backfill deployment`.
+**Exported API changes:** Add an optional position-synthesis requester dependency to `createIngestEvidenceBundleUseCase` and `GeneratePlanUseCaseDeps`; extend `ApplicationDependencies` with the plan reader, queue, and requester. The optional dependency preserves SQLite-only operation, while Postgres composition always supplies it.
+
+**Behavioral invariants / tests written first:**
+
+- `new and idempotently replayed position evidence both wake reconciliation`.
+- `non-position evidence never wakes the position queue`.
+- `a persisted plan with wallet identity wakes reconciliation after SQLite commit`.
+- `a plan without wallet identity remains valid but cannot form a position evidence scope`.
+- `a queue outage after source persistence returns a retryable 503 and replay closes the wake-up gap`.
+- `SQLite-only composition retains plan and evidence behavior without a queue`.
+
+- [ ] Add the named tests to the existing small use-case test files and new focused handler/composition files. Do not add more cases to the existing 674-line evidence-ingest handler test.
+- [ ] Run `pnpm exec vitest run src/application/use-cases/__tests__/ingestEvidenceBundleUseCase.test.ts src/application/use-cases/__tests__/generatePlanUseCase.test.ts src/adapters/http/handlers/__tests__/evidenceIngest.positionSynthesis.test.ts src/adapters/http/__tests__/plan.positionSynthesis.e2e.test.ts src/composition/__tests__/positionPolicyInsightWiring.test.ts`; expect failures for missing wake-ups/wiring.
+- [ ] Invoke reconciliation after `append` for both `created` and `already_ingested` position evidence. Invoke it after `writePlan` only when `position.walletId` exists, constructing the exact `solana-mainnet` position scope from request fields. Map structured queue/store unavailability to a sanitized 503 in both handlers so clients can safely replay already-persisted source data.
+- [ ] Wire one SQLite read adapter and one Postgres queue adapter/requester in `buildApplication`; expose null requester/queue when Postgres is absent. Do not change `PlanLedgerWritePort.writePlan` or add a port method without its adapter.
+- [ ] Re-run the targeted tests and `pnpm exec eslint src/application/use-cases/ingestEvidenceBundleUseCase.ts src/application/use-cases/generatePlanUseCase.ts src/application/use-cases/__tests__/ingestEvidenceBundleUseCase.test.ts src/application/use-cases/__tests__/generatePlanUseCase.test.ts src/adapters/http/handlers/evidenceIngest.ts src/adapters/http/handlers/plan.ts src/adapters/http/handlers/__tests__/evidenceIngest.positionSynthesis.test.ts src/adapters/http/__tests__/plan.positionSynthesis.e2e.test.ts src/composition/buildApplication.ts src/composition/__tests__/positionPolicyInsightWiring.test.ts`; expect success and the automatic typecheck gate.
+- [ ] Commit the task files with `git commit -m "m79: enqueue position synthesis from source writes"`.
 
 ## Repository Targets
 
 ### Expected Files
-- scripts/backfill-pair-insights.ts
-- src/workers/__tests__/policyInsightSynthesisWorker.test.ts
-- package.json
-- .env.example
-- scripts/start.sh
-- scripts/predeploy.sh
-- docs/runbooks/railway-deploy.md
+- src/application/use-cases/ingestEvidenceBundleUseCase.ts
+- src/application/use-cases/generatePlanUseCase.ts
+- src/application/use-cases/__tests__/ingestEvidenceBundleUseCase.test.ts
+- src/application/use-cases/__tests__/generatePlanUseCase.test.ts
+- src/adapters/http/handlers/evidenceIngest.ts
+- src/adapters/http/handlers/plan.ts
+- src/adapters/http/handlers/__tests__/evidenceIngest.positionSynthesis.test.ts
+- src/adapters/http/__tests__/plan.positionSynthesis.e2e.test.ts
+- src/composition/buildApplication.ts
+- src/composition/__tests__/positionPolicyInsightWiring.test.ts
 
 ### Reference Files
-- src/workers/policyInsightSynthesisWorker.ts
-- src/workers/policyInsight/runSynthesisCycle.ts
+- src/application/use-cases/requestPositionPolicyInsightSynthesisUseCase.ts
+- src/adapters/sqlite/sqlitePlanLedgerReadAdapter.ts
+- src/adapters/postgres/postgresPositionPolicyInsightSynthesisQueueAdapter.ts
 
 ## Validation Commands
 
 ```bash
-["pnpm","exec","vitest","run","src/workers/__tests__/policyInsightSynthesisWorker.test.ts"]
-["pnpm","exec","eslint","scripts/backfill-pair-insights.ts","src/workers/policyInsightSynthesisWorker.ts"]
-["pnpm","exec","prettier","--check","package.json",".env.example","scripts/start.sh","scripts/predeploy.sh","docs/runbooks/railway-deploy.md"]
-["bash","-n","scripts/start.sh","scripts/predeploy.sh"]
+pnpm exec vitest run src/application/use-cases/__tests__/ingestEvidenceBundleUseCase.test.ts src/application/use-cases/__tests__/generatePlanUseCase.test.ts src/adapters/http/handlers/__tests__/evidenceIngest.positionSynthesis.test.ts src/adapters/http/__tests__/plan.positionSynthesis.e2e.test.ts src/composition/__tests__/positionPolicyInsightWiring.test.ts
+pnpm exec eslint src/application/use-cases/ingestEvidenceBundleUseCase.ts src/application/use-cases/generatePlanUseCase.ts src/application/use-cases/__tests__/ingestEvidenceBundleUseCase.test.ts src/application/use-cases/__tests__/generatePlanUseCase.test.ts src/adapters/http/handlers/evidenceIngest.ts src/adapters/http/handlers/plan.ts src/adapters/http/handlers/__tests__/evidenceIngest.positionSynthesis.test.ts src/adapters/http/__tests__/plan.positionSynthesis.e2e.test.ts src/composition/buildApplication.ts src/composition/__tests__/positionPolicyInsightWiring.test.ts
 ```
 
 ## Behavioral Invariants
 
 You MUST implement the following behavioral invariants as named tests first (TDD):
 
-- **one shot backfill**: Backfill runs one durable cycle and exits zero only for success or idle, without rewinding an existing cursor. (Test: `backfill exits zero after success or idle`)
-- **backfill failure signal**: Transient processing or fatal setup failure closes resources and produces a nonzero exit status. (Test: `backfill exits nonzero after transient failure`)
-- **explicit service dispatch**: Only synthesis-worker service type starts the synthesis loop; collector and API keep their existing entry points and unknown types fail closed. (Test: `service dispatch starts the synthesis worker only for synthesis-worker service type`)
+- **evidence replay repairs wakeup**: Both newly created and idempotently replayed position evidence invoke reconciliation after persistence. (Test: `new and idempotently replayed position evidence both wake reconciliation`)
+- **plan wakeup ordering**: A wallet-identified plan invokes reconciliation only after its SQLite transaction commits. (Test: `a persisted plan with wallet identity wakes reconciliation after SQLite commit`)
+- **queue outage replay contract**: A post-persistence queue outage is retryable and a replay can recreate the missing wake-up. (Test: `a queue outage after source persistence returns a retryable 503 and replay closes the wake-up gap`)
 

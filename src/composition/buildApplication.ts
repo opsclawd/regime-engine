@@ -1,6 +1,10 @@
 import type { ClockPort } from "../application/ports/clock.js";
 import type { CandleReadPort, CandleWritePort } from "../application/ports/candlePorts.js";
-import type { PlanLedgerWritePort } from "../application/ports/planLedgerPort.js";
+import type {
+  PlanLedgerReadPort,
+  PlanLedgerWritePort
+} from "../application/ports/planLedgerPort.js";
+import type { PositionPolicyInsightSynthesisQueuePort } from "../application/ports/positionPolicyInsightSynthesisQueuePort.js";
 import type {
   ClmmExecutionEventLedgerWritePort,
   ExecutionResultLedgerWritePort
@@ -19,6 +23,7 @@ import type { SelectEvidenceForSynthesisUseCase } from "../application/use-cases
 import type { SynthesizePolicyInsightUseCase } from "../application/use-cases/synthesizePolicyInsightUseCase.js";
 import type { GetCurrentPolicyInsightUseCase } from "../application/use-cases/getCurrentPolicyInsightUseCase.js";
 import type { GetPolicyInsightHistoryUseCase } from "../application/use-cases/getPolicyInsightHistoryUseCase.js";
+import type { RequestPositionPolicyInsightSynthesisUseCase } from "../application/use-cases/requestPositionPolicyInsightSynthesisUseCase.js";
 import { createIngestCandlesUseCase } from "../application/use-cases/ingestCandlesUseCase.js";
 import { createGetCurrentRegimeUseCase } from "../application/use-cases/getCurrentRegimeUseCase.js";
 import { createGeneratePlanUseCase } from "../application/use-cases/generatePlanUseCase.js";
@@ -32,11 +37,13 @@ import { createSelectEvidenceForSynthesisUseCase } from "../application/use-case
 import { createSynthesizePolicyInsightUseCase } from "../application/use-cases/synthesizePolicyInsightUseCase.js";
 import { createGetCurrentPolicyInsightUseCase } from "../application/use-cases/getCurrentPolicyInsightUseCase.js";
 import { createGetPolicyInsightHistoryUseCase } from "../application/use-cases/getPolicyInsightHistoryUseCase.js";
+import { createRequestPositionPolicyInsightSynthesisUseCase } from "../application/use-cases/requestPositionPolicyInsightSynthesisUseCase.js";
 import { createSqliteCandleReadAdapter } from "../adapters/sqlite/sqliteCandleReadAdapter.js";
 import { createSqliteCandleRevisionUnitOfWork } from "../adapters/sqlite/sqliteCandleRevisionUnitOfWork.js";
 import { createPostgresCandleReadAdapter } from "../adapters/postgres/postgresCandleReadAdapter.js";
 import { createPostgresCandleRevisionUnitOfWork } from "../adapters/postgres/postgresCandleRevisionUnitOfWork.js";
 import { createSqlitePlanLedgerWriteAdapter } from "../adapters/sqlite/sqlitePlanLedgerWriteAdapter.js";
+import { createSqlitePlanLedgerReadAdapter } from "../adapters/sqlite/sqlitePlanLedgerReadAdapter.js";
 import {
   createSqliteClmmExecutionEventLedgerWriteAdapter,
   createSqliteExecutionResultLedgerWriteAdapter
@@ -44,6 +51,7 @@ import {
 import { createSqliteWeeklyReportReadAdapter } from "../adapters/sqlite/sqliteWeeklyReportReadAdapter.js";
 import { createPostgresEvidenceBundleRepository } from "../adapters/postgres/postgresEvidenceBundleRepository.js";
 import { createPostgresPolicyInsightRepository } from "../adapters/postgres/postgresPolicyInsightRepository.js";
+import { createPostgresPositionPolicyInsightSynthesisQueueAdapter } from "../adapters/postgres/postgresPositionPolicyInsightSynthesisQueueAdapter.js";
 import { SOL_USDC_POLICY_V1 } from "../engine/policy/ruleset.js";
 import { checkPgHealth, checkSqliteHealth } from "../ledger/health.js";
 import type { RuntimeStoreContext } from "./buildStoreContext.js";
@@ -67,9 +75,12 @@ export interface ApplicationDependencies {
   candleReadPort: CandleReadPort;
   candleWritePort: CandleWritePort;
   planLedgerWritePort: PlanLedgerWritePort;
+  planLedgerReadPort: PlanLedgerReadPort;
   executionResultLedgerWritePort: ExecutionResultLedgerWritePort;
   clmmExecutionEventLedgerWritePort: ClmmExecutionEventLedgerWritePort;
   weeklyReportReadPort: WeeklyReportLedgerReadPort;
+  positionPolicyInsightSynthesisQueue: PositionPolicyInsightSynthesisQueuePort | null;
+  requestPositionPolicyInsightSynthesis: RequestPositionPolicyInsightSynthesisUseCase | null;
   ingestCandles: IngestCandlesUseCase;
   getCurrentRegime: GetCurrentRegimeUseCase;
   generatePlan: GeneratePlanUseCase;
@@ -102,11 +113,29 @@ export const buildApplication = (ctx: RuntimeStoreContext): ApplicationDependenc
     : createSqliteCandleRevisionUnitOfWork(ctx.ledger);
 
   const planLedgerWritePort = createSqlitePlanLedgerWriteAdapter(ctx.ledger);
+  const planLedgerReadPort = createSqlitePlanLedgerReadAdapter(ctx.ledger);
   const executionResultLedgerWritePort = createSqliteExecutionResultLedgerWriteAdapter(ctx.ledger);
   const clmmExecutionEventLedgerWritePort = createSqliteClmmExecutionEventLedgerWriteAdapter(
     ctx.ledger
   );
   const weeklyReportLedgerReadPort = createSqliteWeeklyReportReadAdapter(ctx.ledger);
+
+  const positionPolicyInsightSynthesisQueue: PositionPolicyInsightSynthesisQueuePort | null = ctx.pg
+    ? createPostgresPositionPolicyInsightSynthesisQueueAdapter(ctx.pg)
+    : null;
+
+  const evidenceRepository = ctx.pg ? createPostgresEvidenceBundleRepository(ctx.pg) : null;
+
+  const requestPositionPolicyInsightSynthesis: RequestPositionPolicyInsightSynthesisUseCase | null =
+    ctx.pg && evidenceRepository && positionPolicyInsightSynthesisQueue
+      ? createRequestPositionPolicyInsightSynthesisUseCase({
+          queue: positionPolicyInsightSynthesisQueue,
+          evidenceRepository,
+          planLedger: planLedgerReadPort,
+          clock,
+          ruleset: SOL_USDC_POLICY_V1
+        })
+      : null;
 
   const ingestCandles = createIngestCandlesUseCase({ candleWritePort });
   const getCurrentRegime = createGetCurrentRegimeUseCase({
@@ -116,7 +145,8 @@ export const buildApplication = (ctx: RuntimeStoreContext): ApplicationDependenc
   });
   const generatePlan = createGeneratePlanUseCase({
     candleReadPort,
-    planLedgerWritePort
+    planLedgerWritePort,
+    requestPositionSynthesis: requestPositionPolicyInsightSynthesis ?? undefined
   });
   const recordExecutionResult = createRecordExecutionResultUseCase({
     port: executionResultLedgerWritePort
@@ -129,9 +159,12 @@ export const buildApplication = (ctx: RuntimeStoreContext): ApplicationDependenc
     candleReadPort
   });
 
-  const evidenceRepository = ctx.pg ? createPostgresEvidenceBundleRepository(ctx.pg) : null;
   const ingestEvidenceBundle = evidenceRepository
-    ? createIngestEvidenceBundleUseCase({ repository: evidenceRepository, clock })
+    ? createIngestEvidenceBundleUseCase({
+        repository: evidenceRepository,
+        clock,
+        requestPositionSynthesis: requestPositionPolicyInsightSynthesis ?? undefined
+      })
     : null;
   const getCurrentEvidence = evidenceRepository
     ? createGetCurrentEvidenceUseCase({ repository: evidenceRepository, clock })
@@ -179,9 +212,12 @@ export const buildApplication = (ctx: RuntimeStoreContext): ApplicationDependenc
     candleReadPort,
     candleWritePort,
     planLedgerWritePort,
+    planLedgerReadPort,
     executionResultLedgerWritePort,
     clmmExecutionEventLedgerWritePort,
     weeklyReportReadPort: weeklyReportLedgerReadPort,
+    positionPolicyInsightSynthesisQueue,
+    requestPositionPolicyInsightSynthesis,
     ingestCandles,
     getCurrentRegime,
     generatePlan,

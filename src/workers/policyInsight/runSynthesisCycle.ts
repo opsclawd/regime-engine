@@ -46,15 +46,35 @@ function sanitizeErrorMessage(message: string): string {
   return sanitized;
 }
 
+function findErrorCode(err: unknown): string {
+  let current: unknown = err;
+  while (current != null && typeof current === "object") {
+    if (typeof (current as { errorCode?: unknown }).errorCode === "string") {
+      return (current as { errorCode: string }).errorCode;
+    }
+    if ((current as Error).name === "RegimeCandlesNotFoundError") {
+      return "MARKET_DATA_UNAVAILABLE";
+    }
+    if ((current as Error).name === "EvidenceStoreUnavailableError") {
+      return "EVIDENCE_STORE_UNAVAILABLE";
+    }
+    current = (current as { cause?: unknown }).cause;
+  }
+  if (err instanceof Error) {
+    return err.name || "Error";
+  }
+  return "UNKNOWN_ERROR";
+}
+
 function getErrorInfo(err: unknown): { errorCode: string; errorMessage: string } {
   if (err instanceof Error) {
     return {
-      errorCode: err.name || "Error",
+      errorCode: findErrorCode(err),
       errorMessage: sanitizeErrorMessage(err.message || "Unknown error")
     };
   }
   return {
-    errorCode: "UNKNOWN_ERROR",
+    errorCode: findErrorCode(err),
     errorMessage: sanitizeErrorMessage(String(err))
   };
 }

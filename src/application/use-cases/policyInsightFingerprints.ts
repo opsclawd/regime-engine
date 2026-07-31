@@ -28,6 +28,12 @@ export interface PolicyInsightFingerprints {
   readonly synthesisInputHash: string;
 }
 
+export function computeEvidenceSelectionHash(evidence: SelectedEvidenceSummary): string {
+  const selectionCopy = JSON.parse(JSON.stringify(evidence));
+  delete selectionCopy.selectedAtUnixMs;
+  return sha256Hex(toCanonicalJson(selectionCopy));
+}
+
 export function computePolicyInsightFingerprints(
   input: FingerprintsInput
 ): PolicyInsightFingerprints {
@@ -48,9 +54,7 @@ export function computePolicyInsightFingerprints(
   }
 
   // 3. selectionHash: full selection result excluding only presentation-time fields (selectedAtUnixMs)
-  const selectionCopy = JSON.parse(JSON.stringify(input.evidence));
-  delete selectionCopy.selectedAtUnixMs;
-  const selectionHash = sha256Hex(toCanonicalJson(selectionCopy));
+  const selectionHash = computeEvidenceSelectionHash(input.evidence);
 
   // 4. synthesisInputHash: hash ruleset+pair+scope+component hashes
   const scopeKey = evidenceScopeKey(input.scope);

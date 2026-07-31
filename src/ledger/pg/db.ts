@@ -94,4 +94,15 @@ export const verifyPolicyInsightSynthesisCursorTable = async (db: Db): Promise<v
   }
 };
 
+export const verifyPolicyInsightSynthesisRequestsTable = async (db: Db): Promise<void> => {
+  const result = await db.execute(
+    sql`SELECT tablename FROM pg_tables WHERE schemaname = 'regime_engine' AND tablename = 'policy_insight_synthesis_requests'`
+  );
+  if (result.length === 0) {
+    throw new Error(
+      "FATAL: policy_insight_synthesis_requests table not found in regime_engine schema — run migrations first"
+    );
+  }
+};
+
 export type Db = ReturnType<typeof createDb>["db"];

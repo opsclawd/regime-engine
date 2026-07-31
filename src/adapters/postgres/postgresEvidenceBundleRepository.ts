@@ -172,7 +172,7 @@ export const createPostgresEvidenceBundleRepository = (db: Db): EvidenceBundleRe
       }
     },
 
-    getLatest: async ({ pair, scope, source, nowUnixMs }) => {
+    getLatest: async ({ pair, scope, source, nowUnixMs, fromAsOfUnixMs, toAsOfUnixMs }) => {
       try {
         const scopeKeyVal = evidenceScopeKey(scope);
 
@@ -190,6 +190,8 @@ export const createPostgresEvidenceBundleRepository = (db: Db): EvidenceBundleRe
               AND scope_key = ${scopeKeyVal}
               AND source_publisher = ${source.publisher}
               AND source_id = ${source.sourceId}
+              ${fromAsOfUnixMs !== undefined ? sql`AND as_of_unix_ms >= ${fromAsOfUnixMs}` : sql``}
+              ${toAsOfUnixMs !== undefined ? sql`AND as_of_unix_ms <= ${toAsOfUnixMs}` : sql``}
             ORDER BY as_of_unix_ms DESC, received_at_unix_ms DESC, id DESC
             LIMIT 1
           `);
@@ -256,6 +258,8 @@ export const createPostgresEvidenceBundleRepository = (db: Db): EvidenceBundleRe
               AND scope_key = ${scopeKeyVal}
               ${source?.publisher !== undefined ? sql`AND source_publisher = ${source.publisher}` : sql``}
               ${source?.sourceId !== undefined ? sql`AND source_id = ${source.sourceId}` : sql``}
+              ${fromAsOfUnixMs !== undefined ? sql`AND as_of_unix_ms >= ${fromAsOfUnixMs}` : sql``}
+              ${toAsOfUnixMs !== undefined ? sql`AND as_of_unix_ms <= ${toAsOfUnixMs}` : sql``}
           ) ranked
           WHERE rn = 1
           ORDER BY source_publisher, source_id

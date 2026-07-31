@@ -12,3 +12,8 @@ export type {
   PolicyInsightSynthesisCursorRow,
   PolicyInsightSynthesisCursorInsert
 } from "./policyInsightSynthesisCursor.js";
+export { policyInsightSynthesisRequests } from "./policyInsightSynthesisRequests.js";
+export type {
+  PolicyInsightSynthesisRequestRow,
+  PolicyInsightSynthesisRequestInsert
+} from "./policyInsightSynthesisRequests.js";

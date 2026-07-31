@@ -16,6 +16,11 @@ export const buildOpenApiDocument = () => {
           type: "apiKey",
           in: "header",
           name: "X-Evidence-Ingest-Token"
+        },
+        PolicySynthesisToken: {
+          type: "apiKey",
+          in: "header",
+          name: "X-Policy-Synthesis-Token"
         }
       },
       schemas: {
@@ -1141,6 +1146,46 @@ export const buildOpenApiDocument = () => {
             },
             "503": {
               description: "Evidence store unavailable"
+            }
+          }
+        }
+      },
+      "/v1/internal/insights/sol-usdc/synthesis-requests": {
+        post: {
+          summary: "Trigger position policy insight synthesis replay or backfill",
+          security: [{ PolicySynthesisToken: [] }],
+          requestBody: {
+            required: true,
+            content: {
+              "application/json": {
+                schema: {
+                  type: "object",
+                  properties: {
+                    mode: { type: "string", enum: ["eligible", "scope"] },
+                    walletAddress: { type: "string" },
+                    whirlpoolAddress: { type: "string" },
+                    positionId: { type: "string" }
+                  }
+                }
+              }
+            }
+          },
+          responses: {
+            "202": {
+              description: "Synthesis request accepted"
+            },
+            "400": {
+              description: "Validation error or partial scope identity"
+            },
+            "401": {
+              description: "Invalid or missing X-Policy-Synthesis-Token"
+            },
+            "500": {
+              description:
+                "POLICY_SYNTHESIS_INTERNAL_TOKEN environment variable not set or internal error"
+            },
+            "503": {
+              description: "Postgres synthesis dependencies are absent"
             }
           }
         }

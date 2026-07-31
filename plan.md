@@ -1,247 +1,420 @@
 <!-- plan-review-required -->
 
-# Pair-Scoped PolicyInsight Trigger Implementation Plan
+# Durable Position-Scoped PolicyInsight Synthesis Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Durably synthesize the current pair-scoped SOL/USDC `PolicyInsight` from newly ingested pair-safe evidence, including evidence that predates deployment, without coupling synthesis failures to the evidence-ingest HTTP response.
+**Goal:** Persist, reconcile, lease, and process position-scoped PolicyInsight synthesis requests so matching position evidence and plans produce one canonical insight for each unique evidence selection, plan, and ruleset combination.
 
-**Architecture:** A Postgres cursor row is the durable source of truth. A dedicated worker claims the newest unprocessed pair receipt under a lease, calls the existing synthesis use case with a validated canonical market selector, and advances the cursor only after success or a classified permanent failure; transient failures release the lease for retry. Selecting only the newest receipt above the cursor coalesces bursts, while the existing `synthesisInputHash` uniqueness path remains the final idempotency guard.
+**Architecture:** Keep plans in the existing SQLite ledger and position synthesis requests/evidence/insights in Postgres. The HTTP process owns the position worker so it always opens the same `LEDGER_DB_PATH`; event hooks on both evidence ingestion and plan persistence reconcile a per-position waiting request into a uniquely keyed pending request. A leased Postgres queue provides crash recovery, while the existing canonical PolicyInsight repository remains the final idempotency boundary.
 
-**Tech Stack:** TypeScript, Node.js 22, Postgres, Drizzle ORM/Drizzle Kit, Vitest, Fastify composition, existing policy synthesis application services.
+**Tech Stack:** TypeScript, Node 22 `node:sqlite`, Fastify, Drizzle/Postgres, Vitest, canonical JSON/SHA-256.
 
 ---
 
 ## Goal
 
-- Automatically create evidence-informed pair-scoped insights after pair-safe evidence is committed.
-- Preserve `POST /v1/evidence` response behavior: a created bundle returns `201` even when synthesis or candle/regime reads are unavailable.
-- Recover after process restarts and explicitly backfill evidence received before this feature is deployed.
-- Make concurrent workers and duplicate evidence safe through a persisted lease/cursor plus synthesis replay detection.
+Deliver all issue acceptance criteria for position scopes: durable wake-ups from both arrival orders, exact plan recovery and hash verification, five-minute evidence/plan compatibility, independent positions, structured error classification, lease recovery, authenticated replay/backfill, and visibility through the existing current-insight endpoint.
 
 ## Non-goals
 
-- No changes to `sol-usdc-clmm-intelligence`; this plan assumes its companion change publishes `scope.kind: "pair"` bundles.
-- No position-to-pair projection and no use of position, wallet, inventory, or range evidence in pair insights.
-- No synthesis for position, wallet, or legacy whirlpool scopes.
-- No new HTTP endpoint and no synchronous or fire-and-forget synthesis call from `src/adapters/http/handlers/evidenceIngest.ts`.
-- No replacement of the existing policy reducer, evidence selection rules, or `synthesisInputHash` replay behavior.
+- Do not change pair/whirlpool synthesis behavior or replace `policy_insight_synthesis_cursor` from issue #78.
+- Do not change `clmm-v2`, on-chain execution, plan action policy, or the PolicyInsight wire schema.
+- Do not move or mirror the SQLite plan ledger into Postgres.
+- Do not claim a SQLite/Postgres atomic transaction; replay hooks and startup reconciliation close the cross-store wake-up gap.
+- Do not change the 60-second plan-generation observation guard or the policy ruleset's 24-hour position maximum age.
+
+## Behavioral model and invariants
+
+The queue states are `waiting_for_plan`, `waiting_for_evidence`, `pending`, `processing`, `completed`, `failed`, and `superseded`.
+
+- Evidence-only input creates or refreshes `waiting_for_plan`; a compatible plan promotes it to `pending` without losing the evidence wake-up.
+- Plan-only input creates or refreshes `waiting_for_evidence`; compatible evidence promotes it to `pending`.
+- A ready identity is exactly `(scopeKey, selectionHash, planHash, rulesetVersion)` and is unique. Replays return the existing request ID.
+- Claims change `pending`, retry-due, or lease-expired `processing` rows to `processing` under `FOR UPDATE SKIP LOCKED`; an unexpired lease cannot be stolen.
+- Completion/failure/retry/supersession updates require the same request ID and lease owner. A stale owner cannot finalize work.
+- A request whose `planHash` is no longer the latest eligible plan becomes `superseded`; a newer plan gets its own ready identity.
+- Evidence is compatible only when wallet, position, and pool match exactly and its `asOf` is within an inclusive five-minute window around `plan.asOfUnixMs`.
+- Evidence that expires before a plan arrives permanently fails its waiting request with `POSITION_STALE`; absence of evidence remains `waiting_for_evidence`.
+- A selected-evidence hash change between enqueue and execution supersedes the old request instead of synthesizing under the wrong identity.
+- Retryable store/market failures return to `pending` with bounded backoff; validation failures are permanent; exhausted retries become `failed`.
+- `policy_insights.insertOrGet` remains the final duplicate-prevention boundary after queue idempotency.
 
 ## Affected files
 
-- Create `src/workers/policyInsight/config.ts` and `src/workers/policyInsight/__tests__/config.test.ts` for canonical market and worker timing configuration.
-- Create `drizzle/0009_create_policy_insight_synthesis_cursor.sql`, `drizzle/meta/0009_snapshot.json`, `src/ledger/pg/schema/policyInsightSynthesisCursor.ts`, and `src/ledger/pg/__tests__/policyInsightSynthesisCursorMigration.test.ts`; modify `drizzle/meta/_journal.json`, `src/ledger/pg/schema/index.ts`, `src/ledger/pg/db.ts`, `src/server.ts`, and `src/__tests__/pgStartup.test.ts` for schema/startup verification.
-- Create `src/application/ports/policyInsightSynthesisTriggerPort.ts`, `src/adapters/postgres/postgresPolicyInsightSynthesisTriggerAdapter.ts`, and `src/adapters/postgres/__tests__/postgresPolicyInsightSynthesisTriggerAdapter.test.ts` for durable claims and cursor transitions.
-- Create `src/workers/policyInsight/runSynthesisCycle.ts` and `src/workers/policyInsight/__tests__/runSynthesisCycle.test.ts` for one deterministic claim/synthesize/classify/complete cycle.
-- Create `src/workers/policyInsightSynthesisWorker.ts` and `src/workers/__tests__/policyInsightSynthesisWorker.test.ts` for process composition, polling, shutdown, and health behavior.
-- Create `scripts/backfill-pair-insights.ts`; modify `package.json`, `.env.example`, `scripts/start.sh`, `scripts/predeploy.sh`, and `docs/runbooks/railway-deploy.md` for executable and deployment wiring.
-- Create `src/workers/__tests__/policyInsightSynthesis.e2e.pg.test.ts`; modify `package.json` to include it in the Postgres test command.
-- Read only: `src/adapters/http/handlers/evidenceIngest.ts`, `src/application/use-cases/ingestEvidenceBundleUseCase.ts`, `src/application/use-cases/synthesizePolicyInsightUseCase.ts`, `src/application/use-cases/selectEvidenceForSynthesisUseCase.ts`, `src/application/ports/policyInsightRepositoryPort.ts`, `src/adapters/postgres/postgresEvidenceBundleRepository.ts`, and `src/adapters/postgres/postgresPolicyInsightRepository.ts`.
+Paths are repository-relative and are the complete planned edit surface.
 
-## Behavioral invariants
+- SQLite plan storage/read path: `src/ledger/schema.sql`, `src/ledger/store.ts`, `src/ledger/writer.ts`, `src/application/ports/planLedgerPort.ts`, `src/adapters/sqlite/sqlitePlanLedgerReadAdapter.ts`, `src/ledger/__tests__/planLedgerPositionMigration.test.ts`, `src/adapters/sqlite/__tests__/sqlitePlanLedgerReadAdapter.test.ts`.
+- Temporal selection and structured errors: `src/application/errors/policyInsightErrors.ts`, `src/application/ports/evidenceBundleRepositoryPort.ts`, `src/adapters/postgres/postgresEvidenceBundleRepository.ts`, `src/application/use-cases/selectEvidenceForSynthesisUseCase.ts`, `src/application/use-cases/policyInsightFingerprints.ts`, `src/application/use-cases/synthesizePolicyInsightUseCase.ts`, `src/application/use-cases/getCurrentPolicyInsightUseCase.ts`, `src/application/use-cases/getPolicyInsightHistoryUseCase.ts`, `src/adapters/postgres/postgresPolicyInsightRepository.ts`, `src/adapters/http/handlers/insightsCurrent.ts`, `src/adapters/http/handlers/insightsHistory.ts`, `src/adapters/postgres/__tests__/postgresPolicyInsightRepository.command.test.ts`, `src/application/use-cases/__tests__/getPolicyInsightHistoryUseCase.test.ts`, `src/workers/policyInsight/runSynthesisCycle.ts`, `src/application/use-cases/__tests__/synthesizePolicyInsightUseCase.test.ts`, `src/application/use-cases/__tests__/selectEvidenceForSynthesisUseCase.test.ts`, `src/workers/policyInsight/__tests__/runSynthesisCycle.test.ts`, `src/application/errors/__tests__/policyInsightErrors.test.ts`.
+- Postgres queue schema: `drizzle/0010_create_policy_insight_synthesis_requests.sql`, `drizzle/meta/0010_snapshot.json`, `drizzle/meta/_journal.json`, `src/ledger/pg/schema/policyInsightSynthesisRequests.ts`, `src/ledger/pg/schema/index.ts`, `src/ledger/pg/db.ts`, `src/ledger/pg/__tests__/policyInsightSynthesisRequestsMigration.test.ts`, `src/ledger/pg/schema/__tests__/policyInsightSynthesisRequests.shape.test.ts`, `src/__tests__/pgStartup.test.ts`, `src/server.ts`.
+- Queue and coordinator: `src/application/ports/positionPolicyInsightSynthesisQueuePort.ts`, `src/adapters/postgres/postgresPositionPolicyInsightSynthesisQueueAdapter.ts`, `src/adapters/postgres/__tests__/postgresPositionPolicyInsightSynthesisQueueAdapter.test.ts`, `src/application/use-cases/requestPositionPolicyInsightSynthesisUseCase.ts`, `src/application/use-cases/__tests__/requestPositionPolicyInsightSynthesisUseCase.test.ts`.
+- Event wake-ups: `src/application/use-cases/ingestEvidenceBundleUseCase.ts`, `src/application/use-cases/generatePlanUseCase.ts`, `src/application/use-cases/__tests__/ingestEvidenceBundleUseCase.test.ts`, `src/application/use-cases/__tests__/generatePlanUseCase.test.ts`, `src/adapters/http/handlers/evidenceIngest.ts`, `src/adapters/http/handlers/plan.ts`, `src/adapters/http/handlers/__tests__/evidenceIngest.positionSynthesis.test.ts`, `src/adapters/http/__tests__/plan.positionSynthesis.e2e.test.ts`, `src/composition/buildApplication.ts`, `src/composition/__tests__/positionPolicyInsightWiring.test.ts`.
+- Internal endpoint: `src/adapters/http/handlers/positionSynthesisRequest.ts`, `src/adapters/http/handlers/__tests__/positionSynthesisRequest.test.ts`, `src/adapters/http/routes.ts`, `src/adapters/http/openapi.ts`, `src/adapters/http/__tests__/positionSynthesisRequest.openapi.contract.test.ts`, `src/composition/__tests__/positionSynthesisRequestRoutes.e2e.test.ts`, `.env.example`.
+- Worker/runtime: `src/workers/policyInsight/runPositionSynthesisCycle.ts`, `src/workers/policyInsight/__tests__/runPositionSynthesisCycle.test.ts`, `src/workers/positionPolicyInsightSynthesizer.ts`, `src/workers/__tests__/positionPolicyInsightSynthesizer.test.ts`, `src/composition/buildApp.ts`, `src/composition/__tests__/positionPolicyInsightRuntime.e2e.pg.test.ts`, `package.json`, `README.md`.
 
-The implementer must write the named tests below before implementation. The manifest repeats each invariant on its owning task.
-
-1. A missing or placeholder canonical pool address is a startup/configuration error; valid config always resolves `{ source: "geckoterminal", network: "solana", poolAddress, timeframe: "1h" }`.
-2. With no cursor row, the first claim selects the newest pair-scoped evidence receipt, so pre-deployment evidence is backfilled without replaying every older receipt.
-3. With a completed cursor, a claim selects only the newest pair receipt whose ID is greater than the cursor; position and other scopes never become claims.
-4. While an unexpired lease exists, another worker receives no claim. After lease expiry, the same target is recoverable by another worker.
-5. Completing a claim is compare-and-set on owner and target receipt. Stale owners cannot advance the cursor or overwrite newer state.
-6. A successful synthesis advances the cursor, records success, clears lease/retry state, and logs receipt ID, pair scope, synthesis input hash, insight ID, and duration.
-7. A permanent validation/configuration failure is logged and advances past the poison receipt with a permanent-failure outcome; it does not block later evidence.
-8. A transient store, candle, regime, or unknown operational failure records the classified error and releases the lease with bounded backoff for retry while `attemptCount` is below `maxAttempts` (default 5). When `attemptCount` reaches `maxAttempts`, the cycle converts the transient failure into a permanent failure, logs that the retry budget was exhausted, and completes to advance the cursor past the failing receipt.
-9. Multiple pair receipts arriving before a claim are coalesced into one synthesis attempt for the highest receipt ID.
-10. An identical evidence replay creates no new evidence row, yields no new claim after the cursor is current, and the existing `synthesisInputHash` path prevents duplicate insights if overlapping leases ever synthesize the same inputs.
-11. The worker runs one cycle immediately on startup, sleeps only after the cycle, continues after recoverable cycle failures, and stops cleanly on abort/SIGTERM/SIGINT.
-12. The evidence HTTP handler awaits ingestion only; worker failures occur in another process and therefore cannot change a created ingest response from `201`.
-
-## Task 1: Validate canonical pair synthesis configuration
+## Task 1: Add the indexed SQLite position-plan read model
 
 **Files:**
 
-- Create: `src/workers/policyInsight/config.ts`
-- Create: `src/workers/policyInsight/__tests__/config.test.ts`
-- Reference: `src/workers/gecko/config.ts`
-- Reference: `src/engine/marketRegime/config.ts`
+- Modify: `src/ledger/schema.sql`
+- Modify: `src/ledger/store.ts`
+- Modify: `src/ledger/writer.ts`
+- Modify: `src/application/ports/planLedgerPort.ts`
+- Create: `src/adapters/sqlite/sqlitePlanLedgerReadAdapter.ts`
+- Create: `src/ledger/__tests__/planLedgerPositionMigration.test.ts`
+- Create: `src/adapters/sqlite/__tests__/sqlitePlanLedgerReadAdapter.test.ts`
 
-- [ ] **Step 1: Write failing configuration tests.** Define exact tests named `rejects a missing canonical SOL/USDC pool address`, `rejects placeholder pool addresses`, `returns the canonical pair market selector`, and `validates positive poll lease retry intervals and max attempts budget`. Cover defaults of source `geckoterminal`, network `solana`, timeframe `1h`, a 5-second poll, a 60-second lease, a bounded retry interval no greater than the lease, and default `maxAttempts` of 5.
-- [ ] **Step 2: Verify the focused test fails because the parser does not exist.** Run `pnpm exec vitest run src/workers/policyInsight/__tests__/config.test.ts`; expect module-resolution/test failures.
-- [ ] **Step 3: Implement the typed parser.** Export `PolicyInsightSynthesisWorkerConfig` and `parsePolicyInsightSynthesisWorkerConfig(env)`. Require `CANONICAL_SOL_USDC_POOL_ADDRESS`, reject empty strings and `<`/`>` placeholders, keep source/network/timeframe as literal canonical values, and parse positive integer `POLICY_INSIGHT_SYNTHESIS_POLL_INTERVAL_MS`, `POLICY_INSIGHT_SYNTHESIS_LEASE_MS`, `POLICY_INSIGHT_SYNTHESIS_RETRY_MS`, and `POLICY_INSIGHT_SYNTHESIS_MAX_ATTEMPTS` (default 5) values. The returned config must contain a reusable `marketSelector` matching `SynthesizePolicyInsightInput["marketSelector"]` and positive `maxAttempts` budget.
-- [ ] **Step 4: Run focused verification.** Run `pnpm exec vitest run src/workers/policyInsight/__tests__/config.test.ts` and `pnpm exec eslint src/workers/policyInsight/config.ts src/workers/policyInsight/__tests__/config.test.ts`; expect all checks to pass with zero warnings.
-- [ ] **Step 5: Commit.** Commit as `m78: add pair synthesis worker configuration`.
+**Exported API changes:** Add `StoredPositionPlan` and `PlanLedgerReadPort`, with `getLatestPositionPlan(scope)`, `getPositionPlanByHash(scope, planHash)`, and `listLatestPositionPlans()`. Keep `PlanLedgerWritePort.writePlan` unchanged.
 
-## Task 2: Add the durable synthesis cursor schema
+**Behavioral invariants / tests written first:**
+
+- `migrates an existing plan ledger and backfills position lookup columns from canonical request JSON`: an old database gains `position_id`, `wallet_id`, and `pool_address` without losing rows.
+- `enables WAL for a file-backed ledger used by the HTTP process and worker`: a file ledger reports `journal_mode=wal`; `:memory:` remains supported.
+- `writes denormalized position identity with the canonical request and plan in one transaction`: either both ledger rows exist or neither does.
+- `returns the exact latest request and response for a matching wallet position and pool`: ordering is `plans.as_of_unix_ms DESC, plans.id DESC` and no JSON scan is used.
+- `returns the exact historical plan selected by plan hash`: the adapter does not reconstruct or substitute fields.
+- `lists one latest wallet identified plan per position and pool for deployment reconciliation`: plan-only scopes are discoverable even when Postgres has no evidence.
+- `does not match a missing wallet or a different position or pool`: exact identity is mandatory.
+
+- [ ] Add failing migration and adapter tests. Construct a legacy SQLite file with the old table shape, reopen it through `createLedgerStore`, and assert the backfill and query plan via `EXPLAIN QUERY PLAN` uses `idx_plan_requests_position_lookup`.
+- [ ] Run `pnpm exec vitest run src/ledger/__tests__/planLedgerPositionMigration.test.ts src/adapters/sqlite/__tests__/sqlitePlanLedgerReadAdapter.test.ts`; expect failures for absent columns/read adapter.
+- [ ] Change the fresh-install `plan_requests` definition to include the three lookup columns and an index on `(position_id, wallet_id, pool_address, as_of_unix_ms DESC, id DESC)`. In `createLedgerStore`, run a transactionally guarded compatibility migration that inspects `PRAGMA table_info(plan_requests)`, adds missing columns, parses each canonical `request_json`, backfills identities, then creates the index. Set `PRAGMA journal_mode=WAL` for file databases before normal traffic.
+- [ ] Extend the writer insert to store `planRequest.position.positionId`, `planRequest.position.walletId ?? null`, and `planRequest.market.poolAddress`. Implement both read methods by joining `plan_requests` and `plans` on `plan_id`, parsing the stored JSON, and returning the exact pair:
+
+```ts
+export interface StoredPositionPlan {
+  readonly planRequest: PlanRequest;
+  readonly planResponse: PlanResponse;
+}
+
+export interface PlanLedgerReadPort {
+  getLatestPositionPlan(scope: PositionPlanScope): Promise<StoredPositionPlan | null>;
+  getPositionPlanByHash(
+    scope: PositionPlanScope,
+    planHash: string
+  ): Promise<StoredPositionPlan | null>;
+  listLatestPositionPlans(): Promise<readonly StoredPositionPlan[]>;
+}
+```
+
+- [ ] Re-run the targeted Vitest command and `pnpm exec eslint src/ledger/store.ts src/ledger/writer.ts src/application/ports/planLedgerPort.ts src/adapters/sqlite/sqlitePlanLedgerReadAdapter.ts src/ledger/__tests__/planLedgerPositionMigration.test.ts src/adapters/sqlite/__tests__/sqlitePlanLedgerReadAdapter.test.ts`; expect all checks to pass. The automatic implementation gate then runs `pnpm -r typecheck`.
+- [ ] Commit with `git add src/ledger/schema.sql src/ledger/store.ts src/ledger/writer.ts src/application/ports/planLedgerPort.ts src/adapters/sqlite/sqlitePlanLedgerReadAdapter.ts src/ledger/__tests__/planLedgerPositionMigration.test.ts src/adapters/sqlite/__tests__/sqlitePlanLedgerReadAdapter.test.ts && git commit -m "m79: index and read position plans"`.
+
+## Task 2: Enforce temporal compatibility and structured synthesis errors
 
 **Files:**
 
-- Create: `drizzle/0009_create_policy_insight_synthesis_cursor.sql`
-- Create: `drizzle/meta/0009_snapshot.json`
-- Create: `src/ledger/pg/schema/policyInsightSynthesisCursor.ts`
-- Create: `src/ledger/pg/__tests__/policyInsightSynthesisCursorMigration.test.ts`
+- Modify: `src/application/errors/policyInsightErrors.ts`
+- Modify: `src/application/ports/evidenceBundleRepositoryPort.ts`
+- Modify: `src/adapters/postgres/postgresEvidenceBundleRepository.ts`
+- Modify: `src/application/use-cases/selectEvidenceForSynthesisUseCase.ts`
+- Modify: `src/application/use-cases/policyInsightFingerprints.ts`
+- Modify: `src/application/use-cases/synthesizePolicyInsightUseCase.ts`
+- Modify: `src/application/use-cases/getCurrentPolicyInsightUseCase.ts`
+- Modify: `src/application/use-cases/getPolicyInsightHistoryUseCase.ts`
+- Modify: `src/adapters/postgres/postgresPolicyInsightRepository.ts`
+- Modify: `src/adapters/http/handlers/insightsCurrent.ts`
+- Modify: `src/adapters/http/handlers/insightsHistory.ts`
+- Modify: `src/adapters/postgres/__tests__/postgresPolicyInsightRepository.command.test.ts`
+- Modify: `src/application/use-cases/__tests__/getPolicyInsightHistoryUseCase.test.ts`
+- Modify: `src/workers/policyInsight/runSynthesisCycle.ts`
+- Modify: `src/application/use-cases/__tests__/synthesizePolicyInsightUseCase.test.ts`
+- Modify: `src/application/use-cases/__tests__/selectEvidenceForSynthesisUseCase.test.ts`
+- Modify: `src/workers/policyInsight/__tests__/runSynthesisCycle.test.ts`
+- Create: `src/application/errors/__tests__/policyInsightErrors.test.ts`
+
+**Exported API changes:** Add `PolicyInsightErrorCode`; make both PolicyInsight error classes expose a required `errorCode`; add optional `fromAsOfUnixMs`/`toAsOfUnixMs` filters to `EvidenceBundleRepositoryPort.getLatest` and `SelectEvidenceForSynthesisUseCase`; add optional `expectedSelectionHash` to `SynthesizePolicyInsightInput`. The Postgres evidence adapter is updated in this same task as its port. Update error class constructor call sites in `insightsCurrent.ts`, `insightsHistory.ts`, `postgresPolicyInsightRepository.command.test.ts`, `getPolicyInsightHistoryUseCase.test.ts`, and `runSynthesisCycle.ts`.
+
+**Behavioral invariants / tests written first:**
+
+- `selects position evidence at the inclusive five minute plan window boundaries`.
+- `excludes position evidence one millisecond outside the plan window`.
+- `rejects position wallet position and pool mismatches with structured scope codes`.
+- `rejects stale positions and invalid plan hashes with POSITION_STALE and PLAN_HASH_INVALID`.
+- `rejects a changed selected evidence set with EVIDENCE_SELECTION_SUPERSEDED`.
+- `classifies market evidence and policy persistence failures without message matching`.
+- `preserves structured codes through Error cause chains and repository adapters`.
+
+- [ ] Write the named tests first, including exact assertions on `.errorCode`, inclusive SQL bounds, and the mismatch between `expectedSelectionHash` and the computed selection hash.
+- [ ] Run `pnpm exec vitest run src/application/errors/__tests__/policyInsightErrors.test.ts src/application/use-cases/__tests__/selectEvidenceForSynthesisUseCase.test.ts src/application/use-cases/__tests__/synthesizePolicyInsightUseCase.test.ts`; expect the new assertions to fail.
+- [ ] Define the closed union below and update every constructor call in the files listed for this task; messages remain sanitized human context and are never used for classification:
+
+```ts
+export type PolicyInsightErrorCode =
+  | "POSITION_PLAN_MISSING"
+  | "POSITION_STALE"
+  | "PLAN_HASH_INVALID"
+  | "POSITION_SCOPE_MISMATCH"
+  | "POOL_SCOPE_MISMATCH"
+  | "EVIDENCE_SELECTION_SUPERSEDED"
+  | "MARKET_DATA_UNAVAILABLE"
+  | "EVIDENCE_STORE_UNAVAILABLE"
+  | "POLICY_STORE_UNAVAILABLE"
+  | "OUTPUT_SCHEMA_INVALID"
+  | "QUERY_INVALID"
+  | "EXHAUSTED_RETRIES";
+```
+
+- [ ] Pass the optional evidence `as_of_unix_ms` bounds through the selection use case and Postgres adapter. For a position plan, call selection with `plan.asOfUnixMs - 300_000` and `plan.asOfUnixMs + 300_000`, preserve the existing 24-hour ruleset position-age check, compute selection via a new exported `computeEvidenceSelectionHash`, and compare it to `expectedSelectionHash` before repository lookup/insert. Update all existing error instantiation sites across `insightsCurrent.ts`, `insightsHistory.ts`, `postgresPolicyInsightRepository.command.test.ts`, `getPolicyInsightHistoryUseCase.test.ts`, and `runSynthesisCycle.ts` to pass appropriate `errorCode` values.
+- [ ] Re-run the targeted Vitest command plus `pnpm exec vitest run src/workers/policyInsight/__tests__/runSynthesisCycle.test.ts`, then run `pnpm exec eslint src/application/errors/policyInsightErrors.ts src/application/ports/evidenceBundleRepositoryPort.ts src/adapters/postgres/postgresEvidenceBundleRepository.ts src/application/use-cases/selectEvidenceForSynthesisUseCase.ts src/application/use-cases/policyInsightFingerprints.ts src/application/use-cases/synthesizePolicyInsightUseCase.ts src/application/use-cases/getCurrentPolicyInsightUseCase.ts src/application/use-cases/getPolicyInsightHistoryUseCase.ts src/adapters/postgres/postgresPolicyInsightRepository.ts src/adapters/http/handlers/insightsCurrent.ts src/adapters/http/handlers/insightsHistory.ts src/adapters/postgres/__tests__/postgresPolicyInsightRepository.command.test.ts src/application/use-cases/__tests__/getPolicyInsightHistoryUseCase.test.ts src/workers/policyInsight/runSynthesisCycle.ts src/application/use-cases/__tests__/synthesizePolicyInsightUseCase.test.ts src/application/use-cases/__tests__/selectEvidenceForSynthesisUseCase.test.ts src/workers/policyInsight/__tests__/runSynthesisCycle.test.ts src/application/errors/__tests__/policyInsightErrors.test.ts`; expect success, followed by the automatic `pnpm -r typecheck` gate.
+- [ ] Commit with `git add` for exactly the files in this task and `git commit -m "m79: classify position synthesis failures"`.
+
+## Task 3: Create the durable Postgres position synthesis queue
+
+**Files:**
+
+- Create: `drizzle/0010_create_policy_insight_synthesis_requests.sql`
+- Create: `drizzle/meta/0010_snapshot.json`
 - Modify: `drizzle/meta/_journal.json`
+- Create: `src/ledger/pg/schema/policyInsightSynthesisRequests.ts`
 - Modify: `src/ledger/pg/schema/index.ts`
 - Modify: `src/ledger/pg/db.ts`
-- Modify: `src/server.ts`
+- Create: `src/ledger/pg/__tests__/policyInsightSynthesisRequestsMigration.test.ts`
+- Create: `src/ledger/pg/schema/__tests__/policyInsightSynthesisRequests.shape.test.ts`
 - Modify: `src/__tests__/pgStartup.test.ts`
-- Reference: `drizzle/0008_widen_evidence_correlation_id.sql`
-- Reference: `src/ledger/pg/schema/evidenceBundles.ts`
+- Modify: `src/server.ts`
 
-- [ ] **Step 1: Write failing migration and startup tests.** Name the cases `creates one pair synthesis cursor row per cursor key`, `enforces non-negative receipt and retry values`, `supports an expiring lease and classified outcome`, `resolves when policy_insight_synthesis_cursor exists`, and `fails startup when policy_insight_synthesis_cursor is missing`.
-- [ ] **Step 2: Verify the focused tests fail.** Run `DATABASE_URL=postgres://test:test@localhost:5432/regime_engine_test PG_SSL=false pnpm exec vitest run src/ledger/pg/__tests__/policyInsightSynthesisCursorMigration.test.ts src/__tests__/pgStartup.test.ts`; expect the missing table/export assertions to fail.
-- [ ] **Step 3: Add migration and Drizzle schema.** Create `regime_engine.policy_insight_synthesis_cursor` keyed by `cursor_key` with `last_processed_receipt_id`, nullable `target_receipt_id`, nullable `lease_owner`, nullable `lease_expires_at_unix_ms`, `attempt_count`, nullable `next_attempt_at_unix_ms`, nullable `last_outcome` constrained to `success`, `permanent_failure`, or `transient_failure`, nullable bounded `last_error_code`/`last_error_message`, and `updated_at_unix_ms`. Add checks for non-negative numeric values and coherent all-null/all-present lease fields. Export `policyInsightSynthesisCursor` plus inferred row/insert types from the schema index.
-- [ ] **Step 4: Register migration metadata.** Generate the matching `0009_snapshot.json` and journal entry using the repository's existing Drizzle conventions; inspect the generated SQL and keep the migration additive and forward-only.
-- [ ] **Step 5: Add startup verification.** Export `verifyPolicyInsightSynthesisCursorTable(db)` from `src/ledger/pg/db.ts`, invoke it in `src/server.ts` after evidence/policy table verification, and test both present and missing-table behavior.
-- [ ] **Step 6: Run focused verification.** Run `DATABASE_URL=postgres://test:test@localhost:5432/regime_engine_test PG_SSL=false pnpm exec vitest run src/ledger/pg/__tests__/policyInsightSynthesisCursorMigration.test.ts src/__tests__/pgStartup.test.ts` and `pnpm exec eslint src/ledger/pg/schema/policyInsightSynthesisCursor.ts src/ledger/pg/schema/index.ts src/ledger/pg/db.ts src/server.ts src/__tests__/pgStartup.test.ts src/ledger/pg/__tests__/policyInsightSynthesisCursorMigration.test.ts`; expect pass/zero warnings. If Postgres is unavailable, record the PG test as unexecuted rather than treating a skipped test as proof.
-- [ ] **Step 7: Commit.** Commit as `m78: persist pair synthesis cursor state`.
+**Exported API changes:** Export the Drizzle table/types and `verifyPolicyInsightSynthesisRequestsTable`.
 
-## Task 3: Implement leased cursor transitions in the Postgres adapter
+**Behavioral invariants / tests written first:**
 
-**Files:**
+- `allows one ready request per scope selection plan and ruleset identity`.
+- `keeps independent position scope keys in independent rows`.
+- `requires coherent lease fields only while processing`.
+- `allows waiting rows to omit exactly the unavailable hash`.
+- `rejects invalid statuses negative attempts malformed hashes and terminal rows with active leases`.
+- `fails API startup when the position synthesis requests table is absent`.
 
-- Create: `src/application/ports/policyInsightSynthesisTriggerPort.ts`
-- Create: `src/adapters/postgres/postgresPolicyInsightSynthesisTriggerAdapter.ts`
-- Create: `src/adapters/postgres/__tests__/postgresPolicyInsightSynthesisTriggerAdapter.test.ts`
-- Reference: `src/ledger/pg/schema/policyInsightSynthesisCursor.ts`
-- Reference: `src/ledger/pg/schema/evidenceBundles.ts`
-- Reference: `src/adapters/postgres/postgresEvidenceBundleRepository.ts`
+- [ ] Write schema-shape, migration, and startup-verification tests first.
+- [ ] Run `pnpm exec vitest run src/ledger/pg/schema/__tests__/policyInsightSynthesisRequests.shape.test.ts src/__tests__/pgStartup.test.ts`; expect missing schema exports/verifier failures. With test Postgres available, run `DATABASE_URL=postgres://test:test@localhost:5432/regime_engine_test PG_SSL=false pnpm exec vitest run src/ledger/pg/__tests__/policyInsightSynthesisRequestsMigration.test.ts`; expect the missing table failure.
+- [ ] Add `policy_insight_synthesis_requests` with identity/scope columns, nullable `selection_hash` and `plan_hash` for waiting rows, `ruleset_version`, status, attempt/retry timestamps, lease owner/timestamps, structured terminal error fields, and created/updated timestamps. Add a partial unique index on `(scope_key, selection_hash, plan_hash, ruleset_version)` when both hashes are non-null, a unique source-wake-up index for waiting rows, and a claim index on `(status, next_attempt_at_unix_ms, lease_expires_at_unix_ms, id)`.
+- [ ] Generate Drizzle SQL/snapshot metadata with `pnpm run db:generate`, retain only migration `0010` and its generated metadata, then add the startup verifier alongside existing table verifiers and call it from `src/server.ts`.
+- [ ] Run `pnpm exec vitest run src/ledger/pg/schema/__tests__/policyInsightSynthesisRequests.shape.test.ts src/__tests__/pgStartup.test.ts`, the Postgres migration test command above, and `pnpm exec eslint src/ledger/pg/schema/policyInsightSynthesisRequests.ts src/ledger/pg/schema/index.ts src/ledger/pg/db.ts src/ledger/pg/__tests__/policyInsightSynthesisRequestsMigration.test.ts src/ledger/pg/schema/__tests__/policyInsightSynthesisRequests.shape.test.ts src/__tests__/pgStartup.test.ts src/server.ts`; expect success and then the automatic typecheck gate.
+- [ ] Commit the task files with `git commit -m "m79: add position synthesis request queue"`.
 
-- [ ] **Step 1: Write the state-transition tests first.** Add the exact cases `claims the newest historical pair receipt when the cursor is absent`, `coalesces multiple pending pair receipts to the highest id`, `never claims non-pair evidence`, `returns idle while another unexpired lease owns the claim`, `reclaims the target after lease expiry`, `only the matching owner and target can complete a claim`, `success advances the cursor and clears retry state`, `permanent failure advances the cursor`, and `transient failure preserves the cursor and schedules retry`.
-- [ ] **Step 2: Verify the adapter test fails.** Run `DATABASE_URL=postgres://test:test@localhost:5432/regime_engine_test PG_SSL=false pnpm exec vitest run src/adapters/postgres/__tests__/postgresPolicyInsightSynthesisTriggerAdapter.test.ts`; expect missing port/adapter failures.
-- [ ] **Step 3: Define the port and implement every method in the same task.** Export `PolicyInsightSynthesisClaim`, `PolicyInsightSynthesisOutcome`, and `PolicyInsightSynthesisTriggerPort` with methods `claimLatestPairEvidence(input)`, `complete(input)`, and `releaseForRetry(input)`. `PolicyInsightSynthesisClaim` must include `targetReceiptId`, `attemptCount`, and `leaseOwner`. Each mutation input must include `cursorKey`, `leaseOwner`, `targetReceiptId`, and a captured `nowUnixMs`; claims additionally include `leaseDurationMs`, and retry release includes classification, sanitized message, and `retryAtUnixMs`.
-- [ ] **Step 4: Implement atomic Postgres transitions.** `claimLatestPairEvidence` must use one transaction and row locking/upsert semantics to initialize the cursor, honor `next_attempt_at_unix_ms`, reject live leases, select `MAX(evidence_bundles.id)` where `pair = 'SOL/USDC'`, `scope_key = 'pair'`, and ID is above the cursor, then lease only that target. `complete` and `releaseForRetry` must use owner+target compare-and-set predicates and return whether the transition applied. Do not mark `evidence_bundles.processed_at_unix_ms`; the cursor table is the sole trigger state.
-- [ ] **Step 5: Run focused verification.** Run `DATABASE_URL=postgres://test:test@localhost:5432/regime_engine_test PG_SSL=false pnpm exec vitest run src/adapters/postgres/__tests__/postgresPolicyInsightSynthesisTriggerAdapter.test.ts` and `pnpm exec eslint src/application/ports/policyInsightSynthesisTriggerPort.ts src/adapters/postgres/postgresPolicyInsightSynthesisTriggerAdapter.ts src/adapters/postgres/__tests__/postgresPolicyInsightSynthesisTriggerAdapter.test.ts`; expect all transition tests to pass. This task deliberately combines the new port and its only adapter so workspace typechecking is never left with an unimplemented interface.
-- [ ] **Step 6: Commit.** Commit as `m78: add leased pair synthesis trigger adapter`.
-
-## Task 4: Implement one pair synthesis cycle and failure classification
+## Task 4: Implement atomic queue operations with lease recovery
 
 **Files:**
 
-- Create: `src/workers/policyInsight/runSynthesisCycle.ts`
-- Create: `src/workers/policyInsight/__tests__/runSynthesisCycle.test.ts`
-- Reference: `src/application/ports/policyInsightSynthesisTriggerPort.ts`
-- Reference: `src/application/use-cases/synthesizePolicyInsightUseCase.ts`
-- Reference: `src/application/errors/policyInsightErrors.ts`
-- Reference: `src/application/errors/evidenceErrors.ts`
-- Reference: `src/application/errors/regimeErrors.ts`
-- Reference: `src/workers/gecko/logger.ts`
+- Create: `src/application/ports/positionPolicyInsightSynthesisQueuePort.ts`
+- Create: `src/adapters/postgres/postgresPositionPolicyInsightSynthesisQueueAdapter.ts`
+- Create: `src/adapters/postgres/__tests__/postgresPositionPolicyInsightSynthesisQueueAdapter.test.ts`
 
-- [ ] **Step 1: Write failing cycle tests.** Add exact cases `returns idle without calling synthesis when no receipt is claimable`, `synthesizes pair scope with the canonical market selector`, `logs required identifiers and duration before completing success`, `classifies validation failure as permanent and advances the cursor`, `classifies store and regime availability failures as transient without advancing when below max attempts`, `converts transient failure to permanent failure when attempt count reaches max attempts budget`, `classifies an unknown operational error as transient`, and `does not advance when completion compare-and-set loses ownership`.
-- [ ] **Step 2: Verify the tests fail.** Run `pnpm exec vitest run src/workers/policyInsight/__tests__/runSynthesisCycle.test.ts`; expect the cycle module to be missing.
-- [ ] **Step 3: Implement `runPolicyInsightSynthesisCycle`.** Inject the trigger port, `SynthesizePolicyInsightUseCase`, config, logger, stable `leaseOwner`, and clock. Capture start time, claim once, call synthesis exactly once with `{ scope: { kind: "pair" }, marketSelector, positionPlan: null }`, and return a discriminated result `idle | succeeded | permanent_failure | transient_failure | lease_lost` for testability.
-- [ ] **Step 4: Implement explicit failure classification, retry budget enforcement, and safe logging.** Treat `PolicyInsightValidationError` and invalid canonical configuration as permanent; treat policy/evidence store unavailability, regime/candle availability errors, and unknown runtime errors as transient when `claim.attemptCount < config.maxAttempts`. When a transient failure occurs and `claim.attemptCount >= config.maxAttempts`, convert the outcome to permanent failure, log that the retry budget (`maxAttempts`) was exhausted for `receiptId`, and invoke `triggerPort.complete` with outcome `permanent_failure` to advance past the poison receipt. Log `receiptId`, `scope: "pair"`, `synthesisInputHash` and `insightId` from the successful read model, `durationMs`, `attemptCount`, outcome, and sanitized error code/message. Never log evidence payloads, tokens, or database URLs.
-- [ ] **Step 5: Run focused verification.** Run `pnpm exec vitest run src/workers/policyInsight/__tests__/runSynthesisCycle.test.ts` and `pnpm exec eslint src/workers/policyInsight/runSynthesisCycle.ts src/workers/policyInsight/__tests__/runSynthesisCycle.test.ts`; expect pass/zero warnings.
-- [ ] **Step 6: Commit.** Commit as `m78: synthesize pair insights from durable claims`.
+**Exported API changes:** Add `PositionPolicyInsightSynthesisQueuePort` and its request/claim/result types. Every port method is implemented by the Postgres adapter in this same task.
 
-## Task 5: Add the restart-safe polling worker process
+**Behavioral invariants / tests written first:**
 
-**Files:**
+- `replaying an identical ready identity returns the original request id`.
+- `evidence first persists waiting_for_plan and plan reconciliation promotes it to pending`.
+- `plan first persists waiting_for_evidence and evidence reconciliation promotes it to pending`.
+- `claims independent positions in deterministic id order with skip locked`.
+- `does not steal an unexpired processing lease`.
+- `reclaims an expired processing lease and increments attempt count`.
+- `only the current lease owner can complete fail supersede or release a request`.
+- `release for retry keeps the identity and makes it claimable only at retryAtUnixMs`.
+- `converts release for retry into permanent failure with EXHAUSTED_RETRIES when attempt count reaches max attempts`.
 
-- Create: `src/workers/policyInsightSynthesisWorker.ts`
-- Create: `src/workers/__tests__/policyInsightSynthesisWorker.test.ts`
-- Reference: `src/composition/buildStoreContext.ts`
-- Reference: `src/composition/buildApplication.ts`
-- Reference: `src/workers/geckoCollector.ts`
-- Reference: `src/workers/policyInsight/runSynthesisCycle.ts`
+- [ ] Write the adapter tests first against real Postgres transactions and isolate rows by unique scope prefixes.
+- [ ] Run `DATABASE_URL=postgres://test:test@localhost:5432/regime_engine_test PG_SSL=false pnpm exec vitest run src/adapters/postgres/__tests__/postgresPositionPolicyInsightSynthesisQueueAdapter.test.ts`; expect failure because the port/adapter do not exist.
+- [ ] Define and implement `enqueueOrReconcile`, `claimBatch`, `complete`, `fail`, `supersede`, `releaseForRetry`, `listWaitingScopes`, `listEligiblePositionScopes`, and `getById`. `listEligiblePositionScopes` reads distinct unexpired position evidence scopes for startup/internal backfill. `claimBatch` must select eligible IDs using `FOR UPDATE SKIP LOCKED` and update/return claims in one transaction. `releaseForRetry` evaluates `attempt_count` against `max_attempts` (default 5); if `attempt_count >= max_attempts`, it transitions status to `failed` with `errorCode: "EXHAUSTED_RETRIES"`, enforcing a strict retry budget and preventing infinite retries on poison pills. All terminal mutations include `WHERE id = ? AND lease_owner = ? AND status = 'processing'` and return a boolean.
+- [ ] Re-run the Postgres test command and `pnpm exec eslint src/application/ports/positionPolicyInsightSynthesisQueuePort.ts src/adapters/postgres/postgresPositionPolicyInsightSynthesisQueueAdapter.ts src/adapters/postgres/__tests__/postgresPositionPolicyInsightSynthesisQueueAdapter.test.ts`; expect success and then the automatic typecheck gate.
+- [ ] Commit with `git add src/application/ports/positionPolicyInsightSynthesisQueuePort.ts src/adapters/postgres/postgresPositionPolicyInsightSynthesisQueueAdapter.ts src/adapters/postgres/__tests__/postgresPositionPolicyInsightSynthesisQueueAdapter.test.ts && git commit -m "m79: lease position synthesis requests"`.
 
-- [ ] **Step 1: Write failing loop and lifecycle tests.** Add exact cases `runs a synthesis cycle immediately before the first sleep`, `continues polling after a transient cycle result`, `continues polling after an unexpected cycle throw`, `stops without another claim after abort`, `removes installed signal handlers on shutdown`, `fails startup without postgres-backed synthesis dependencies`, and `closes the store context exactly once`.
-- [ ] **Step 2: Verify the tests fail.** Run `pnpm exec vitest run src/workers/__tests__/policyInsightSynthesisWorker.test.ts`; expect the worker module to be missing.
-- [ ] **Step 3: Implement the polling loop.** Export `runPolicyInsightSynthesisWorker(config?, deps?)`, use an abort-aware sleep, run immediately, then poll at the configured interval. Cycle errors must be logged and followed by another poll unless aborted. Use a UUID/process-unique lease owner and install/remove SIGTERM/SIGINT listeners only when the worker owns its controller.
-- [ ] **Step 4: Compose production dependencies.** In main-module execution, build the store context and application, require Postgres plus `synthesizePolicyInsight`, construct the Postgres trigger adapter and cycle, expose a minimal `/health` server for Railway, and close both health server and store context on shutdown or fatal startup. Do not register or call the evidence HTTP handler.
-- [ ] **Step 5: Run focused verification.** Run `pnpm exec vitest run src/workers/__tests__/policyInsightSynthesisWorker.test.ts` and `pnpm exec eslint src/workers/policyInsightSynthesisWorker.ts src/workers/__tests__/policyInsightSynthesisWorker.test.ts`; expect pass/zero warnings.
-- [ ] **Step 6: Commit.** Commit as `m78: run durable policy insight synthesis worker`.
-
-## Task 6: Add explicit backfill and deployment wiring
+## Task 5: Reconcile evidence and plans into canonical queue identities
 
 **Files:**
 
-- Create: `scripts/backfill-pair-insights.ts`
-- Modify: `src/workers/__tests__/policyInsightSynthesisWorker.test.ts`
-- Modify: `package.json`
+- Create: `src/application/use-cases/requestPositionPolicyInsightSynthesisUseCase.ts`
+- Create: `src/application/use-cases/__tests__/requestPositionPolicyInsightSynthesisUseCase.test.ts`
+
+**Exported API changes:** Add `RequestPositionPolicyInsightSynthesisUseCase`, its input/result types, and `createRequestPositionPolicyInsightSynthesisUseCase`.
+
+**Behavioral invariants / tests written first:**
+
+- `evidence without a plan returns waiting_for_plan with a durable request id`.
+- `plan without evidence returns waiting_for_evidence with a durable request id`.
+- `matching evidence and plan enqueue the exact scope selection plan and ruleset identity`.
+- `duplicate reconciliation returns the same request id`.
+- `two positions sharing one intelligence correlation reconcile independently`.
+- `an expired waiting evidence request fails with POSITION_STALE when a plan arrives`.
+- `a newer plan creates a distinct ready identity and leaves the older request eligible for supersession`.
+- `wallet position pool or five minute skew mismatches never become pending`.
+
+- [ ] Build fakes for the queue, evidence repository, plan ledger reader, clock, and selector; write every invariant as an exact test name before implementation.
+- [ ] Run `pnpm exec vitest run src/application/use-cases/__tests__/requestPositionPolicyInsightSynthesisUseCase.test.ts`; expect the missing use case failure.
+- [ ] Implement a use case that accepts a concrete position scope plus wake-up identity, loads the latest exact plan, reads latest evidence with the plan's inclusive five-minute bounds when possible, filters expired records, runs the existing pure selector, computes `selectionHash`, and calls `enqueueOrReconcile`. Return `{requestId, status, selectionHash, planHash, freshEvidenceRequired}` without synthesizing inline. For startup mode, reconcile the union of `listWaitingScopes`, currently unexpired position scopes supplied by the queue adapter, and `listLatestPositionPlans`; a plan-only scope becomes `waiting_for_evidence` with `freshEvidenceRequired: true` so deployment automation must initiate a fresh upstream intelligence run rather than silently declaring backfill complete.
+- [ ] Re-run the targeted test and `pnpm exec eslint src/application/use-cases/requestPositionPolicyInsightSynthesisUseCase.ts src/application/use-cases/__tests__/requestPositionPolicyInsightSynthesisUseCase.test.ts`; expect success and then the automatic typecheck gate.
+- [ ] Commit with `git add src/application/use-cases/requestPositionPolicyInsightSynthesisUseCase.ts src/application/use-cases/__tests__/requestPositionPolicyInsightSynthesisUseCase.test.ts && git commit -m "m79: reconcile position synthesis inputs"`.
+
+## Task 6: Wake the queue from evidence and plan persistence
+
+**Files:**
+
+- Modify: `src/application/use-cases/ingestEvidenceBundleUseCase.ts`
+- Modify: `src/application/use-cases/generatePlanUseCase.ts`
+- Modify: `src/application/use-cases/__tests__/ingestEvidenceBundleUseCase.test.ts`
+- Modify: `src/application/use-cases/__tests__/generatePlanUseCase.test.ts`
+- Modify: `src/adapters/http/handlers/evidenceIngest.ts`
+- Modify: `src/adapters/http/handlers/plan.ts`
+- Create: `src/adapters/http/handlers/__tests__/evidenceIngest.positionSynthesis.test.ts`
+- Create: `src/adapters/http/__tests__/plan.positionSynthesis.e2e.test.ts`
+- Modify: `src/composition/buildApplication.ts`
+- Create: `src/composition/__tests__/positionPolicyInsightWiring.test.ts`
+
+**Exported API changes:** Add an optional position-synthesis requester dependency to `createIngestEvidenceBundleUseCase` and `GeneratePlanUseCaseDeps`; extend `ApplicationDependencies` with the plan reader, queue, and requester. The optional dependency preserves SQLite-only operation, while Postgres composition always supplies it.
+
+**Behavioral invariants / tests written first:**
+
+- `new and idempotently replayed position evidence both wake reconciliation`.
+- `non-position evidence never wakes the position queue`.
+- `a persisted plan with wallet identity wakes reconciliation after SQLite commit`.
+- `a plan without wallet identity remains valid but cannot form a position evidence scope`.
+- `a queue outage after source persistence returns a retryable 503 and replay closes the wake-up gap`.
+- `SQLite-only composition retains plan and evidence behavior without a queue`.
+
+- [ ] Add the named tests to the existing small use-case test files and new focused handler/composition files. Do not add more cases to the existing 674-line evidence-ingest handler test.
+- [ ] Run `pnpm exec vitest run src/application/use-cases/__tests__/ingestEvidenceBundleUseCase.test.ts src/application/use-cases/__tests__/generatePlanUseCase.test.ts src/adapters/http/handlers/__tests__/evidenceIngest.positionSynthesis.test.ts src/adapters/http/__tests__/plan.positionSynthesis.e2e.test.ts src/composition/__tests__/positionPolicyInsightWiring.test.ts`; expect failures for missing wake-ups/wiring.
+- [ ] Invoke reconciliation after `append` for both `created` and `already_ingested` position evidence. Invoke it after `writePlan` only when `position.walletId` exists, constructing the exact `solana-mainnet` position scope from request fields. Map structured queue/store unavailability to a sanitized 503 in both handlers so clients can safely replay already-persisted source data.
+- [ ] Wire one SQLite read adapter and one Postgres queue adapter/requester in `buildApplication`; expose null requester/queue when Postgres is absent. Do not change `PlanLedgerWritePort.writePlan` or add a port method without its adapter.
+- [ ] Re-run the targeted tests and `pnpm exec eslint src/application/use-cases/ingestEvidenceBundleUseCase.ts src/application/use-cases/generatePlanUseCase.ts src/application/use-cases/__tests__/ingestEvidenceBundleUseCase.test.ts src/application/use-cases/__tests__/generatePlanUseCase.test.ts src/adapters/http/handlers/evidenceIngest.ts src/adapters/http/handlers/plan.ts src/adapters/http/handlers/__tests__/evidenceIngest.positionSynthesis.test.ts src/adapters/http/__tests__/plan.positionSynthesis.e2e.test.ts src/composition/buildApplication.ts src/composition/__tests__/positionPolicyInsightWiring.test.ts`; expect success and the automatic typecheck gate.
+- [ ] Commit the task files with `git commit -m "m79: enqueue position synthesis from source writes"`.
+
+## Task 7: Add the protected internal replay and backfill endpoint
+
+**Files:**
+
+- Create: `src/adapters/http/handlers/positionSynthesisRequest.ts`
+- Create: `src/adapters/http/handlers/__tests__/positionSynthesisRequest.test.ts`
+- Modify: `src/adapters/http/routes.ts`
+- Modify: `src/adapters/http/openapi.ts`
+- Create: `src/adapters/http/__tests__/positionSynthesisRequest.openapi.contract.test.ts`
+- Create: `src/composition/__tests__/positionSynthesisRequestRoutes.e2e.test.ts`
 - Modify: `.env.example`
-- Modify: `scripts/start.sh`
-- Modify: `scripts/predeploy.sh`
-- Modify: `docs/runbooks/railway-deploy.md`
-- Reference: `src/workers/policyInsightSynthesisWorker.ts`
-- Reference: `src/workers/policyInsight/runSynthesisCycle.ts`
 
-- [ ] **Step 1: Write script-level contract tests in the existing worker test file.** Keep executable dispatch behind small exported functions and add the exact cases `backfill exits zero after success or idle`, `backfill exits nonzero after transient failure`, and `service dispatch starts the synthesis worker only for synthesis-worker service type`.
-- [ ] **Step 2: Implement the one-shot backfill command.** Compose the same config, store, trigger adapter, and synthesis use case as the worker; run exactly one cycle (which selects the newest historical pair receipt when the cursor is absent); emit a structured result; close resources in `finally`; return nonzero for transient/fatal setup failures. Do not reset or rewind an existing cursor.
-- [ ] **Step 3: Add package and shell dispatch.** Add `dev:policy-insights`, `start:policy-insights`, and `backfill:pair-insights` scripts. Extend `scripts/start.sh` with explicit `api`, `collector`, and `synthesis-worker` cases and reject unknown service types. Ensure `scripts/predeploy.sh` skips migrations only for the collector, while API/synthesis-worker deployments still use the shared migration history safely.
-- [ ] **Step 4: Document configuration and rollout.** Add the canonical pool, polling, lease, retry, and max attempts (`POLICY_INSIGHT_SYNTHESIS_MAX_ATTEMPTS`) variables to `.env.example`. Extend the Railway runbook with a synthesis-worker service, its health check, the explicit `pnpm run backfill:pair-insights` deployment command, log fields, a current-insight smoke check, restart recovery, and forward-only rollback guidance. State that the companion pair-safe publisher must be live before enabling the worker.
-- [ ] **Step 5: Run focused verification.** Run `pnpm exec vitest run src/workers/__tests__/policyInsightSynthesisWorker.test.ts`, `pnpm exec eslint scripts/backfill-pair-insights.ts src/workers/policyInsightSynthesisWorker.ts`, `pnpm exec prettier --check package.json .env.example scripts/start.sh scripts/predeploy.sh docs/runbooks/railway-deploy.md`, and `bash -n scripts/start.sh scripts/predeploy.sh`; expect all checks to pass.
-- [ ] **Step 6: Commit.** Commit as `m78: wire policy insight backfill deployment`.
+**Exported API changes:** Extend `HttpRouteDependencies` with the nullable request use case and register `POST /v1/internal/insights/sol-usdc/synthesis-requests`.
 
-## Task 7: Prove pair evidence, replay safety, and HTTP isolation end to end
+**Behavioral invariants / tests written first:**
+
+- `rejects a missing or incorrect X-Policy-Synthesis-Token before store access`.
+- `accepts one complete position scope and returns 202 with its request id and queue status`.
+- `accepts mode eligible and returns 202 with deterministic request ids for every unexpired eligible position scope`.
+- `reports plan scopes without eligible evidence as freshEvidenceRequired for deployment automation`.
+- `returns 400 for partial scope identity and 503 when Postgres synthesis dependencies are absent`.
+- `documents authentication request modes 202 400 401 500 and 503 responses`.
+
+- [ ] Write focused handler, route e2e, and OpenAPI contract tests; do not add cases to the existing 1,038-line evidence e2e file.
+- [ ] Run `pnpm exec vitest run src/adapters/http/handlers/__tests__/positionSynthesisRequest.test.ts src/adapters/http/__tests__/positionSynthesisRequest.openapi.contract.test.ts src/composition/__tests__/positionSynthesisRequestRoutes.e2e.test.ts`; expect missing route/handler failures.
+- [ ] Implement shared-secret authentication through `requireSharedSecret(headers, "X-Policy-Synthesis-Token", "POLICY_SYNTHESIS_INTERNAL_TOKEN")`. Validate either `{mode:"eligible"}` or `{mode:"scope", walletAddress, whirlpoolAddress, positionId}`; invoke reconciliation only, never synthesis; return `202` with `{schemaVersion:"1.0", requests:[{requestId,status,freshEvidenceRequired}]}`. Deployment automation treats any `freshEvidenceRequired: true` item as a required upstream intelligence-run trigger and must not mark backfill complete until fresh evidence is ingested.
+- [ ] Add the route/OpenAPI operation and document `POLICY_SYNTHESIS_INTERNAL_TOKEN` in `.env.example`.
+- [ ] Re-run the targeted Vitest command and `pnpm exec eslint src/adapters/http/handlers/positionSynthesisRequest.ts src/adapters/http/handlers/__tests__/positionSynthesisRequest.test.ts src/adapters/http/routes.ts src/adapters/http/openapi.ts src/adapters/http/__tests__/positionSynthesisRequest.openapi.contract.test.ts src/composition/__tests__/positionSynthesisRequestRoutes.e2e.test.ts`; run `pnpm exec prettier --check .env.example`; expect success and the automatic typecheck gate.
+- [ ] Commit the task files with `git commit -m "m79: expose position synthesis replay trigger"`.
+
+## Task 8: Process position requests with structured retry and supersession
 
 **Files:**
 
-- Create: `src/workers/__tests__/policyInsightSynthesis.e2e.pg.test.ts`
-- Modify: `package.json`
-- Reference: `src/adapters/http/handlers/evidenceIngest.ts`
-- Reference: `src/application/use-cases/ingestEvidenceBundleUseCase.ts`
-- Reference: `src/application/use-cases/synthesizePolicyInsightUseCase.ts`
-- Reference: `src/adapters/http/__tests__/policyInsights.current.e2e.pg.test.ts`
-- Reference: `contracts/evidence-bundle/v1/fixtures/valid/deterministic-only.json`
+- Create: `src/workers/policyInsight/runPositionSynthesisCycle.ts`
+- Create: `src/workers/policyInsight/__tests__/runPositionSynthesisCycle.test.ts`
 
-- [ ] **Step 1: Write the Postgres end-to-end tests first.** Add exact cases `backfills the newest pre-existing pair evidence into current insight`, `current pair insight includes selected lineage from pair evidence`, `coalesces two created receipts into one latest-input synthesis`, `duplicate evidence replay creates neither a new claim nor a duplicate insight`, `overlapping synthesis attempts converge on one synthesis input hash`, and `created evidence still returns 201 while the worker later records a transient synthesis failure`.
-- [ ] **Step 2: Verify the new suite fails before final wiring.** Run `DATABASE_URL=postgres://test:test@localhost:5432/regime_engine_test PG_SSL=false pnpm exec vitest run src/workers/__tests__/policyInsightSynthesis.e2e.pg.test.ts`; expect failures until the migration, adapter, worker, candles, evidence, and current endpoint are composed in the fixture.
-- [ ] **Step 3: Build deterministic fixtures.** Insert enough canonical 15-minute candle revisions for the existing 1-hour regime path, ingest valid pair-safe evidence through the real HTTP route, run the real cycle with a fixed clock, and read `GET /v1/insights/sol-usdc/current` without query parameters. Assert included lineage/evidence coverage rather than merely asserting `200`.
-- [ ] **Step 4: Cover replay and isolation.** Replay the identical evidence run and assert the original receipt, no new claim, one `policy_insights` row for the synthesis input hash, and stable insight ID. Inject a temporarily unavailable regime/synthesis dependency after a created ingest response and assert the HTTP response remains `201` while cursor state remains retryable.
-- [ ] **Step 5: Register the focused PG suite.** Add the new test path to `test:pg` without removing any existing paths.
-- [ ] **Step 6: Run focused verification.** Run `DATABASE_URL=postgres://test:test@localhost:5432/regime_engine_test PG_SSL=false pnpm exec vitest run src/workers/__tests__/policyInsightSynthesis.e2e.pg.test.ts` and `pnpm exec eslint src/workers/__tests__/policyInsightSynthesis.e2e.pg.test.ts`; expect every acceptance test to pass. A skip caused by missing `DATABASE_URL` is not acceptance evidence.
-- [ ] **Step 7: Commit.** Commit as `m78: verify pair insight trigger end to end`.
+**Exported API changes:** Add `runPositionPolicyInsightSynthesisCycle`, its dependencies, and discriminated result type.
+
+**Behavioral invariants / tests written first:**
+
+- `returns idle when no request can be claimed`.
+- `loads the exact plan by hash and completes one matching request`.
+- `supersedes a claim when a newer eligible plan exists`.
+- `supersedes a claim when recomputed selectionHash differs`.
+- `fails missing plan invalid hash stale evidence and scope mismatch with their structured codes`.
+- `retries market evidence and policy store outages without inspecting messages`.
+- `fails a transient request after the configured retry budget is exhausted`.
+- `returns lease_lost when a stale worker cannot mutate the claimed request`.
+
+- [ ] Write one test per invariant with fake queue/read/synthesis ports and error messages deliberately unrelated to classification.
+- [ ] Run `pnpm exec vitest run src/workers/policyInsight/__tests__/runPositionSynthesisCycle.test.ts`; expect the missing cycle failure.
+- [ ] Claim a bounded batch, compare each claim with `getLatestPositionPlan` and `getPositionPlanByHash`, then call synthesis with exact `positionPlan` and `expectedSelectionHash`. Switch only on `error.errorCode`: validation codes fail, `EVIDENCE_SELECTION_SUPERSEDED` or newer plans supersede, and unavailable codes retry with capped attempts. All logs contain request/scope/hash/attempt/duration but no raw payload or secret.
+- [ ] Re-run the targeted test and `pnpm exec eslint src/workers/policyInsight/runPositionSynthesisCycle.ts src/workers/policyInsight/__tests__/runPositionSynthesisCycle.test.ts`; expect success and the automatic typecheck gate.
+- [ ] Commit with `git add src/workers/policyInsight/runPositionSynthesisCycle.ts src/workers/policyInsight/__tests__/runPositionSynthesisCycle.test.ts && git commit -m "m79: process position synthesis requests"`.
+
+## Task 9: Run and verify the position worker in the HTTP service
+
+**Files:**
+
+- Create: `src/workers/positionPolicyInsightSynthesizer.ts`
+- Create: `src/workers/__tests__/positionPolicyInsightSynthesizer.test.ts`
+- Modify: `src/composition/buildApp.ts`
+- Create: `src/composition/__tests__/positionPolicyInsightRuntime.e2e.pg.test.ts`
+- Modify: `package.json`
+- Modify: `README.md`
+
+**Exported API changes:** Allow `buildApp` to receive/internally expose lifecycle dependencies for tests and export `runPositionPolicyInsightSynthesizer` with an abortable dependency object. Normal `buildApp()` callers remain valid.
+
+**Behavioral invariants / tests written first:**
+
+- `starts one position worker only when both Postgres and SQLite dependencies are available`.
+- `reconciles waiting and currently eligible unexpired position scopes before polling`.
+- `continues polling after a cycle error and stops cleanly on Fastify close`.
+- `does not start position synthesis in SQLite-only mode`.
+- `restart reclaims an expired lease and persists exactly one canonical insight`.
+- `evidence first and plan first both become visible through the current position insight endpoint`.
+- `duplicate evidence creates no duplicate insight and a new plan creates a new insight`.
+- `two positions sharing one intelligence correlation synthesize independently`.
+
+- [ ] Write the worker lifecycle unit tests and a new focused Postgres/SQLite integration test. Keep the integration test below the oversized-test threshold by using table-driven arrival-order cases.
+- [ ] Run `pnpm exec vitest run src/workers/__tests__/positionPolicyInsightSynthesizer.test.ts`; expect the missing runner failure. With Postgres available, run `DATABASE_URL=postgres://test:test@localhost:5432/regime_engine_test PG_SSL=false pnpm exec vitest run src/composition/__tests__/positionPolicyInsightRuntime.e2e.pg.test.ts`; expect missing lifecycle behavior.
+- [ ] Implement an abortable poll loop that performs startup reconciliation, calls Task 8's cycle, logs and continues after cycle-level exceptions, and uses the existing policy worker timing configuration. Register it from `buildApp` against the same `RuntimeStoreContext`/`LEDGER_DB_PATH` as HTTP; abort and await it in `onClose`. Add `start:policy-synthesis` as an operational/local entry point using the same runner, not a second implementation.
+- [ ] Document co-location, `LEDGER_DB_PATH` volume requirements, the internal replay call, queue metrics/status queries, the required deployment response handling for `freshEvidenceRequired`, and the fact that source-write replay/startup reconciliation repairs the unavoidable SQLite/Postgres dual-write gap.
+- [ ] Re-run both targeted test commands and `pnpm exec eslint src/workers/positionPolicyInsightSynthesizer.ts src/workers/__tests__/positionPolicyInsightSynthesizer.test.ts src/composition/buildApp.ts src/composition/__tests__/positionPolicyInsightRuntime.e2e.pg.test.ts`; run `pnpm exec prettier --check package.json README.md`; expect success and the automatic typecheck gate.
+- [ ] Commit the task files with `git commit -m "m79: run position synthesis with the api"`.
 
 ## Tests to add or update
 
-- Unit config validation in `src/workers/policyInsight/__tests__/config.test.ts`.
-- Postgres migration constraints and startup verification in `src/ledger/pg/__tests__/policyInsightSynthesisCursorMigration.test.ts` and `src/__tests__/pgStartup.test.ts`.
-- Postgres state-transition and concurrency tests in `src/adapters/postgres/__tests__/postgresPolicyInsightSynthesisTriggerAdapter.test.ts`.
-- Pure cycle classification/logging tests in `src/workers/policyInsight/__tests__/runSynthesisCycle.test.ts`.
-- Loop, shutdown, composition, and backfill dispatch tests in `src/workers/__tests__/policyInsightSynthesisWorker.test.ts`.
-- Postgres end-to-end acceptance coverage in `src/workers/__tests__/policyInsightSynthesis.e2e.pg.test.ts`.
-- Do not expand the 674-line `src/adapters/http/handlers/__tests__/evidenceIngest.test.ts`; the new worker E2E suite proves isolation without adding another oversized test-update task.
+- Add focused SQLite migration/read tests, Postgres queue schema/adapter tests, coordinator tests, internal endpoint tests, worker state-machine tests, and one compact end-to-end runtime test.
+- Update existing synthesis/selection tests for five-minute filtering and exact structured codes.
+- Update the small plan/evidence use-case tests for both created and idempotent wake-ups.
+- Do not grow `src/adapters/http/__tests__/evidence.e2e.pg.test.ts`; the new endpoint gets dedicated test files.
+- Every behavioral invariant above is an exact test case name written before implementation.
 
 ## Validation commands
 
-After all implementation tasks, the dedicated validation phase should run exactly:
+Each task contains file-scoped Vitest/ESLint/Prettier commands. After all implementation tasks, the dedicated validate phase (not an implementation task) must run the repository quality gate exactly as required by `AGENTS.md`:
 
 ```bash
-pnpm run typecheck
-pnpm run test
-pnpm run lint
-pnpm run build
-docker compose -f docker-compose.test.yml up -d
-DATABASE_URL=postgres://test:test@localhost:5432/regime_engine_test PG_SSL=false pnpm run db:migrate
+pnpm run typecheck && pnpm run test && pnpm run lint && pnpm run build
+pnpm run boundaries
 DATABASE_URL=postgres://test:test@localhost:5432/regime_engine_test PG_SSL=false pnpm run test:pg
-docker compose -f docker-compose.test.yml down
 ```
 
-The implementer must also perform the documented one-shot smoke check with valid local configuration:
+For migration validation, start the repository test database using its checked-in configuration before the Postgres commands:
 
 ```bash
-DATABASE_URL=postgres://test:test@localhost:5432/regime_engine_test PG_SSL=false CANONICAL_SOL_USDC_POOL_ADDRESS=PoolTest111 pnpm run backfill:pair-insights
+docker compose -f docker-compose.test.yml up -d
+pnpm run db:migrate
 ```
-
-Expected result: structured `succeeded` or `idle`, never an unhandled rejection; after seeded pair evidence and candles, the current pair endpoint returns an insight whose selected lineage includes that evidence.
 
 ## Risk areas
 
-- Lease correctness: a stale worker must not advance or release a claim owned by a newer worker.
-- Poison evidence: permanent classification must be narrow enough not to discard recoverable infrastructure failures, but must prevent a structurally invalid receipt from blocking all newer evidence.
-- Coalescing semantics intentionally synthesize only the newest pending pair receipt; older receipts remain in the append-only evidence history but do not each create an insight.
-- The canonical pool must exactly match candle ingestion; a syntactically valid but wrong pool causes persistent missing-regime retries.
-- A lease can expire during slow synthesis. The policy repository's unique synthesis fingerprint is therefore still required to converge overlapping attempts.
-- Migration metadata must match the hand-authored SQL/schema and remain forward-only in production.
-- Worker deployment is operationally required. Shipping code without enabling the synthesis-worker service leaves the cursor untouched, although explicit backfill remains available.
-- Pair safety is an upstream trust boundary. Regime Engine uses scope-exact selection and must not reinterpret position evidence as pair evidence.
+- SQLite and Postgres cannot commit atomically. The design deliberately uses idempotent source replay, waiting rows, startup reconciliation, and the internal eligible-scope trigger as recovery paths.
+- SQLite schema upgrades are irreversible in place; malformed legacy canonical JSON must abort startup rather than silently leaving unindexed rows.
+- Horizontal HTTP scaling is unsafe unless every replica mounts the same SQLite ledger and SQLite locking remains acceptable. Deployment must remain single-writer until plan storage moves.
+- Lease duration must exceed a normal synthesis cycle; a stolen lease is contained by owner-checked terminal mutations and final insight idempotency.
+- Selection can change as evidence expires. `expectedSelectionHash` prevents a queue identity from synthesizing a different selection.
+- A plan without `walletId` cannot satisfy exact position evidence identity and is intentionally not enqueued.
+- Drizzle generated metadata is easy to drift; SQL, TypeScript schema, snapshot, and journal must be generated and committed together.
 
 ## Stop conditions
 
-- Stop if the companion publisher does not produce a contract-valid `scope.kind: "pair"` bundle containing only pair-safe data; do not substitute position evidence or a market-only insight.
-- Stop if the production canonical SOL/USDC pool address cannot be confirmed against the candle collector configuration.
-- Stop if the cursor migration cannot be applied additively or Drizzle metadata disagrees with the SQL; do not edit production migration history or drop data.
-- Stop if Postgres transition tests cannot exercise a real database; skipped tests are not enough to approve lease/cursor behavior.
-- Stop if the existing `synthesisInputHash` uniqueness/replay tests regress, because lease expiry can otherwise create duplicate insights.
-- Stop if implementing the trigger would require awaiting synthesis from `evidenceIngest.ts` or changing a created ingest response based on worker health.
-- Stop if transient failure handling advances the cursor without reaching max attempts, or if retries exceed max attempts without converting to permanent failure and advancing.
-- Stop if the no-parameter current endpoint returns `200` but the resulting insight has empty selected lineage despite valid fresh pair evidence; that is the degraded behavior this issue forbids.
+- Abort if production cannot guarantee that the HTTP process and position worker use the same persistent `LEDGER_DB_PATH`; do not fall back to cross-container local SQLite access.
+- Abort the SQLite migration if any existing `request_json` cannot be parsed into a position identity; do not populate invented/null identity values for legacy rows.
+- Abort if the checked-in evidence contract does not provide wallet, whirlpool, position, `asOf`, and expiration values needed for exact compatibility.
+- Abort if adding a queue port method would leave any adapter or fake implementation uncompilable in the same task; keep port and every required implementation together.
+- Abort deployment if migration tests, lease-recovery tests, source-replay tests, or the existing current-insight read contract fail.
+- Abort deployment backfill if it reports `freshEvidenceRequired` and the operator/companion deployment has no configured way to initiate and verify the upstream intelligence run; this repository does not invent an undocumented cross-service endpoint.
+- Abort rather than add message-string classification or inline synthesis to the internal POST endpoint.
+
+## Assumptions documented
+
+- `design.md` selects co-location; this plan interprets it as an in-process worker owned by the HTTP Fastify lifecycle, with a standalone script only for controlled operations against the same mounted ledger.
+- The temporal rule is inclusive `plan.asOfUnixMs ± 300_000ms` against evidence bundle `asOf`; exact wallet/position/pool equality is additionally required.
+- Existing evidence or plans with no counterpart are durable waiting work, not errors. Expired evidence becomes `POSITION_STALE` when reconciliation can establish that it cannot become eligible.
+- Older ready requests are retained for audit and become `superseded` when a newer plan or selection wins; rows are not destructively deleted.
+- "Trigger a fresh intelligence run" is represented by a durable `waiting_for_evidence` request plus `freshEvidenceRequired: true` in the authenticated deployment response. The companion deployment must consume that signal because the issue supplies no authorized intelligence-service endpoint for Regime Engine to call.

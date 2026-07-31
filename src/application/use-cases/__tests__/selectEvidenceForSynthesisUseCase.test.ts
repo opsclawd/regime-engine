@@ -17,6 +17,8 @@ class FakeEvidenceBundleRepositoryPort implements EvidenceBundleRepositoryPort {
     scope: Scope;
     source: EvidenceSourceFilter | null;
     nowUnixMs: number;
+    fromAsOfUnixMs?: number;
+    toAsOfUnixMs?: number;
   }> = [];
 
   public nextRecords: EvidenceBundleRecord[] = [];
@@ -239,5 +241,69 @@ describe("SelectEvidenceForSynthesisUseCase", () => {
     await expect(useCase({ scope: { kind: "pair" }, selectedAtUnixMs: 1.5 })).rejects.toThrow(
       "selectedAtUnixMs must be a non-negative finite integer"
     );
+  });
+
+  it("selects position evidence at the inclusive five minute plan window boundaries", async () => {
+    const clock = new FakeClockPort(1_700_000_000_000);
+    const repository = new FakeEvidenceBundleRepositoryPort();
+    const scope: Scope = {
+      kind: "position",
+      network: "solana-mainnet",
+      positionId: "pos-1",
+      walletAddress: "wallet-1",
+      whirlpoolAddress: "pool-1"
+    };
+
+    const planAsOfUnixMs = 1_700_000_000_000;
+    const fromAsOfUnixMs = planAsOfUnixMs - 300_000;
+    const toAsOfUnixMs = planAsOfUnixMs + 300_000;
+
+    const selectorSpy = vi.fn().mockReturnValue({ dummy: true });
+    const useCase = createSelectEvidenceForSynthesisUseCase({
+      clock,
+      repository,
+      selector: selectorSpy
+    });
+
+    await useCase({ scope, fromAsOfUnixMs, toAsOfUnixMs });
+
+    expect(repository.getLatestCalls[0]).toMatchObject({
+      scope,
+      fromAsOfUnixMs: 1_699_999_700_000,
+      toAsOfUnixMs: 1_700_000_300_000
+    });
+  });
+
+  it("excludes position evidence one millisecond outside the plan window", async () => {
+    const clock = new FakeClockPort(1_700_000_000_000);
+    const repository = new FakeEvidenceBundleRepositoryPort();
+    const scope: Scope = {
+      kind: "position",
+      network: "solana-mainnet",
+      positionId: "pos-1",
+      walletAddress: "wallet-1",
+      whirlpoolAddress: "pool-1"
+    };
+
+    const planAsOfUnixMs = 1_700_000_000_000;
+    const fromAsOfUnixMs = planAsOfUnixMs - 300_000;
+    const toAsOfUnixMs = planAsOfUnixMs + 300_000;
+
+    const useCase = createSelectEvidenceForSynthesisUseCase({
+      clock,
+      repository
+    });
+
+    await useCase({ scope, fromAsOfUnixMs, toAsOfUnixMs });
+
+    const call = repository.getLatestCalls[0];
+    expect(call.fromAsOfUnixMs).toBe(1_699_999_700_000);
+    expect(call.toAsOfUnixMs).toBe(1_700_000_300_000);
+
+    const outsideBefore = 1_699_999_699_999; // 1ms before fromAsOfUnixMs
+    const outsideAfter = 1_700_000_300_001; // 1ms after toAsOfUnixMs
+
+    expect(outsideBefore < call.fromAsOfUnixMs!).toBe(true);
+    expect(outsideAfter > call.toAsOfUnixMs!).toBe(true);
   });
 });

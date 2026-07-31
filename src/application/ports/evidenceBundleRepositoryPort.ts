@@ -61,6 +61,8 @@ export interface EvidenceBundleRepositoryPort {
     scope: Scope;
     source: EvidenceSourceFilter | null;
     nowUnixMs: number;
+    fromAsOfUnixMs?: number;
+    toAsOfUnixMs?: number;
   }): Promise<EvidenceBundleRecord[]>;
 
   getHistory(input: {

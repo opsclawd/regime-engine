@@ -115,13 +115,15 @@ const validateLineage = (
 ): readonly EvidenceSelectionDecision[] => {
   if (!Array.isArray(value)) {
     throw new PolicyInsightValidationError(
-      `${fieldName} must be an array of evidence selection decisions`
+      `${fieldName} must be an array of evidence selection decisions`,
+      "OUTPUT_SCHEMA_INVALID"
     );
   }
   for (const entry of value) {
     if (!isEvidenceSelectionDecision(entry) || entry.status !== expectedStatus) {
       throw new PolicyInsightValidationError(
-        `${fieldName} must contain only ${expectedStatus} evidence selection decisions`
+        `${fieldName} must contain only ${expectedStatus} evidence selection decisions`,
+        "OUTPUT_SCHEMA_INVALID"
       );
     }
   }
@@ -131,7 +133,8 @@ const validateLineage = (
 const validateSynthesisInput = (value: unknown): PolicySynthesisEnvelope => {
   if (!isPolicySynthesisEnvelope(value)) {
     throw new PolicyInsightValidationError(
-      "synthesisInputJson must be a valid canonical PolicySynthesisEnvelope"
+      "synthesisInputJson must be a valid canonical PolicySynthesisEnvelope",
+      "OUTPUT_SCHEMA_INVALID"
     );
   }
   return value;
@@ -146,6 +149,7 @@ const validateSynthesisOutput = (
   if (!result.ok) {
     throw new PolicyInsightValidationError(
       `synthesisOutputJson failed PolicyInsightContent validation: ${result.issues.length} issue(s)`,
+      "OUTPUT_SCHEMA_INVALID",
       { cause: result.issues }
     );
   }
@@ -153,7 +157,8 @@ const validateSynthesisOutput = (
   const { canonical, hash } = computePolicyInsightContentCanonicalAndHash(result.value);
   if (canonical !== payloadCanonical || hash !== payloadHash) {
     throw new PolicyInsightValidationError(
-      "payloadCanonical/payloadHash do not match the recomputed canonical form of synthesisOutputJson"
+      "payloadCanonical/payloadHash do not match the recomputed canonical form of synthesisOutputJson",
+      "OUTPUT_SCHEMA_INVALID"
     );
   }
   return result.value;

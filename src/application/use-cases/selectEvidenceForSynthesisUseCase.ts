@@ -12,6 +12,8 @@ import { selectEvidence } from "../../engine/evidence/selectEvidence.js";
 export type SelectEvidenceForSynthesisUseCase = (input: {
   readonly scope: Scope;
   readonly selectedAtUnixMs?: number;
+  readonly fromAsOfUnixMs?: number;
+  readonly toAsOfUnixMs?: number;
 }) => Promise<SelectedEvidenceSummary>;
 
 export interface SelectEvidenceForSynthesisUseCaseDeps {
@@ -23,7 +25,7 @@ export interface SelectEvidenceForSynthesisUseCaseDeps {
 
 export const createSelectEvidenceForSynthesisUseCase =
   (deps: SelectEvidenceForSynthesisUseCaseDeps): SelectEvidenceForSynthesisUseCase =>
-  async ({ scope, selectedAtUnixMs }) => {
+  async ({ scope, selectedAtUnixMs, fromAsOfUnixMs, toAsOfUnixMs }) => {
     if (selectedAtUnixMs !== undefined) {
       if (
         typeof selectedAtUnixMs !== "number" ||
@@ -39,7 +41,9 @@ export const createSelectEvidenceForSynthesisUseCase =
       pair: "SOL/USDC",
       scope,
       source: null,
-      nowUnixMs: finalSelectedAtUnixMs
+      nowUnixMs: finalSelectedAtUnixMs,
+      fromAsOfUnixMs,
+      toAsOfUnixMs
     });
     return (deps.selector ?? selectEvidence)({
       records,

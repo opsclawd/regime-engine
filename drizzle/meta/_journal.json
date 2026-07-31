@@ -71,6 +71,13 @@
       "when": 1784410800000,
       "tag": "0009_create_policy_insight_synthesis_cursor",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1784414400000,
+      "tag": "0010_create_policy_insight_synthesis_requests",
+      "breakpoints": true
     }
   ]
 }

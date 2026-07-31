@@ -2,8 +2,11 @@
 
 ## verdict
 
-pass
+p2_only
 
 ## findings
 
-- [P1] `task-manifest.json:Task 4` | "Transient failures (e.g. unknown operational errors) are retried indefinitely because the cycle implementation does not enforce a retry budget (max attempts). This violates the requirement that retries must have a budget. While the cursor schema tracks `attempt_count`, the cycle logic never uses it to cap retries and convert a persistently failing claim into a permanent failure, causing the worker to stall forever on a poison pill." | grounded | addressed
+- [P2] `task-manifest.json:Task 2` | "Undeclared signature change for newly exported `computeEvidenceSelectionHash` function in Task 2." | grounded
+- [P2] `task-manifest.json:Task 5` | "Undeclared signature change for newly exported `createRequestPositionPolicyInsightSynthesisUseCase` function in Task 5." | grounded
+- [P2] `task-manifest.json:Task 8` | "Undeclared signature change for newly exported dependencies and discriminated result types for `runPositionPolicyInsightSynthesisCycle` in Task 8." | grounded
+- [P2] `plan.md:158` | "Incomplete instruction for updating error instantiation sites: the explicit list in Task 2 omits `postgresPolicyInsightRepository.ts`, `synthesizePolicyInsightUseCase.ts`, `getCurrentPolicyInsightUseCase.ts`, and `getPolicyInsightHistoryUseCase.ts`, which may cause an agent to leave these files with type errors if it strictly follows the second sentence instead of the first." | grounded
