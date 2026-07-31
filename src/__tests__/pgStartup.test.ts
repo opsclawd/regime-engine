@@ -4,7 +4,8 @@ import {
   verifyPgConnection,
   verifyCandleRevisionsTable,
   verifyEvidenceBundlesTable,
-  verifyPolicyInsightSynthesisCursorTable
+  verifyPolicyInsightSynthesisCursorTable,
+  verifyPolicyInsightSynthesisRequestsTable
 } from "../ledger/pg/db.js";
 
 describe("verifyPgConnection", () => {
@@ -94,6 +95,32 @@ describe("verifyPolicyInsightSynthesisCursorTable", () => {
 
     await expect(verifyPolicyInsightSynthesisCursorTable(mockDb)).rejects.toThrow(
       "FATAL: policy_insight_synthesis_cursor table not found in regime_engine schema — run migrations first"
+    );
+  });
+});
+
+describe("verifyPolicyInsightSynthesisRequestsTable", () => {
+  it("resolves when policy_insight_synthesis_requests exists", async () => {
+    const connectionString = process.env.DATABASE_URL;
+    if (!connectionString) {
+      return;
+    }
+
+    const { createDb } = await import("../ledger/pg/db.js");
+    const { db, client } = createDb(connectionString);
+
+    await expect(verifyPolicyInsightSynthesisRequestsTable(db)).resolves.toBeUndefined();
+
+    await client.end();
+  });
+
+  it("fails API startup when the position synthesis requests table is absent", async () => {
+    const mockDb = {
+      execute: async () => []
+    } as unknown as dbModule.Db;
+
+    await expect(verifyPolicyInsightSynthesisRequestsTable(mockDb)).rejects.toThrow(
+      "FATAL: policy_insight_synthesis_requests table not found in regime_engine schema — run migrations first"
     );
   });
 });
