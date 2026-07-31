@@ -100,7 +100,17 @@ The output includes market regime, fundamental regime, recommended action, confi
 
 Hard deterministic guards remain authoritative. Research evidence can affect posture, confidence, and risk, but it cannot silently bypass stale-data or safety rules.
 
-Note: the synthesis use case is composed in `src/composition/buildApplication.ts` but is not yet wired to an HTTP route or a scheduled job — nothing in the running service triggers it automatically today. `GET /v1/insights/sol-usdc/current` and `/history` serve whatever was most recently written to the PolicyInsight store.
+Note: Position policy insight synthesis is co-located with the Fastify HTTP service lifecycle in `src/composition/buildApp.ts` when both Postgres and SQLite stores are available. An operational standalone script `start:policy-synthesis` is also provided.
+
+### Position Policy Insight Synthesis Worker
+
+Position policy insight synthesis operates via a background worker registered against the Fastify lifecycle in `buildApp`:
+
+- **Co-location and Storage Requirements**: The worker runs in-process with the Fastify HTTP service. Because position plans are stored in SQLite (`LEDGER_DB_PATH`) while queue states and evidence bundles live in Postgres, HTTP process replicas must share the same persistent `LEDGER_DB_PATH` volume.
+- **Internal Replay Call**: Whenever evidence is posted (`POST /v1/evidence/sol-usdc`) or a position plan is generated (`POST /v1/plan`), the HTTP handler invokes the internal `requestPositionPolicyInsightSynthesis` use case to reconcile or enqueue synthesis work immediately.
+- **Queue Status**: Requests move through deterministic lifecycle statuses: `waiting_for_plan`, `waiting_for_evidence`, `pending`, `processing`, `completed`, `failed`, and `superseded`.
+- **Handling `freshEvidenceRequired`**: When a position synthesis request is created without sufficient fresh evidence, the response includes `freshEvidenceRequired: true`. The companion deployment must consume this signal to initiate an upstream intelligence run.
+- **Dual-write Gap Repair**: Because SQLite and Postgres cannot commit atomically, source-write replay and startup reconciliation (`reconcileStartup`) scan waiting and eligible scopes on worker startup to repair any unavoidable SQLite/Postgres dual-write gap.
 
 ### Canonical PolicyInsights wire contract
 
