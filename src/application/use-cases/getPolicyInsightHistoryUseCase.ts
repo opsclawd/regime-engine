@@ -57,12 +57,17 @@ export const createGetPolicyInsightHistoryUseCase = (
       try {
         repoCursor = decodeHistoryCursor(input.cursor);
       } catch (err) {
-        throw new PolicyInsightValidationError("Invalid pagination cursor", { cause: err });
+        throw new PolicyInsightValidationError("Invalid pagination cursor", "QUERY_INVALID", {
+          cause: err
+        });
       }
     }
 
     if (input.limit < 1 || input.limit > 100) {
-      throw new PolicyInsightValidationError("History limit must be between 1 and 100");
+      throw new PolicyInsightValidationError(
+        "History limit must be between 1 and 100",
+        "QUERY_INVALID"
+      );
     }
 
     const result = await deps.repository.getHistory({
@@ -82,7 +87,8 @@ export const createGetPolicyInsightHistoryUseCase = (
     );
     if (!projectResult.ok) {
       throw new PolicyInsightValidationError(
-        "Failed to project policy insight history: " + JSON.stringify(projectResult.issues)
+        "Failed to project policy insight history: " + JSON.stringify(projectResult.issues),
+        "OUTPUT_SCHEMA_INVALID"
       );
     }
 

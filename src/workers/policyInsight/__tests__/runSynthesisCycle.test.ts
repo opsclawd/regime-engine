@@ -211,7 +211,7 @@ describe("runPolicyInsightSynthesisCycle", () => {
       lastProcessedReceiptId: 41
     });
     vi.mocked(synthesizePolicyInsight).mockRejectedValue(
-      new PolicyInsightValidationError("Position plan missing")
+      new PolicyInsightValidationError("Position plan missing", "POSITION_PLAN_MISSING")
     );
     vi.mocked(triggerPort.complete).mockResolvedValue(true);
 
@@ -230,7 +230,7 @@ describe("runPolicyInsightSynthesisCycle", () => {
       targetReceiptId: 42,
       nowUnixMs: 1700000000000,
       outcome: "permanent_failure",
-      errorCode: "PolicyInsightValidationError",
+      errorCode: "POSITION_PLAN_MISSING",
       errorMessage: "Position plan missing"
     });
     expect(triggerPort.releaseForRetry).not.toHaveBeenCalled();
@@ -238,7 +238,7 @@ describe("runPolicyInsightSynthesisCycle", () => {
     expect(result).toEqual({
       outcome: "permanent_failure",
       receiptId: 42,
-      errorCode: "PolicyInsightValidationError",
+      errorCode: "POSITION_PLAN_MISSING",
       errorMessage: "Position plan missing"
     });
   });
@@ -271,7 +271,7 @@ describe("runPolicyInsightSynthesisCycle", () => {
       leaseOwner,
       targetReceiptId: 42,
       nowUnixMs: 1700000000000,
-      classification: "PolicyInsightStoreUnavailableError",
+      classification: "POLICY_STORE_UNAVAILABLE",
       sanitizedMessage: "DB connection pool exhausted",
       retryAtUnixMs: 1700000005000
     });
@@ -280,7 +280,7 @@ describe("runPolicyInsightSynthesisCycle", () => {
     expect(result).toEqual({
       outcome: "transient_failure",
       receiptId: 42,
-      errorCode: "PolicyInsightStoreUnavailableError",
+      errorCode: "POLICY_STORE_UNAVAILABLE",
       errorMessage: "DB connection pool exhausted"
     });
 
@@ -303,7 +303,7 @@ describe("runPolicyInsightSynthesisCycle", () => {
       leaseOwner,
       targetReceiptId: 42,
       nowUnixMs: 1700000000000,
-      classification: "RegimeCandlesNotFoundError",
+      classification: "MARKET_DATA_UNAVAILABLE",
       sanitizedMessage: "Candles missing for timeframe 1h",
       retryAtUnixMs: 1700000005000
     });
@@ -311,7 +311,7 @@ describe("runPolicyInsightSynthesisCycle", () => {
     expect(result2).toEqual({
       outcome: "transient_failure",
       receiptId: 42,
-      errorCode: "RegimeCandlesNotFoundError",
+      errorCode: "MARKET_DATA_UNAVAILABLE",
       errorMessage: "Candles missing for timeframe 1h"
     });
   });
@@ -354,7 +354,7 @@ describe("runPolicyInsightSynthesisCycle", () => {
       targetReceiptId: 42,
       nowUnixMs: 1700000000000,
       outcome: "permanent_failure",
-      errorCode: "EvidenceStoreUnavailableError",
+      errorCode: "EVIDENCE_STORE_UNAVAILABLE",
       errorMessage: "Evidence database unreachable"
     });
     expect(triggerPort.releaseForRetry).not.toHaveBeenCalled();
@@ -362,7 +362,7 @@ describe("runPolicyInsightSynthesisCycle", () => {
     expect(result).toEqual({
       outcome: "permanent_failure",
       receiptId: 42,
-      errorCode: "EvidenceStoreUnavailableError",
+      errorCode: "EVIDENCE_STORE_UNAVAILABLE",
       errorMessage: "Evidence database unreachable"
     });
   });
@@ -433,6 +433,81 @@ describe("runPolicyInsightSynthesisCycle", () => {
     expect(result).toEqual({
       outcome: "lease_lost",
       receiptId: 42
+    });
+  });
+
+  it("classifies market evidence and policy persistence failures without message matching", async () => {
+    vi.mocked(triggerPort.claimLatestPairEvidence).mockResolvedValue({
+      cursorKey: "pair",
+      targetReceiptId: 42,
+      attemptCount: 1,
+      leaseOwner,
+      leaseExpiresAtUnixMs: 1700000060000,
+      lastProcessedReceiptId: 41
+    });
+
+    // 1. Policy store failure with arbitrary message
+    vi.mocked(synthesizePolicyInsight).mockRejectedValueOnce(
+      new PolicyInsightStoreUnavailableError("Some arbitrary un-matched message string")
+    );
+    vi.mocked(triggerPort.releaseForRetry).mockResolvedValue(true);
+
+    const res1 = await runPolicyInsightSynthesisCycle({
+      triggerPort,
+      synthesizePolicyInsight,
+      config,
+      logger,
+      leaseOwner,
+      clock
+    });
+
+    expect(res1).toEqual({
+      outcome: "transient_failure",
+      receiptId: 42,
+      errorCode: "POLICY_STORE_UNAVAILABLE",
+      errorMessage: "Some arbitrary un-matched message string"
+    });
+
+    // 2. Evidence store failure with arbitrary message
+    vi.mocked(synthesizePolicyInsight).mockRejectedValueOnce(
+      new EvidenceStoreUnavailableError("Another random message string")
+    );
+
+    const res2 = await runPolicyInsightSynthesisCycle({
+      triggerPort,
+      synthesizePolicyInsight,
+      config,
+      logger,
+      leaseOwner,
+      clock
+    });
+
+    expect(res2).toEqual({
+      outcome: "transient_failure",
+      receiptId: 42,
+      errorCode: "EVIDENCE_STORE_UNAVAILABLE",
+      errorMessage: "Another random message string"
+    });
+
+    // 3. Market data failure with arbitrary message
+    vi.mocked(synthesizePolicyInsight).mockRejectedValueOnce(
+      new RegimeCandlesNotFoundError("Candles unavailable custom msg", [])
+    );
+
+    const res3 = await runPolicyInsightSynthesisCycle({
+      triggerPort,
+      synthesizePolicyInsight,
+      config,
+      logger,
+      leaseOwner,
+      clock
+    });
+
+    expect(res3).toEqual({
+      outcome: "transient_failure",
+      receiptId: 42,
+      errorCode: "MARKET_DATA_UNAVAILABLE",
+      errorMessage: "Candles unavailable custom msg"
     });
   });
 });

@@ -13,7 +13,10 @@ import {
   PolicyInsightStoreUnavailableError,
   PolicyInsightValidationError
 } from "../errors/policyInsightErrors.js";
-import { computePolicyInsightFingerprints } from "./policyInsightFingerprints.js";
+import {
+  computePolicyInsightFingerprints,
+  computeEvidenceSelectionHash
+} from "./policyInsightFingerprints.js";
 import {
   synthesizePolicyInsightV1,
   type PolicySynthesisEnvelope
@@ -42,6 +45,7 @@ export interface SynthesizePolicyInsightInput {
     readonly position: PlanRequestPosition;
     readonly plan: PlanResponse;
   } | null;
+  readonly expectedSelectionHash?: string;
 }
 
 export type SynthesizePolicyInsightUseCase = (
@@ -79,36 +83,49 @@ export const createSynthesizePolicyInsightUseCase = (
     if (scope.kind === "position") {
       if (!positionPlan) {
         throw new PolicyInsightValidationError(
-          "positionPlan is required for position-scoped synthesis"
+          "positionPlan is required for position-scoped synthesis",
+          "POSITION_PLAN_MISSING"
         );
       }
       if (positionPlan.position.positionId !== scope.positionId) {
         throw new PolicyInsightValidationError(
-          "positionId mismatch between scope and positionPlan"
+          "positionId mismatch between scope and positionPlan",
+          "POSITION_SCOPE_MISMATCH"
         );
       }
       if (positionPlan.plan.scope.positionId !== scope.positionId) {
-        throw new PolicyInsightValidationError("positionId mismatch between scope and plan scope");
+        throw new PolicyInsightValidationError(
+          "positionId mismatch between scope and plan scope",
+          "POSITION_SCOPE_MISMATCH"
+        );
       }
       if (positionPlan.plan.scope.poolAddress !== scope.whirlpoolAddress) {
-        throw new PolicyInsightValidationError("poolAddress mismatch between scope and plan scope");
+        throw new PolicyInsightValidationError(
+          "poolAddress mismatch between scope and plan scope",
+          "POOL_SCOPE_MISMATCH"
+        );
       }
       if (
         scope.walletAddress &&
         positionPlan.position.walletId &&
         scope.walletAddress !== positionPlan.position.walletId
       ) {
-        throw new PolicyInsightValidationError("walletId mismatch between scope and position");
+        throw new PolicyInsightValidationError(
+          "walletId mismatch between scope and position",
+          "POSITION_SCOPE_MISMATCH"
+        );
       }
       if (scope.whirlpoolAddress !== input.marketSelector.poolAddress) {
         throw new PolicyInsightValidationError(
-          "poolAddress mismatch between position scope and marketSelector"
+          "poolAddress mismatch between position scope and marketSelector",
+          "POOL_SCOPE_MISMATCH"
         );
       }
     } else {
       if (positionPlan) {
         throw new PolicyInsightValidationError(
-          "positionPlan must not be supplied for non-position-scoped synthesis"
+          "positionPlan must not be supplied for non-position-scoped synthesis",
+          "POSITION_SCOPE_MISMATCH"
         );
       }
     }
@@ -116,7 +133,8 @@ export const createSynthesizePolicyInsightUseCase = (
     if (scope.kind === "whirlpool") {
       if (scope.whirlpoolAddress !== input.marketSelector.poolAddress) {
         throw new PolicyInsightValidationError(
-          "poolAddress mismatch between scope and marketSelector"
+          "poolAddress mismatch between scope and marketSelector",
+          "POOL_SCOPE_MISMATCH"
         );
       }
     }
@@ -128,14 +146,20 @@ export const createSynthesizePolicyInsightUseCase = (
         positionAge > deps.ruleset.positionMaxAgeMs ||
         positionPlan.position.observedAtUnixMs > synthesisAtUnixMs
       ) {
-        throw new PolicyInsightValidationError("Supplied position is stale or from the future");
+        throw new PolicyInsightValidationError(
+          "Supplied position is stale or from the future",
+          "POSITION_STALE"
+        );
       }
 
       // Verify plan hash
       const { planHash, ...withoutHash } = positionPlan.plan;
       const verifiedHash = sha256Hex(toCanonicalJson(withoutHash));
       if (planHash !== verifiedHash) {
-        throw new PolicyInsightValidationError("Plan hash verification failed");
+        throw new PolicyInsightValidationError(
+          "Plan hash verification failed",
+          "PLAN_HASH_INVALID"
+        );
       }
     }
 
@@ -151,15 +175,32 @@ export const createSynthesizePolicyInsightUseCase = (
       synthesisAtUnixMs
     );
 
+    const fromAsOfUnixMs = positionPlan ? positionPlan.plan.asOfUnixMs - 300_000 : undefined;
+    const toAsOfUnixMs = positionPlan ? positionPlan.plan.asOfUnixMs + 300_000 : undefined;
+
     const evidence = await deps.selectEvidence({
       scope,
-      selectedAtUnixMs: synthesisAtUnixMs
+      selectedAtUnixMs: synthesisAtUnixMs,
+      fromAsOfUnixMs,
+      toAsOfUnixMs
     });
 
-    // 4. Verify selection-time matches captured instant
+    // 4. Verify selection-time matches captured instant and optional expectedSelectionHash
     if (evidence.selectedAtUnixMs !== synthesisAtUnixMs) {
       throw new PolicyInsightValidationError(
-        "Evidence selection time does not match captured synthesis time"
+        "Evidence selection time does not match captured synthesis time",
+        "EVIDENCE_SELECTION_SUPERSEDED"
+      );
+    }
+
+    const computedSelectionHash = computeEvidenceSelectionHash(evidence);
+    if (
+      input.expectedSelectionHash !== undefined &&
+      input.expectedSelectionHash !== computedSelectionHash
+    ) {
+      throw new PolicyInsightValidationError(
+        `Selected evidence set hash (${computedSelectionHash}) does not match expected selection hash (${input.expectedSelectionHash})`,
+        "EVIDENCE_SELECTION_SUPERSEDED"
       );
     }
 
@@ -182,16 +223,19 @@ export const createSynthesizePolicyInsightUseCase = (
         synthesisInputHash: fingerprints.synthesisInputHash
       });
     } catch (err) {
-      throw new PolicyInsightStoreUnavailableError("Failed to query policy insight repository", {
-        cause: err
-      });
+      throw new PolicyInsightStoreUnavailableError(
+        "Failed to query policy insight repository",
+        "POLICY_STORE_UNAVAILABLE",
+        { cause: err }
+      );
     }
 
     if (existing) {
       const readResult = projectPolicyInsightRead(existing.synthesisOutputJson, synthesisAtUnixMs);
       if (!readResult.ok) {
         throw new PolicyInsightValidationError(
-          "Failed to project policy insight: " + JSON.stringify(readResult.issues)
+          "Failed to project policy insight: " + JSON.stringify(readResult.issues),
+          "OUTPUT_SCHEMA_INVALID"
         );
       }
       return readResult.value;
@@ -223,6 +267,7 @@ export const createSynthesizePolicyInsightUseCase = (
     if (!validationResult.ok) {
       throw new PolicyInsightValidationError(
         `Reducer output rejected by schema validation: ${validationResult.issues.length} issue(s)`,
+        "OUTPUT_SCHEMA_INVALID",
         { cause: validationResult.issues }
       );
     }
@@ -268,7 +313,8 @@ export const createSynthesizePolicyInsightUseCase = (
       );
       if (!readResult.ok) {
         throw new PolicyInsightValidationError(
-          "Failed to project policy insight: " + JSON.stringify(readResult.issues)
+          "Failed to project policy insight: " + JSON.stringify(readResult.issues),
+          "OUTPUT_SCHEMA_INVALID"
         );
       }
       return readResult.value;
@@ -276,9 +322,11 @@ export const createSynthesizePolicyInsightUseCase = (
       if (err instanceof PolicyInsightValidationError) {
         throw err;
       }
-      throw new PolicyInsightStoreUnavailableError("Failed to persist synthesized policy insight", {
-        cause: err
-      });
+      throw new PolicyInsightStoreUnavailableError(
+        "Failed to persist synthesized policy insight",
+        "POLICY_STORE_UNAVAILABLE",
+        { cause: err }
+      );
     }
   };
 };

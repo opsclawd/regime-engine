@@ -42,7 +42,8 @@ export const createGetCurrentPolicyInsightUseCase = (
     const result = projectPolicyInsightRead(record.synthesisOutputJson, queriedAtUnixMs);
     if (!result.ok) {
       throw new PolicyInsightValidationError(
-        "Failed to project policy insight: " + JSON.stringify(result.issues)
+        "Failed to project policy insight: " + JSON.stringify(result.issues),
+        "OUTPUT_SCHEMA_INVALID"
       );
     }
     return result.value;

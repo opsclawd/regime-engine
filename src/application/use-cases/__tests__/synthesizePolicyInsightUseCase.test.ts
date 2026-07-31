@@ -395,4 +395,249 @@ describe("SynthesizePolicyInsightUseCase Invariants", () => {
     await expect(useCase(input)).rejects.toThrow(PolicyInsightValidationError);
     expect(repository.insertCalls).toHaveLength(0);
   });
+
+  it("rejects position wallet position and pool mismatches with structured scope codes", async () => {
+    const fixedTime = 123456789;
+    const clock = { nowUnixMs: vi.fn().mockReturnValue(fixedTime) };
+    const getCurrentRegime = vi.fn().mockResolvedValue(makeDummyMarket(fixedTime, "Pool123"));
+    const selectEvidence = vi.fn().mockResolvedValue(dummyEvidence(fixedTime));
+    const repository = new FakePolicyInsightRepository();
+
+    const useCase = createSynthesizePolicyInsightUseCase({
+      getCurrentRegime,
+      selectEvidence,
+      repository,
+      clock,
+      ruleset: SOL_USDC_POLICY_V1
+    });
+
+    // 1. Missing positionPlan for position scope -> POSITION_PLAN_MISSING
+    try {
+      await useCase({
+        scope: {
+          kind: "position",
+          network: "solana-mainnet",
+          positionId: "pos-1",
+          walletAddress: "wallet-1",
+          whirlpoolAddress: "Pool123"
+        },
+        marketSelector: {
+          source: "birdeye",
+          network: "solana-mainnet",
+          poolAddress: "Pool123",
+          timeframe: "15m"
+        }
+      });
+      expect.fail("Should have thrown");
+    } catch (err) {
+      expect(err).toBeInstanceOf(PolicyInsightValidationError);
+      expect((err as PolicyInsightValidationError).errorCode).toBe("POSITION_PLAN_MISSING");
+    }
+
+    // Dummy valid position and plan base
+    const validPos: PlanRequestPosition = {
+      positionId: "pos-1",
+      walletId: "wallet-1",
+      observedAtUnixMs: fixedTime,
+      lowerBoundPrice: 90,
+      upperBoundPrice: 110,
+      currentPrice: 100,
+      rangeState: "in-range",
+      breachQualified: false
+    };
+
+    const validPlanWithoutHash: Omit<PlanResponse, "planHash"> = {
+      schemaVersion: "1.0",
+      planId: "plan-1",
+      asOfUnixMs: fixedTime,
+      scope: { kind: "position", positionId: "pos-1", poolAddress: "Pool123", symbol: "SOL/USDC" },
+      regime: "CHOP",
+      targets: { solBps: 5000, usdcBps: 5000, allowClmm: true },
+      actions: [],
+      constraints: { cooldownUntilUnixMs: 0, standDownUntilUnixMs: 0, notes: [] },
+      nextRegimeState: { current: "CHOP", barsInRegime: 5, pending: null, pendingBars: 0 },
+      reasons: [],
+      telemetry: {},
+      marketData: {} as unknown as PlanMarketData
+    };
+
+    // 2. Position ID mismatch -> POSITION_SCOPE_MISMATCH
+    try {
+      await useCase({
+        scope: {
+          kind: "position",
+          network: "solana-mainnet",
+          positionId: "pos-1",
+          walletAddress: "wallet-1",
+          whirlpoolAddress: "Pool123"
+        },
+        marketSelector: {
+          source: "birdeye",
+          network: "solana-mainnet",
+          poolAddress: "Pool123",
+          timeframe: "15m"
+        },
+        positionPlan: {
+          position: { ...validPos, positionId: "pos-2" },
+          plan: { ...validPlanWithoutHash, planHash: "dummy" } as PlanResponse
+        }
+      });
+      expect.fail("Should have thrown");
+    } catch (err) {
+      expect(err).toBeInstanceOf(PolicyInsightValidationError);
+      expect((err as PolicyInsightValidationError).errorCode).toBe("POSITION_SCOPE_MISMATCH");
+    }
+
+    // 3. Pool Address mismatch -> POOL_SCOPE_MISMATCH
+    try {
+      await useCase({
+        scope: {
+          kind: "position",
+          network: "solana-mainnet",
+          positionId: "pos-1",
+          walletAddress: "wallet-1",
+          whirlpoolAddress: "Pool123"
+        },
+        marketSelector: {
+          source: "birdeye",
+          network: "solana-mainnet",
+          poolAddress: "PoolWRONG",
+          timeframe: "15m"
+        },
+        positionPlan: {
+          position: validPos,
+          plan: { ...validPlanWithoutHash, planHash: "dummy" } as PlanResponse
+        }
+      });
+      expect.fail("Should have thrown");
+    } catch (err) {
+      expect(err).toBeInstanceOf(PolicyInsightValidationError);
+      expect((err as PolicyInsightValidationError).errorCode).toBe("POOL_SCOPE_MISMATCH");
+    }
+  });
+
+  it("rejects stale positions and invalid plan hashes with POSITION_STALE and PLAN_HASH_INVALID", async () => {
+    const fixedTime = 123456789;
+    const clock = { nowUnixMs: vi.fn().mockReturnValue(fixedTime) };
+    const getCurrentRegime = vi.fn().mockResolvedValue(makeDummyMarket(fixedTime, "Pool123"));
+    const selectEvidence = vi.fn().mockResolvedValue(dummyEvidence(fixedTime));
+    const repository = new FakePolicyInsightRepository();
+
+    const useCase = createSynthesizePolicyInsightUseCase({
+      getCurrentRegime,
+      selectEvidence,
+      repository,
+      clock,
+      ruleset: SOL_USDC_POLICY_V1
+    });
+
+    const validPos: PlanRequestPosition = {
+      positionId: "pos-1",
+      walletId: "wallet-1",
+      observedAtUnixMs: fixedTime - (SOL_USDC_POLICY_V1.positionMaxAgeMs + 1000), // Stale
+      lowerBoundPrice: 90,
+      upperBoundPrice: 110,
+      currentPrice: 100,
+      rangeState: "in-range",
+      breachQualified: false
+    };
+
+    const validPlan: PlanResponse = {
+      schemaVersion: "1.0",
+      planId: "plan-1",
+      planHash: "dummy",
+      asOfUnixMs: fixedTime,
+      scope: { kind: "position", positionId: "pos-1", poolAddress: "Pool123", symbol: "SOL/USDC" },
+      regime: "CHOP",
+      targets: { solBps: 5000, usdcBps: 5000, allowClmm: true },
+      actions: [],
+      constraints: { cooldownUntilUnixMs: 0, standDownUntilUnixMs: 0, notes: [] },
+      nextRegimeState: { current: "CHOP", barsInRegime: 5, pending: null, pendingBars: 0 },
+      reasons: [],
+      telemetry: {},
+      marketData: {} as unknown as PlanMarketData
+    };
+
+    // Stale position check
+    try {
+      await useCase({
+        scope: {
+          kind: "position",
+          network: "solana-mainnet",
+          positionId: "pos-1",
+          walletAddress: "wallet-1",
+          whirlpoolAddress: "Pool123"
+        },
+        marketSelector: {
+          source: "birdeye",
+          network: "solana-mainnet",
+          poolAddress: "Pool123",
+          timeframe: "15m"
+        },
+        positionPlan: { position: validPos, plan: validPlan }
+      });
+      expect.fail("Should have thrown");
+    } catch (err) {
+      expect(err).toBeInstanceOf(PolicyInsightValidationError);
+      expect((err as PolicyInsightValidationError).errorCode).toBe("POSITION_STALE");
+    }
+
+    // Invalid plan hash check
+    const freshPos = { ...validPos, observedAtUnixMs: fixedTime };
+    try {
+      await useCase({
+        scope: {
+          kind: "position",
+          network: "solana-mainnet",
+          positionId: "pos-1",
+          walletAddress: "wallet-1",
+          whirlpoolAddress: "Pool123"
+        },
+        marketSelector: {
+          source: "birdeye",
+          network: "solana-mainnet",
+          poolAddress: "Pool123",
+          timeframe: "15m"
+        },
+        positionPlan: { position: freshPos, plan: validPlan } // validPlan has bogus planHash "dummy"
+      });
+      expect.fail("Should have thrown");
+    } catch (err) {
+      expect(err).toBeInstanceOf(PolicyInsightValidationError);
+      expect((err as PolicyInsightValidationError).errorCode).toBe("PLAN_HASH_INVALID");
+    }
+  });
+
+  it("rejects a changed selected evidence set with EVIDENCE_SELECTION_SUPERSEDED", async () => {
+    const fixedTime = 123456789;
+    const clock = { nowUnixMs: vi.fn().mockReturnValue(fixedTime) };
+    const getCurrentRegime = vi.fn().mockResolvedValue(makeDummyMarket(fixedTime, "Pool123"));
+    const selectEvidence = vi.fn().mockResolvedValue(dummyEvidence(fixedTime));
+    const repository = new FakePolicyInsightRepository();
+
+    const useCase = createSynthesizePolicyInsightUseCase({
+      getCurrentRegime,
+      selectEvidence,
+      repository,
+      clock,
+      ruleset: SOL_USDC_POLICY_V1
+    });
+
+    try {
+      await useCase({
+        scope: { kind: "pair" },
+        marketSelector: {
+          source: "birdeye",
+          network: "solana-mainnet",
+          poolAddress: "Pool123",
+          timeframe: "15m"
+        },
+        expectedSelectionHash: "mismatched-selection-hash-12345"
+      });
+      expect.fail("Should have thrown");
+    } catch (err) {
+      expect(err).toBeInstanceOf(PolicyInsightValidationError);
+      expect((err as PolicyInsightValidationError).errorCode).toBe("EVIDENCE_SELECTION_SUPERSEDED");
+    }
+  });
 });
