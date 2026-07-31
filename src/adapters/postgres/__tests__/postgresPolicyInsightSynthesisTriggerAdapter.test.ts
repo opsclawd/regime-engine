@@ -359,7 +359,7 @@ describe.skipIf(!process.env.DATABASE_URL)("postgresPolicyInsightSynthesisTrigge
       last_error_message: string | null;
     };
     expect(Number(row.last_processed_receipt_id)).toBe(id1);
-    expect(Number(row.target_receipt_id)).toBe(id2);
+    expect(row.target_receipt_id).toBeNull();
     expect(row.lease_owner).toBeNull();
     expect(Number(row.next_attempt_at_unix_ms)).toBe(10000);
     expect(row.last_outcome).toBe("transient_failure");

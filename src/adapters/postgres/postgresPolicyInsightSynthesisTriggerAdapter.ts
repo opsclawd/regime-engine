@@ -170,6 +170,7 @@ export const createPostgresPolicyInsightSynthesisTriggerAdapter = (
       const result = await db.execute(sql`
         UPDATE regime_engine.policy_insight_synthesis_cursor
         SET
+          target_receipt_id = NULL,
           lease_owner = NULL,
           lease_expires_at_unix_ms = NULL,
           next_attempt_at_unix_ms = ${retryAtUnixMs},
