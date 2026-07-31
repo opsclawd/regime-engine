@@ -332,4 +332,52 @@ describe("SqlitePlanLedgerReadAdapter", () => {
       store.close();
     }
   });
+
+  it("uses optimal indexes for getPositionPlanByHash and listLatestPositionPlans", () => {
+    const store = createLedgerStore(":memory:");
+    try {
+      const hashExplainPlan = store.db
+        .prepare(
+          `EXPLAIN QUERY PLAN
+           SELECT pr.request_json, p.plan_json
+           FROM plans p INDEXED BY idx_plans_plan_hash
+           JOIN plan_requests pr ON pr.plan_id = p.plan_id
+           WHERE p.plan_hash = ?
+             AND pr.position_id = ?
+             AND pr.wallet_id = ?
+             AND pr.pool_address = ?
+           ORDER BY pr.as_of_unix_ms DESC, pr.id DESC
+           LIMIT 1`
+        )
+        .all();
+      expect(JSON.stringify(hashExplainPlan)).toContain("idx_plans_plan_hash");
+
+      const listExplainPlan = store.db
+        .prepare(
+          `EXPLAIN QUERY PLAN
+           WITH RankedPlans AS (
+             SELECT
+               pr.request_json,
+               p.plan_json,
+               pr.as_of_unix_ms,
+               pr.id,
+               ROW_NUMBER() OVER (
+                 PARTITION BY pr.wallet_id, pr.position_id, pr.pool_address
+                 ORDER BY pr.as_of_unix_ms DESC, pr.id DESC
+               ) AS rn
+             FROM plan_requests pr
+             JOIN plans p ON pr.plan_id = p.plan_id
+             WHERE pr.wallet_id IS NOT NULL
+           )
+           SELECT request_json, plan_json
+           FROM RankedPlans
+           WHERE rn = 1
+           ORDER BY as_of_unix_ms DESC, id DESC`
+        )
+        .all();
+      expect(JSON.stringify(listExplainPlan)).toContain("idx_plan_requests_wallet_position_lookup");
+    } finally {
+      store.close();
+    }
+  });
 });

@@ -216,7 +216,7 @@ describe("Plan Ledger Position Migration & Store", () => {
         .all();
 
       const explainText = JSON.stringify(explain);
-      expect(explainText).toContain("idx_plan_requests_position_lookup");
+      expect(explainText).toMatch(/idx_plan_requests_(wallet_)?position_lookup/);
     } finally {
       store.close();
     }
@@ -270,6 +270,96 @@ describe("Plan Ledger Position Migration & Store", () => {
         .prepare("SELECT plan_id FROM plans WHERE plan_id = ?")
         .get(planResponse.planId);
       expect(planRow).toBeDefined();
+    } finally {
+      store.close();
+    }
+  });
+
+  it("handles legacy request JSON missing position or market fields without throwing TypeError", () => {
+    const dbPath = getTempDbPath();
+    const rawDb = new DatabaseSync(dbPath);
+    rawDb.exec(`
+      CREATE TABLE plan_requests (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        plan_id TEXT NOT NULL,
+        as_of_unix_ms INTEGER NOT NULL,
+        request_hash TEXT NOT NULL,
+        request_json TEXT NOT NULL,
+        created_at_unix_ms INTEGER NOT NULL
+      );
+    `);
+
+    // Legacy JSON without position.positionId or market.poolAddress
+    const partialReqJson = JSON.stringify({
+      schemaVersion: "1.0.0",
+      asOfUnixMs: 1700000000000
+    });
+
+    rawDb
+      .prepare(
+        `INSERT INTO plan_requests (plan_id, as_of_unix_ms, request_hash, request_json, created_at_unix_ms)
+         VALUES ('plan-partial', 1700000000000, 'hash', ?, ?)`
+      )
+      .run(partialReqJson, Date.now());
+    rawDb.close();
+
+    // Reopen through createLedgerStore (triggers migration)
+    const store = createLedgerStore(dbPath);
+    try {
+      const row = store.db
+        .prepare(
+          "SELECT position_id, wallet_id, pool_address FROM plan_requests WHERE plan_id = 'plan-partial'"
+        )
+        .get() as {
+        position_id: string | null;
+        wallet_id: string | null;
+        pool_address: string | null;
+      };
+
+      expect(row.position_id).toBeNull();
+      expect(row.wallet_id).toBeNull();
+      expect(row.pool_address).toBeNull();
+    } finally {
+      store.close();
+    }
+  });
+
+  it("migrates large ledgers (>500 rows) in batches without error", () => {
+    const dbPath = getTempDbPath();
+    const rawDb = new DatabaseSync(dbPath);
+    rawDb.exec(`
+      CREATE TABLE plan_requests (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        plan_id TEXT NOT NULL,
+        as_of_unix_ms INTEGER NOT NULL,
+        request_hash TEXT NOT NULL,
+        request_json TEXT NOT NULL,
+        created_at_unix_ms INTEGER NOT NULL
+      );
+    `);
+
+    const insertStmt = rawDb.prepare(
+      `INSERT INTO plan_requests (plan_id, as_of_unix_ms, request_hash, request_json, created_at_unix_ms)
+       VALUES (?, 1700000000000, 'hash', ?, ?)`
+    );
+
+    const totalRows = 600;
+    for (let i = 1; i <= totalRows; i++) {
+      const { planRequest } = makeFixture({
+        positionId: `pos-${i}`,
+        walletId: `wallet-${i}`,
+        poolAddress: `pool-${i}`
+      });
+      insertStmt.run(`plan-${i}`, toCanonicalJson(planRequest), Date.now());
+    }
+    rawDb.close();
+
+    const store = createLedgerStore(dbPath);
+    try {
+      const countRow = store.db
+        .prepare("SELECT COUNT(*) AS count FROM plan_requests WHERE position_id IS NOT NULL")
+        .get() as { count: number };
+      expect(countRow.count).toBe(totalRows);
     } finally {
       store.close();
     }

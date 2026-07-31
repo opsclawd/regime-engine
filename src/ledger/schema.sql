@@ -36,8 +36,14 @@ CREATE INDEX IF NOT EXISTS idx_plan_requests_plan_id
 CREATE INDEX IF NOT EXISTS idx_plan_requests_position_lookup
   ON plan_requests(position_id, wallet_id, pool_address, as_of_unix_ms DESC, id DESC);
 
+CREATE INDEX IF NOT EXISTS idx_plan_requests_wallet_position_lookup
+  ON plan_requests(wallet_id, position_id, pool_address, as_of_unix_ms DESC, id DESC);
+
 CREATE INDEX IF NOT EXISTS idx_plans_plan_id
   ON plans(plan_id);
+
+CREATE INDEX IF NOT EXISTS idx_plans_plan_hash
+  ON plans(plan_hash);
 
 CREATE INDEX IF NOT EXISTS idx_execution_results_plan_id
   ON execution_results(plan_id);

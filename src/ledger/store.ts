@@ -28,7 +28,7 @@ const migratePlanRequests = (db: DatabaseSync): void => {
     return;
   }
 
-  db.exec("BEGIN");
+  db.exec("BEGIN IMMEDIATE");
   try {
     if (!hasPositionId) {
       db.exec("ALTER TABLE plan_requests ADD COLUMN position_id TEXT");
@@ -40,21 +40,39 @@ const migratePlanRequests = (db: DatabaseSync): void => {
       db.exec("ALTER TABLE plan_requests ADD COLUMN pool_address TEXT");
     }
 
-    const rows = db.prepare("SELECT id, request_json FROM plan_requests").all() as Array<{
-      id: number;
-      request_json: string;
-    }>;
+    const BATCH_SIZE = 500;
+    let lastId = 0;
 
+    const selectStmt = db.prepare(
+      "SELECT id, request_json FROM plan_requests WHERE id > ? ORDER BY id ASC LIMIT ?"
+    );
     const updateStmt = db.prepare(
       "UPDATE plan_requests SET position_id = ?, wallet_id = ?, pool_address = ? WHERE id = ?"
     );
 
-    for (const row of rows) {
-      const parsed = JSON.parse(row.request_json) as PlanRequest;
-      const positionId = parsed.position?.positionId;
-      const walletId = parsed.position?.walletId ?? null;
-      const poolAddress = parsed.market?.poolAddress;
-      updateStmt.run(positionId, walletId, poolAddress, row.id);
+    let hasMore = true;
+    while (hasMore) {
+      const rows = selectStmt.all(lastId, BATCH_SIZE) as Array<{
+        id: number;
+        request_json: string;
+      }>;
+      if (rows.length === 0) {
+        hasMore = false;
+        break;
+      }
+
+      for (const row of rows) {
+        const parsed = JSON.parse(row.request_json) as PlanRequest;
+        const positionId = parsed.position?.positionId ?? null;
+        const walletId = parsed.position?.walletId ?? null;
+        const poolAddress = parsed.market?.poolAddress ?? null;
+        updateStmt.run(positionId, walletId, poolAddress, row.id);
+        lastId = row.id;
+      }
+
+      if (rows.length < BATCH_SIZE) {
+        hasMore = false;
+      }
     }
 
     db.exec("COMMIT");
@@ -89,7 +107,7 @@ export const createLedgerStore = (databasePath: string): LedgerStore => {
 };
 
 export const runInTransaction = <T>(store: LedgerStore, operation: () => T): T => {
-  store.db.exec("BEGIN");
+  store.db.exec("BEGIN IMMEDIATE");
   try {
     const result = operation();
     store.db.exec("COMMIT");
