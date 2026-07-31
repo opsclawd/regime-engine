@@ -1,6 +1,6 @@
 # Task Context: Task 4
 
-Title: Implement one pair synthesis cycle and failure classification
+Title: Implement atomic queue operations with lease recovery
 ## Workspace & Scope Constraints
 
 ## WORKSPACE CONSTRAINTS
@@ -9,60 +9,63 @@ Your working directory is a dedicated git worktree with the repository's complet
 
 .ai-orchestrator.local.json, if one exists, lives only in the main checkout and is intentionally not copied into your worktree — it is operator-machine-specific and not part of your task. Do not search for it or read it outside this directory. Reason about configuration using only .ai-orchestrator.json in your own working directory; treat it as the effective config for your task.
 
-Working Directory: /home/gary/.openclaw/workspace/regime-engine/.ai-worktrees/issue-78
+Working Directory: /home/gary/.openclaw/workspace/regime-engine/.ai-worktrees/issue-79
 Repository: opsclawd/regime-engine
-Branch: ai/issue-78
-Start Commit: c8bcac54261f45e46e11f79b38cc9d55167fe4f5
+Branch: ai/issue-79
+Start Commit: d64e12669d308cc998d484d6eb84f9e0cbc35898
 
 ## Task Requirements
 
 **Files:**
 
-- Create: `src/workers/policyInsight/runSynthesisCycle.ts`
-- Create: `src/workers/policyInsight/__tests__/runSynthesisCycle.test.ts`
-- Reference: `src/application/ports/policyInsightSynthesisTriggerPort.ts`
-- Reference: `src/application/use-cases/synthesizePolicyInsightUseCase.ts`
-- Reference: `src/application/errors/policyInsightErrors.ts`
-- Reference: `src/application/errors/evidenceErrors.ts`
-- Reference: `src/application/errors/regimeErrors.ts`
-- Reference: `src/workers/gecko/logger.ts`
+- Create: `src/application/ports/positionPolicyInsightSynthesisQueuePort.ts`
+- Create: `src/adapters/postgres/postgresPositionPolicyInsightSynthesisQueueAdapter.ts`
+- Create: `src/adapters/postgres/__tests__/postgresPositionPolicyInsightSynthesisQueueAdapter.test.ts`
 
-- [ ] **Step 1: Write failing cycle tests.** Add exact cases `returns idle without calling synthesis when no receipt is claimable`, `synthesizes pair scope with the canonical market selector`, `logs required identifiers and duration before completing success`, `classifies validation failure as permanent and advances the cursor`, `classifies store and regime availability failures as transient without advancing when below max attempts`, `converts transient failure to permanent failure when attempt count reaches max attempts budget`, `classifies an unknown operational error as transient`, and `does not advance when completion compare-and-set loses ownership`.
-- [ ] **Step 2: Verify the tests fail.** Run `pnpm exec vitest run src/workers/policyInsight/__tests__/runSynthesisCycle.test.ts`; expect the cycle module to be missing.
-- [ ] **Step 3: Implement `runPolicyInsightSynthesisCycle`.** Inject the trigger port, `SynthesizePolicyInsightUseCase`, config, logger, stable `leaseOwner`, and clock. Capture start time, claim once, call synthesis exactly once with `{ scope: { kind: "pair" }, marketSelector, positionPlan: null }`, and return a discriminated result `idle | succeeded | permanent_failure | transient_failure | lease_lost` for testability.
-- [ ] **Step 4: Implement explicit failure classification, retry budget enforcement, and safe logging.** Treat `PolicyInsightValidationError` and invalid canonical configuration as permanent; treat policy/evidence store unavailability, regime/candle availability errors, and unknown runtime errors as transient when `claim.attemptCount < config.maxAttempts`. When a transient failure occurs and `claim.attemptCount >= config.maxAttempts`, convert the outcome to permanent failure, log that the retry budget (`maxAttempts`) was exhausted for `receiptId`, and invoke `triggerPort.complete` with outcome `permanent_failure` to advance past the poison receipt. Log `receiptId`, `scope: "pair"`, `synthesisInputHash` and `insightId` from the successful read model, `durationMs`, `attemptCount`, outcome, and sanitized error code/message. Never log evidence payloads, tokens, or database URLs.
-- [ ] **Step 5: Run focused verification.** Run `pnpm exec vitest run src/workers/policyInsight/__tests__/runSynthesisCycle.test.ts` and `pnpm exec eslint src/workers/policyInsight/runSynthesisCycle.ts src/workers/policyInsight/__tests__/runSynthesisCycle.test.ts`; expect pass/zero warnings.
-- [ ] **Step 6: Commit.** Commit as `m78: synthesize pair insights from durable claims`.
+**Exported API changes:** Add `PositionPolicyInsightSynthesisQueuePort` and its request/claim/result types. Every port method is implemented by the Postgres adapter in this same task.
+
+**Behavioral invariants / tests written first:**
+
+- `replaying an identical ready identity returns the original request id`.
+- `evidence first persists waiting_for_plan and plan reconciliation promotes it to pending`.
+- `plan first persists waiting_for_evidence and evidence reconciliation promotes it to pending`.
+- `claims independent positions in deterministic id order with skip locked`.
+- `does not steal an unexpired processing lease`.
+- `reclaims an expired processing lease and increments attempt count`.
+- `only the current lease owner can complete fail supersede or release a request`.
+- `release for retry keeps the identity and makes it claimable only at retryAtUnixMs`.
+- `converts release for retry into permanent failure with EXHAUSTED_RETRIES when attempt count reaches max attempts`.
+
+- [ ] Write the adapter tests first against real Postgres transactions and isolate rows by unique scope prefixes.
+- [ ] Run `DATABASE_URL=postgres://test:test@localhost:5432/regime_engine_test PG_SSL=false pnpm exec vitest run src/adapters/postgres/__tests__/postgresPositionPolicyInsightSynthesisQueueAdapter.test.ts`; expect failure because the port/adapter do not exist.
+- [ ] Define and implement `enqueueOrReconcile`, `claimBatch`, `complete`, `fail`, `supersede`, `releaseForRetry`, `listWaitingScopes`, `listEligiblePositionScopes`, and `getById`. `listEligiblePositionScopes` reads distinct unexpired position evidence scopes for startup/internal backfill. `claimBatch` must select eligible IDs using `FOR UPDATE SKIP LOCKED` and update/return claims in one transaction. `releaseForRetry` evaluates `attempt_count` against `max_attempts` (default 5); if `attempt_count >= max_attempts`, it transitions status to `failed` with `errorCode: "EXHAUSTED_RETRIES"`, enforcing a strict retry budget and preventing infinite retries on poison pills. All terminal mutations include `WHERE id = ? AND lease_owner = ? AND status = 'processing'` and return a boolean.
+- [ ] Re-run the Postgres test command and `pnpm exec eslint src/application/ports/positionPolicyInsightSynthesisQueuePort.ts src/adapters/postgres/postgresPositionPolicyInsightSynthesisQueueAdapter.ts src/adapters/postgres/__tests__/postgresPositionPolicyInsightSynthesisQueueAdapter.test.ts`; expect success and then the automatic typecheck gate.
+- [ ] Commit with `git add src/application/ports/positionPolicyInsightSynthesisQueuePort.ts src/adapters/postgres/postgresPositionPolicyInsightSynthesisQueueAdapter.ts src/adapters/postgres/__tests__/postgresPositionPolicyInsightSynthesisQueueAdapter.test.ts && git commit -m "m79: lease position synthesis requests"`.
 
 ## Repository Targets
 
 ### Expected Files
-- src/workers/policyInsight/runSynthesisCycle.ts
-- src/workers/policyInsight/__tests__/runSynthesisCycle.test.ts
+- src/application/ports/positionPolicyInsightSynthesisQueuePort.ts
+- src/adapters/postgres/postgresPositionPolicyInsightSynthesisQueueAdapter.ts
+- src/adapters/postgres/__tests__/postgresPositionPolicyInsightSynthesisQueueAdapter.test.ts
 
 ### Reference Files
+- src/adapters/postgres/postgresPolicyInsightSynthesisTriggerAdapter.ts
 - src/application/ports/policyInsightSynthesisTriggerPort.ts
-- src/application/use-cases/synthesizePolicyInsightUseCase.ts
-- src/application/errors/policyInsightErrors.ts
-- src/application/errors/evidenceErrors.ts
-- src/application/errors/regimeErrors.ts
-- src/workers/gecko/logger.ts
 
 ## Validation Commands
 
 ```bash
-["pnpm","exec","vitest","run","src/workers/policyInsight/__tests__/runSynthesisCycle.test.ts"]
-["pnpm","exec","eslint","src/workers/policyInsight/runSynthesisCycle.ts","src/workers/policyInsight/__tests__/runSynthesisCycle.test.ts"]
+DATABASE_URL=postgres://test:test@localhost:5432/regime_engine_test PG_SSL=false pnpm exec vitest run src/adapters/postgres/__tests__/postgresPositionPolicyInsightSynthesisQueueAdapter.test.ts
+pnpm exec eslint src/application/ports/positionPolicyInsightSynthesisQueuePort.ts src/adapters/postgres/postgresPositionPolicyInsightSynthesisQueueAdapter.ts src/adapters/postgres/__tests__/postgresPositionPolicyInsightSynthesisQueueAdapter.test.ts
 ```
 
 ## Behavioral Invariants
 
 You MUST implement the following behavioral invariants as named tests first (TDD):
 
-- **idle performs no synthesis**: When claim returns no receipt, the cycle returns idle and never invokes synthesis or cursor completion. (Test: `returns idle without calling synthesis when no receipt is claimable`)
-- **pair-only synthesis input**: Every claim invokes synthesis once with pair scope, canonical selector, and no position plan. (Test: `synthesizes pair scope with the canonical market selector`)
-- **success logs and completes**: A successful insight logs receipt scope hash insight ID and duration before applying successful completion. (Test: `logs required identifiers and duration before completing success`)
-- **permanent poison receipt advancement**: A policy validation failure is recorded as permanent and advances past the target so newer evidence is not blocked. (Test: `classifies validation failure as permanent and advances the cursor`)
-- **operational failures retry**: Store regime candle and unknown operational failures preserve the cursor and release the lease for a later retry while attempt count is below max attempts budget. (Test: `classifies store and regime availability failures as transient without advancing when below max attempts`)
-- **retry budget exhaustion advances cursor**: When attempt count reaches max attempts budget, transient failures are converted to permanent failure and advance the cursor. (Test: `converts transient failure to permanent failure when attempt count reaches max attempts budget`)
+- **idempotent ready enqueue**: Replaying the final four-part identity returns the original request ID. (Test: `replaying an identical ready identity returns the original request id`)
+- **lease exclusion and recovery**: Live leases are exclusive and expired processing leases are recoverable with an incremented attempt. (Test: `reclaims an expired processing lease and increments attempt count`)
+- **owner guarded mutation**: Only the active owner can complete, fail, supersede, or retry a processing request. (Test: `only the current lease owner can complete fail supersede or release a request`)
+- **retry budget enforcement**: Fails transient requests whose attempt count reaches max attempts with EXHAUSTED_RETRIES instead of releasing for retry indefinitely. (Test: `converts release for retry into permanent failure with EXHAUSTED_RETRIES when attempt count reaches max attempts`)
 
