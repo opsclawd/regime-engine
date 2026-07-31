@@ -1,6 +1,6 @@
 # Task Context: Task 3
 
-Title: Add monotone evidence refinement and deterministic reasoning
+Title: Implement leased cursor transitions in the Postgres adapter
 ## Workspace & Scope Constraints
 
 ## WORKSPACE CONSTRAINTS
@@ -9,96 +9,57 @@ Your working directory is a dedicated git worktree with the repository's complet
 
 .ai-orchestrator.local.json, if one exists, lives only in the main checkout and is intentionally not copied into your worktree — it is operator-machine-specific and not part of your task. Do not search for it or read it outside this directory. Reason about configuration using only .ai-orchestrator.json in your own working directory; treat it as the effective config for your task.
 
-Working Directory: /home/gary/.openclaw/workspace/regime-engine/.ai-worktrees/issue-61
+Working Directory: /home/gary/.openclaw/workspace/regime-engine/.ai-worktrees/issue-78
 Repository: opsclawd/regime-engine
-Branch: ai/issue-61
-Start Commit: 8eb83b2403a525df9fbb640f75379bc56dc7bc3c
+Branch: ai/issue-78
+Start Commit: c8bcac54261f45e46e11f79b38cc9d55167fe4f5
 
 ## Task Requirements
 
 **Files:**
 
-- Create: `src/engine/policy/reasoning.ts`
-- Modify: `src/engine/policy/synthesizePolicyInsight.ts`
-- Modify: `src/engine/policy/__tests__/policyFixtures.ts`
-- Create: `src/engine/policy/__tests__/synthesizePolicyInsight.evidence.test.ts`
-- Create: `src/engine/policy/__tests__/synthesizePolicyInsight.determinism.test.ts`
+- Create: `src/application/ports/policyInsightSynthesisTriggerPort.ts`
+- Create: `src/adapters/postgres/postgresPolicyInsightSynthesisTriggerAdapter.ts`
+- Create: `src/adapters/postgres/__tests__/postgresPolicyInsightSynthesisTriggerAdapter.test.ts`
+- Reference: `src/ledger/pg/schema/policyInsightSynthesisCursor.ts`
+- Reference: `src/ledger/pg/schema/evidenceBundles.ts`
+- Reference: `src/adapters/postgres/postgresEvidenceBundleRepository.ts`
 
-**Invariants implemented first:**
-
-- `lower-precedence evidence can tighten but never relax locked policy fields`
-- `no evidence remains degraded rather than a successful zero signal`
-- `expired and unknown evidence cannot affect policy`
-- `contextual prose and research briefs never create actions or numerical levels`
-- `fixed input produces byte-identical canonical insight output`
-
-- [ ] **Step 1: Write failing evidence and determinism tests**
-
-  Cover FULL/PARTIAL/DEGRADED selection, stale selected evidence, expired exclusions, missing families, conflicts, missing/rejected brief, allowlisted deterministic features, mismatched calculator/type/unit, support/resistance sorting/deduplication/bounds, and no structured levels. Add calm CHOP, upward, downward, stressed/high-volatility, sparse-evidence, and poor-price-quality fixtures. Snapshot canonical JSON twice for the same fixed envelope.
-
-- [ ] **Step 2: Confirm RED**
-
-  Run: `pnpm exec vitest run src/engine/policy/__tests__/synthesizePolicyInsight.evidence.test.ts src/engine/policy/__tests__/synthesizePolicyInsight.determinism.test.ts`
-
-  Expected: FAIL because evidence stages 5-7 and reasoning templates are absent.
-
-- [ ] **Step 3: Implement bounded evidence interpretation**
-
-  Match deterministic features on the full binding tuple and allow only configured tightening. Aggregate selected contextual directions and #60 conflict totals; conflict can increase risk or reduce confidence but cannot produce a directional upgrade. Treat the selected research brief as lineage/explanation only. Extract prices only from allowlisted numeric support/resistance features with the exact unit; never parse claim or brief text.
-
-- [ ] **Step 4: Implement fixed reasoning and warning templates**
-
-  Export deterministic rendering functions:
-
-  ```ts
-  export function renderPolicyReasoning(input: {
-    readonly orderedReasonCodes: readonly string[];
-    readonly boundedIdentifiers: readonly string[];
-  }): readonly string[];
-
-  export function renderPolicyWarnings(input: {
-    readonly selection: SelectedEvidenceSummary;
-    readonly derivedWarnings: readonly string[];
-  }): readonly string[];
-  ```
-
-  Sort reason codes by precedence then lexicographically, map #60 warnings without losing original lineage, cap all strings/arrays to #63 limits, and include `ADVISORY_ONLY`/no-execution authority. Do not copy arbitrary prose into machine codes or numeric fields.
-
-- [ ] **Step 5: Verify evidence behavior and determinism**
-
-  Run: `pnpm exec vitest run src/engine/policy/__tests__/synthesizePolicyInsight.evidence.test.ts src/engine/policy/__tests__/synthesizePolicyInsight.determinism.test.ts`
-
-  Run: `pnpm exec eslint src/engine/policy/reasoning.ts src/engine/policy/synthesizePolicyInsight.ts src/engine/policy/__tests__/policyFixtures.ts src/engine/policy/__tests__/synthesizePolicyInsight.evidence.test.ts src/engine/policy/__tests__/synthesizePolicyInsight.determinism.test.ts`
-
-  Expected: every degraded case remains explicit, every monotone assertion passes, and repeated canonical output is byte-identical.
-
-- [ ] **Step 6: Commit the task**
-
-  Run: `git add src/engine/policy/reasoning.ts src/engine/policy/synthesizePolicyInsight.ts src/engine/policy/__tests__/policyFixtures.ts src/engine/policy/__tests__/synthesizePolicyInsight.evidence.test.ts src/engine/policy/__tests__/synthesizePolicyInsight.determinism.test.ts && git commit -m "m61: refine policy with selected evidence"`
+- [ ] **Step 1: Write the state-transition tests first.** Add the exact cases `claims the newest historical pair receipt when the cursor is absent`, `coalesces multiple pending pair receipts to the highest id`, `never claims non-pair evidence`, `returns idle while another unexpired lease owns the claim`, `reclaims the target after lease expiry`, `only the matching owner and target can complete a claim`, `success advances the cursor and clears retry state`, `permanent failure advances the cursor`, and `transient failure preserves the cursor and schedules retry`.
+- [ ] **Step 2: Verify the adapter test fails.** Run `DATABASE_URL=postgres://test:test@localhost:5432/regime_engine_test PG_SSL=false pnpm exec vitest run src/adapters/postgres/__tests__/postgresPolicyInsightSynthesisTriggerAdapter.test.ts`; expect missing port/adapter failures.
+- [ ] **Step 3: Define the port and implement every method in the same task.** Export `PolicyInsightSynthesisClaim`, `PolicyInsightSynthesisOutcome`, and `PolicyInsightSynthesisTriggerPort` with methods `claimLatestPairEvidence(input)`, `complete(input)`, and `releaseForRetry(input)`. `PolicyInsightSynthesisClaim` must include `targetReceiptId`, `attemptCount`, and `leaseOwner`. Each mutation input must include `cursorKey`, `leaseOwner`, `targetReceiptId`, and a captured `nowUnixMs`; claims additionally include `leaseDurationMs`, and retry release includes classification, sanitized message, and `retryAtUnixMs`.
+- [ ] **Step 4: Implement atomic Postgres transitions.** `claimLatestPairEvidence` must use one transaction and row locking/upsert semantics to initialize the cursor, honor `next_attempt_at_unix_ms`, reject live leases, select `MAX(evidence_bundles.id)` where `pair = 'SOL/USDC'`, `scope_key = 'pair'`, and ID is above the cursor, then lease only that target. `complete` and `releaseForRetry` must use owner+target compare-and-set predicates and return whether the transition applied. Do not mark `evidence_bundles.processed_at_unix_ms`; the cursor table is the sole trigger state.
+- [ ] **Step 5: Run focused verification.** Run `DATABASE_URL=postgres://test:test@localhost:5432/regime_engine_test PG_SSL=false pnpm exec vitest run src/adapters/postgres/__tests__/postgresPolicyInsightSynthesisTriggerAdapter.test.ts` and `pnpm exec eslint src/application/ports/policyInsightSynthesisTriggerPort.ts src/adapters/postgres/postgresPolicyInsightSynthesisTriggerAdapter.ts src/adapters/postgres/__tests__/postgresPolicyInsightSynthesisTriggerAdapter.test.ts`; expect all transition tests to pass. This task deliberately combines the new port and its only adapter so workspace typechecking is never left with an unimplemented interface.
+- [ ] **Step 6: Commit.** Commit as `m78: add leased pair synthesis trigger adapter`.
 
 ## Repository Targets
 
 ### Expected Files
-- src/engine/policy/reasoning.ts
-- src/engine/policy/synthesizePolicyInsight.ts
-- src/engine/policy/__tests__/policyFixtures.ts
-- src/engine/policy/__tests__/synthesizePolicyInsight.evidence.test.ts
-- src/engine/policy/__tests__/synthesizePolicyInsight.determinism.test.ts
+- src/application/ports/policyInsightSynthesisTriggerPort.ts
+- src/adapters/postgres/postgresPolicyInsightSynthesisTriggerAdapter.ts
+- src/adapters/postgres/__tests__/postgresPolicyInsightSynthesisTriggerAdapter.test.ts
+
+### Reference Files
+- src/ledger/pg/schema/policyInsightSynthesisCursor.ts
+- src/ledger/pg/schema/evidenceBundles.ts
+- src/adapters/postgres/postgresEvidenceBundleRepository.ts
 
 ## Validation Commands
 
 ```bash
-pnpm exec vitest run src/engine/policy/__tests__/synthesizePolicyInsight.evidence.test.ts src/engine/policy/__tests__/synthesizePolicyInsight.determinism.test.ts
-pnpm exec eslint src/engine/policy/reasoning.ts src/engine/policy/synthesizePolicyInsight.ts src/engine/policy/__tests__/policyFixtures.ts src/engine/policy/__tests__/synthesizePolicyInsight.evidence.test.ts src/engine/policy/__tests__/synthesizePolicyInsight.determinism.test.ts
+DATABASE_URL=postgres://test:test@localhost:5432/regime_engine_test PG_SSL=false pnpm exec vitest run src/adapters/postgres/__tests__/postgresPolicyInsightSynthesisTriggerAdapter.test.ts
+["pnpm","exec","eslint","src/application/ports/policyInsightSynthesisTriggerPort.ts","src/adapters/postgres/postgresPolicyInsightSynthesisTriggerAdapter.ts","src/adapters/postgres/__tests__/postgresPolicyInsightSynthesisTriggerAdapter.test.ts"]
 ```
 
 ## Behavioral Invariants
 
 You MUST implement the following behavioral invariants as named tests first (TDD):
 
-- **monotone evidence refinement**: Selected evidence may increase caution but cannot relax a field locked by a higher precedence stage. (Test: `lower-precedence evidence can tighten but never relax locked policy fields`)
-- **explicit no-evidence degradation**: An empty deterministic selection remains degraded with empty lineage and warnings rather than becoming a numeric zero signal. (Test: `no evidence remains degraded rather than a successful zero signal`)
-- **excluded evidence is audit only**: Expired candidates and unknown or mismatched deterministic bindings cannot change output policy. (Test: `expired and unknown evidence cannot affect policy`)
-- **prose has no execution or metric authority**: Contextual claims and briefs can add bounded explanation only and cannot create actions or numeric support/resistance values. (Test: `contextual prose and research briefs never create actions or numerical levels`)
-- **byte deterministic output**: A fixed envelope and ruleset produce byte-identical canonical PolicyInsight output. (Test: `fixed input produces byte-identical canonical insight output`)
+- **historical startup claim**: When no cursor exists, claim chooses the highest existing pair receipt so evidence predating deployment is processed. (Test: `claims the newest historical pair receipt when the cursor is absent`)
+- **burst coalescing**: When several pair receipts are above the cursor, only the highest ID becomes the target. (Test: `coalesces multiple pending pair receipts to the highest id`)
+- **pair scope isolation**: Position wallet and whirlpool evidence rows never become pair synthesis claims. (Test: `never claims non-pair evidence`)
+- **exclusive live lease**: A second owner receives no work while the current lease is unexpired, but can reclaim after expiry. (Test: `returns idle while another unexpired lease owns the claim`)
+- **compare and set completion**: Only the owner of the current target can advance or release it; stale workers cannot mutate newer state. (Test: `only the matching owner and target can complete a claim`)
+- **transient retry retains cursor**: A transient failure releases the lease and schedules retry without advancing last processed receipt. (Test: `transient failure preserves the cursor and schedules retry`)
+- **terminal outcomes advance**: Success and permanent failure both advance past the target and clear lease state. (Test: `permanent failure advances the cursor`)
 

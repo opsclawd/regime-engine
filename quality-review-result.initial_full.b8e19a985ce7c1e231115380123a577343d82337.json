@@ -1,0 +1,17 @@
+{
+  "result": "fail",
+  "findings": [
+    {
+      "severity": "P1",
+      "summary": "releaseForRetry incorrectly clears target_receipt_id, causing the next claim of the same target to reset attempt_count to 1 and allowing infinite retries on transient failures.",
+      "file": "src/adapters/postgres/postgresPolicyInsightSynthesisTriggerAdapter.ts",
+      "suggested_fix": "Remove `target_receipt_id = NULL,` from the UPDATE statement in `releaseForRetry`. Also update the transient failure test to assert that `target_receipt_id` is preserved and that a subsequent claim increments the attempt count."
+    },
+    {
+      "severity": "P3",
+      "summary": "claimLatestPairEvidence hardcodes pair = 'SOL/USDC' and scope_key = 'pair' in its query, which prevents the adapter from being reused for other asset pairs.",
+      "file": "src/adapters/postgres/postgresPolicyInsightSynthesisTriggerAdapter.ts",
+      "suggested_fix": "Consider passing `pair` and `scopeKey` in `ClaimLatestPairEvidenceInput` or deriving them from `cursorKey` to avoid hardcoding business rules in the adapter layer."
+    }
+  ]
+}

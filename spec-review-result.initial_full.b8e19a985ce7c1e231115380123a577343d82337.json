@@ -1,0 +1,11 @@
+{
+  "result": "fail",
+  "findings": [
+    {
+      "severity": "P1",
+      "summary": "In `releaseForRetry`, `target_receipt_id` is incorrectly set to `NULL`, which resets `attempt_count` to 1 on the next claim for the same target, causing graceful transient failures to incorrectly evade attempt limits unlike ungraceful lease expirations.",
+      "file": "src/adapters/postgres/postgresPolicyInsightSynthesisTriggerAdapter.ts",
+      "suggested_fix": "Remove `target_receipt_id = NULL,` from the `UPDATE` statement in `releaseForRetry` so the target is preserved and `attemptCount` can increment correctly on retry. Additionally, update the transient failure test in `postgresPolicyInsightSynthesisTriggerAdapter.test.ts` to expect `row.target_receipt_id` to equal `id2`."
+    }
+  ]
+}

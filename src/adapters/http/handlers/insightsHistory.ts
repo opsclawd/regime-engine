@@ -1,7 +1,10 @@
 import type { FastifyReply, FastifyRequest } from "fastify";
 import { SCHEMA_VERSION } from "../../../contract/v1/types.js";
 import { ERROR_CODES, ContractValidationError } from "../../../contract/v1/errors.js";
-import type { GetPolicyInsightHistoryUseCase } from "../../../application/use-cases/getPolicyInsightHistoryUseCase.js";
+import {
+  type GetPolicyInsightHistoryUseCase,
+  decodeHistoryCursor
+} from "../../../application/use-cases/getPolicyInsightHistoryUseCase.js";
 import {
   PolicyInsightStoreUnavailableError,
   PolicyInsightValidationError
@@ -104,25 +107,61 @@ export const createInsightsHistoryHandler = (useCase: GetPolicyInsightHistoryUse
             }
           });
         }
+        if (parsed < 1 || parsed > 100) {
+          throw new ContractValidationError(400, {
+            schemaVersion: SCHEMA_VERSION,
+            error: {
+              code: ERROR_CODES.VALIDATION_ERROR,
+              message: "History limit must be between 1 and 100",
+              details: [
+                {
+                  path: "$.limit",
+                  code: "OUT_OF_RANGE",
+                  message: "History limit must be between 1 and 100"
+                }
+              ]
+            }
+          });
+        }
         limit = parsed;
       }
 
-      // Cursor: validate cursor is a string if provided
-      if (query.cursor !== undefined && typeof query.cursor !== "string") {
-        throw new ContractValidationError(400, {
-          schemaVersion: SCHEMA_VERSION,
-          error: {
-            code: ERROR_CODES.VALIDATION_ERROR,
-            message: "cursor must be a string",
-            details: [
-              {
-                path: "$.cursor",
-                code: "INVALID_TYPE",
-                message: "Expected string"
-              }
-            ]
-          }
-        });
+      // Cursor: validate cursor is a non-null string and has valid format if provided
+      if (query.cursor !== undefined && query.cursor !== null) {
+        if (typeof query.cursor !== "string") {
+          throw new ContractValidationError(400, {
+            schemaVersion: SCHEMA_VERSION,
+            error: {
+              code: ERROR_CODES.VALIDATION_ERROR,
+              message: "cursor must be a string",
+              details: [
+                {
+                  path: "$.cursor",
+                  code: "INVALID_TYPE",
+                  message: "Expected string"
+                }
+              ]
+            }
+          });
+        }
+        try {
+          decodeHistoryCursor(query.cursor);
+        } catch {
+          throw new ContractValidationError(400, {
+            schemaVersion: SCHEMA_VERSION,
+            error: {
+              code: ERROR_CODES.VALIDATION_ERROR,
+              message: "Invalid pagination cursor",
+              details: [
+                {
+                  path: "$.cursor",
+                  code: "INVALID_VALUE",
+                  message: "Invalid pagination cursor"
+                }
+              ]
+            }
+          });
+        }
       }
       const cursor =
         query.cursor === undefined || query.cursor === null ? null : (query.cursor as string);

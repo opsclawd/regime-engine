@@ -736,20 +736,28 @@ export function synthesizePolicyInsightV1(
     reasonOrder: ruleset.reasonOrder
   });
 
-  const warnings: Warning[] = [];
+  const warningsMap = new Map<
+    import("../../contract/policyInsight/v1/types.generated.js").WarningCode,
+    string
+  >();
 
   if (envelope.evidence.warnings) {
     for (const w of envelope.evidence.warnings) {
-      warnings.push({
-        code: selectionWarningCodeToWarningCode(w.code),
-        message: w.message
-      });
+      const code = selectionWarningCodeToWarningCode(w.code);
+      if (!warningsMap.has(code)) {
+        warningsMap.set(code, w.message);
+      }
     }
   }
 
   if (hardStale) {
-    warnings.push({ code: "MARKET_DATA_HARD_STALE", message: "market data is hard stale" });
+    warningsMap.set("MARKET_DATA_HARD_STALE", "market data is hard stale");
   }
+
+  const warnings: Warning[] = Array.from(warningsMap.entries()).map(([code, message]) => ({
+    code,
+    message
+  }));
 
   warnings.sort((a, b) => {
     if (a.code < b.code) return -1;

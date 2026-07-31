@@ -7,3 +7,8 @@ export { srThesesV2 } from "./srThesesV2.js";
 export type { SrThesesV2Row, SrThesesV2Insert } from "./srThesesV2.js";
 export { policyInsights } from "./policyInsights.js";
 export type { PolicyInsightRow, PolicyInsightInsert } from "./policyInsights.js";
+export { policyInsightSynthesisCursor } from "./policyInsightSynthesisCursor.js";
+export type {
+  PolicyInsightSynthesisCursorRow,
+  PolicyInsightSynthesisCursorInsert
+} from "./policyInsightSynthesisCursor.js";

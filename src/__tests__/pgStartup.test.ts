@@ -3,7 +3,8 @@ import * as dbModule from "../ledger/pg/db.js";
 import {
   verifyPgConnection,
   verifyCandleRevisionsTable,
-  verifyEvidenceBundlesTable
+  verifyEvidenceBundlesTable,
+  verifyPolicyInsightSynthesisCursorTable
 } from "../ledger/pg/db.js";
 
 describe("verifyPgConnection", () => {
@@ -68,5 +69,31 @@ describe("verifyEvidenceBundlesTable", () => {
     await expect(verifyEvidenceBundlesTable(db)).resolves.toBeUndefined();
 
     await client.end();
+  });
+});
+
+describe("verifyPolicyInsightSynthesisCursorTable", () => {
+  it("resolves when policy_insight_synthesis_cursor exists", async () => {
+    const connectionString = process.env.DATABASE_URL;
+    if (!connectionString) {
+      return;
+    }
+
+    const { createDb } = await import("../ledger/pg/db.js");
+    const { db, client } = createDb(connectionString);
+
+    await expect(verifyPolicyInsightSynthesisCursorTable(db)).resolves.toBeUndefined();
+
+    await client.end();
+  });
+
+  it("fails startup when policy_insight_synthesis_cursor is missing", async () => {
+    const mockDb = {
+      execute: async () => []
+    } as unknown as dbModule.Db;
+
+    await expect(verifyPolicyInsightSynthesisCursorTable(mockDb)).rejects.toThrow(
+      "FATAL: policy_insight_synthesis_cursor table not found in regime_engine schema — run migrations first"
+    );
   });
 });

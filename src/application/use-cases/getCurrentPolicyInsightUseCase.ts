@@ -1,6 +1,7 @@
-import type { PolicyInsightRead } from "../../contract/policyInsight/v1/types.generated.js";
-export const POLICY_INSIGHT_V1_WIRE_CONTRACT_SHA256 =
-  "80487b0a9374d0b535accf535ef9819f2b2de00e1d65980deb73c97afaa02800";
+import {
+  type PolicyInsightRead,
+  POLICY_INSIGHT_V1_WIRE_CONTRACT_SHA256
+} from "../../contract/policyInsight/v1/types.generated.js";
 import { projectPolicyInsightRead } from "../../contract/policyInsight/v1/project.js";
 import type { PolicyInsightRepositoryPort } from "../ports/policyInsightRepositoryPort.js";
 import type { ClockPort } from "../ports/clock.js";

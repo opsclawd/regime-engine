@@ -64,6 +64,13 @@
       "when": 1784407200000,
       "tag": "0008_widen_evidence_correlation_id",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1784410800000,
+      "tag": "0009_create_policy_insight_synthesis_cursor",
+      "breakpoints": true
     }
   ]
 }

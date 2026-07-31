@@ -1,8 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { sql } from "drizzle-orm/sql";
 import { createDb } from "../db.js";
-const POLICY_INSIGHT_V1_WIRE_CONTRACT_SHA256 =
-  "80487b0a9374d0b535accf535ef9819f2b2de00e1d65980deb73c97afaa02800";
+import { POLICY_INSIGHT_V1_WIRE_CONTRACT_SHA256 } from "../../../contract/policyInsight/v1/types.generated.js";
 
 describe.skipIf(!process.env.DATABASE_URL)("policy_insights wire contract migration (PG)", () => {
   it("leaves legacy rows unmodified with a null wire contract digest", async () => {

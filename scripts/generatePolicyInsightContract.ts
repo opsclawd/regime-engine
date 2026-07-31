@@ -60,6 +60,7 @@ async function generateTypes(schemaContent: string, digest: string): Promise<str
 
   const contentInterface = `export type PolicyInsightContent = Omit<PolicyInsightRead, "freshness">;
 export type PolicyInsightFreshness = Freshness;
+export const POLICY_INSIGHT_V1_WIRE_CONTRACT_SHA256 = "${digest}";
 `;
 
   const allCompiled = [compiledHistory, "\n", contentInterface].join("\n");
