@@ -359,7 +359,7 @@ describe.skipIf(!process.env.DATABASE_URL)("postgresPolicyInsightSynthesisTrigge
       last_error_message: string | null;
     };
     expect(Number(row.last_processed_receipt_id)).toBe(id1);
-    expect(row.target_receipt_id).toBeNull();
+    expect(Number(row.target_receipt_id)).toBe(id2);
     expect(row.lease_owner).toBeNull();
     expect(Number(row.next_attempt_at_unix_ms)).toBe(10000);
     expect(row.last_outcome).toBe("transient_failure");
@@ -384,5 +384,30 @@ describe.skipIf(!process.env.DATABASE_URL)("postgresPolicyInsightSynthesisTrigge
     expect(claimLate?.targetReceiptId).toBe(id2);
     expect(claimLate?.lastProcessedReceiptId).toBe(id1);
     expect(claimLate?.leaseOwner).toBe("worker-2");
+    expect(claimLate?.attemptCount).toBe(2);
+  });
+
+  it("claims evidence for custom pair and scopeKey when specified", async () => {
+    const id1 = await insertBundle({ pair: "ETH/USDC", scopeKey: "pair" });
+
+    const claimDefault = await adapter.claimLatestPairEvidence({
+      cursorKey: TEST_CURSOR_KEY,
+      leaseOwner: "worker-1",
+      leaseDurationMs: 60000,
+      nowUnixMs: 1000,
+      pair: "SOL/USDC"
+    });
+    expect(claimDefault).toBeNull();
+
+    const claimCustom = await adapter.claimLatestPairEvidence({
+      cursorKey: TEST_CURSOR_KEY,
+      leaseOwner: "worker-1",
+      leaseDurationMs: 60000,
+      nowUnixMs: 1000,
+      pair: "ETH/USDC",
+      scopeKey: "pair"
+    });
+    expect(claimCustom).not.toBeNull();
+    expect(claimCustom?.targetReceiptId).toBe(id1);
   });
 });

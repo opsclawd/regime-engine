@@ -14,6 +14,8 @@ export interface ClaimLatestPairEvidenceInput {
   leaseOwner: string;
   leaseDurationMs: number;
   nowUnixMs: number;
+  pair?: string;
+  scopeKey?: string;
 }
 
 export interface CompletePolicyInsightSynthesisInput {

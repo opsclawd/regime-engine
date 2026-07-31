@@ -27,7 +27,9 @@ export const createPostgresPolicyInsightSynthesisTriggerAdapter = (
       cursorKey,
       leaseOwner,
       leaseDurationMs,
-      nowUnixMs
+      nowUnixMs,
+      pair = "SOL/USDC",
+      scopeKey = "pair"
     }): Promise<PolicyInsightSynthesisClaim | null> => {
       return await db.transaction(async (tx) => {
         await tx.execute(sql`
@@ -82,8 +84,8 @@ export const createPostgresPolicyInsightSynthesisTriggerAdapter = (
         const maxIdRows = await tx.execute(sql`
           SELECT MAX(id) AS max_id
           FROM regime_engine.evidence_bundles
-          WHERE pair = 'SOL/USDC'
-            AND scope_key = 'pair'
+          WHERE pair = ${pair}
+            AND scope_key = ${scopeKey}
             AND id > ${lastProcessedReceiptId}
         `);
 
@@ -168,7 +170,6 @@ export const createPostgresPolicyInsightSynthesisTriggerAdapter = (
       const result = await db.execute(sql`
         UPDATE regime_engine.policy_insight_synthesis_cursor
         SET
-          target_receipt_id = NULL,
           lease_owner = NULL,
           lease_expires_at_unix_ms = NULL,
           next_attempt_at_unix_ms = ${retryAtUnixMs},
