@@ -513,13 +513,20 @@ export const createPostgresPositionPolicyInsightSynthesisQueueAdapter = (
       });
     },
 
-    listWaitingScopes: async (): Promise<string[]> => {
-      const rows = await db.execute(sql`
-        SELECT DISTINCT scope_key
-        FROM regime_engine.policy_insight_synthesis_requests
-        WHERE status IN ('waiting_for_plan', 'waiting_for_evidence')
-        ORDER BY scope_key ASC
-      `);
+    listWaitingScopes: async (status?: PositionPolicyInsightSynthesisStatus): Promise<string[]> => {
+      const rows = status
+        ? await db.execute(sql`
+            SELECT DISTINCT scope_key
+            FROM regime_engine.policy_insight_synthesis_requests
+            WHERE status = ${status}
+            ORDER BY scope_key ASC
+          `)
+        : await db.execute(sql`
+            SELECT DISTINCT scope_key
+            FROM regime_engine.policy_insight_synthesis_requests
+            WHERE status IN ('waiting_for_plan', 'waiting_for_evidence')
+            ORDER BY scope_key ASC
+          `);
       return (rows as unknown as Array<{ scope_key: string }>).map((r) => r.scope_key);
     },
 

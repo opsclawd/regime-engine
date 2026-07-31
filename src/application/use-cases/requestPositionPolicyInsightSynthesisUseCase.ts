@@ -73,11 +73,17 @@ async function mapConcurrent<T, R>(
   if (items.length === 0) return [];
   const results: R[] = new Array(items.length);
   let index = 0;
+  let hasError = false;
   const workerCount = Math.min(limit, items.length);
   const workers = Array.from({ length: workerCount }, async () => {
-    while (index < items.length) {
+    while (index < items.length && !hasError) {
       const i = index++;
-      results[i] = await fn(items[i]);
+      try {
+        results[i] = await fn(items[i]);
+      } catch (err) {
+        hasError = true;
+        throw err;
+      }
     }
   });
   await Promise.all(workers);
@@ -148,7 +154,7 @@ export const createRequestPositionPolicyInsightSynthesisUseCase = (
   const reconcileSingle = async (
     scopeInput: Scope | PositionScopeInput,
     selectedAtUnixMsOverride?: number,
-    waitingScopeSet?: Set<string>
+    waitingForPlanScopeSet?: Set<string>
   ): Promise<RequestPositionPolicyInsightSynthesisResult | null> => {
     const scope = toScope(scopeInput);
     const scopeKey = evidenceScopeKey(scope);
@@ -172,8 +178,7 @@ export const createRequestPositionPolicyInsightSynthesisUseCase = (
 
       const matchesPosition = planRespScope.positionId === scope.positionId;
       const matchesPool = planRespScope.poolAddress === scope.whirlpoolAddress;
-      const matchesWallet =
-        !scope.walletAddress || !planReqPos.walletId || scope.walletAddress === planReqPos.walletId;
+      const matchesWallet = scope.walletAddress === (planReqPos.walletId ?? "");
 
       if (matchesPosition && matchesPool && matchesWallet) {
         validPlanHash = storedPlan.planResponse.planHash;
@@ -183,8 +188,8 @@ export const createRequestPositionPolicyInsightSynthesisUseCase = (
 
     // Invariant 6 check: if plan arrives when an expired waiting evidence request exists
     if (validPlanHash) {
-      const isWaitingForPlan = waitingScopeSet
-        ? waitingScopeSet.has(scopeKey)
+      const isWaitingForPlan = waitingForPlanScopeSet
+        ? waitingForPlanScopeSet.has(scopeKey)
         : await deps.queue.hasWaitingRequest(scopeKey, "waiting_for_plan");
 
       if (isWaitingForPlan) {
@@ -280,7 +285,8 @@ export const createRequestPositionPolicyInsightSynthesisUseCase = (
       const nowUnixMs = deps.clock.nowUnixMs();
 
       const waitingScopes = await deps.queue.listWaitingScopes();
-      const waitingScopeSet = new Set(waitingScopes);
+      const waitingForPlanScopes = await deps.queue.listWaitingScopes("waiting_for_plan");
+      const waitingForPlanScopeSet = new Set(waitingForPlanScopes);
       const eligibleScopes = await deps.queue.listEligiblePositionScopes(nowUnixMs);
       const latestPlans = await deps.planLedger.listLatestPositionPlans();
 
@@ -312,7 +318,7 @@ export const createRequestPositionPolicyInsightSynthesisUseCase = (
 
       const scopes = Array.from(scopeMap.values());
       const rawResults = await mapConcurrent(scopes, 10, (scope) =>
-        reconcileSingle(scope, nowUnixMs, waitingScopeSet)
+        reconcileSingle(scope, nowUnixMs, waitingForPlanScopeSet)
       );
       const results = rawResults.filter(
         (res): res is RequestPositionPolicyInsightSynthesisResult => res !== null

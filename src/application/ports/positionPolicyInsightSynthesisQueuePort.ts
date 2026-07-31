@@ -110,7 +110,7 @@ export interface PositionPolicyInsightSynthesisQueuePort {
 
   releaseForRetry(input: ReleasePositionPolicyInsightSynthesisForRetryInput): Promise<boolean>;
 
-  listWaitingScopes(): Promise<string[]>;
+  listWaitingScopes(status?: PositionPolicyInsightSynthesisStatus): Promise<string[]>;
 
   hasWaitingRequest(
     scopeKey: string,

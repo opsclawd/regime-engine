@@ -190,14 +190,19 @@ class FakeQueue implements PositionPolicyInsightSynthesisQueuePort {
     throw new Error("Either selectionHash or planHash required");
   }
 
-  async listWaitingScopes(): Promise<string[]> {
+  async listWaitingScopes(status?: PositionPolicyInsightSynthesisStatus): Promise<string[]> {
     const scopes = Array.from(
       new Set(
         this.requests
-          .filter((r) => r.status === "waiting_for_plan" || r.status === "waiting_for_evidence")
+          .filter((r) =>
+            status
+              ? r.status === status
+              : r.status === "waiting_for_plan" || r.status === "waiting_for_evidence"
+          )
           .map((r) => r.scopeKey)
       )
     );
+    if (status) return scopes;
     return Array.from(new Set([...scopes, ...this.waitingScopes]));
   }
 
@@ -314,7 +319,6 @@ class FakePlanLedgerReader implements PlanLedgerReadPort {
       (p) => p.planResponse.scope.positionId === scope.positionId
     );
     if (matchingPos.length > 0) return matchingPos[matchingPos.length - 1];
-    if (this.plans.length > 0) return this.plans[this.plans.length - 1];
     return null;
   }
 
