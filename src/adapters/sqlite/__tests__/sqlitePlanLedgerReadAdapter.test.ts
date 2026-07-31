@@ -357,8 +357,8 @@ describe("SqlitePlanLedgerReadAdapter", () => {
           `EXPLAIN QUERY PLAN
            WITH RankedPlans AS (
              SELECT
+               pr.plan_id,
                pr.request_json,
-               p.plan_json,
                pr.as_of_unix_ms,
                pr.id,
                ROW_NUMBER() OVER (
@@ -366,13 +366,13 @@ describe("SqlitePlanLedgerReadAdapter", () => {
                  ORDER BY pr.as_of_unix_ms DESC, pr.id DESC
                ) AS rn
              FROM plan_requests pr
-             JOIN plans p ON pr.plan_id = p.plan_id
              WHERE pr.wallet_id IS NOT NULL
            )
-           SELECT request_json, plan_json
-           FROM RankedPlans
-           WHERE rn = 1
-           ORDER BY as_of_unix_ms DESC, id DESC`
+           SELECT r.request_json, p.plan_json
+           FROM RankedPlans r
+           JOIN plans p ON r.plan_id = p.plan_id
+           WHERE r.rn = 1
+           ORDER BY r.as_of_unix_ms DESC, r.id DESC`
         )
         .all();
       expect(JSON.stringify(listExplainPlan)).toContain("idx_plan_requests_wallet_position_lookup");

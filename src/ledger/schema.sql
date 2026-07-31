@@ -33,9 +33,6 @@ CREATE TABLE IF NOT EXISTS execution_results (
 CREATE INDEX IF NOT EXISTS idx_plan_requests_plan_id
   ON plan_requests(plan_id);
 
-CREATE INDEX IF NOT EXISTS idx_plan_requests_position_lookup
-  ON plan_requests(position_id, wallet_id, pool_address, as_of_unix_ms DESC, id DESC);
-
 CREATE INDEX IF NOT EXISTS idx_plan_requests_wallet_position_lookup
   ON plan_requests(wallet_id, position_id, pool_address, as_of_unix_ms DESC, id DESC);
 
