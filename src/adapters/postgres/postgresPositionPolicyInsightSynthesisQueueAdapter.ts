@@ -101,6 +101,16 @@ export const createPostgresPositionPolicyInsightSynthesisQueueAdapter = (
             LIMIT 1
           `);
           if (existingReady.length > 0) {
+            await tx.execute(sql`
+              DELETE FROM regime_engine.policy_insight_synthesis_requests
+              WHERE scope_key = ${scopeKey}
+                AND ruleset_version = ${rulesetVersion}
+                AND (
+                  (selection_hash = ${effectiveSelectionHash} AND status = 'waiting_for_plan')
+                  OR
+                  (plan_hash = ${effectivePlanHash} AND status = 'waiting_for_evidence')
+                )
+            `);
             return mapRow(existingReady[0] as unknown as RawRequestRow);
           }
 
@@ -125,6 +135,13 @@ export const createPostgresPositionPolicyInsightSynthesisQueueAdapter = (
               RETURNING *
             `);
             if (promoted.length > 0) {
+              await tx.execute(sql`
+                DELETE FROM regime_engine.policy_insight_synthesis_requests
+                WHERE scope_key = ${scopeKey}
+                  AND plan_hash = ${effectivePlanHash}
+                  AND ruleset_version = ${rulesetVersion}
+                  AND status = 'waiting_for_evidence'
+              `);
               return mapRow(promoted[0] as unknown as RawRequestRow);
             }
           }
@@ -150,6 +167,13 @@ export const createPostgresPositionPolicyInsightSynthesisQueueAdapter = (
               RETURNING *
             `);
             if (promoted.length > 0) {
+              await tx.execute(sql`
+                DELETE FROM regime_engine.policy_insight_synthesis_requests
+                WHERE scope_key = ${scopeKey}
+                  AND selection_hash = ${effectiveSelectionHash}
+                  AND ruleset_version = ${rulesetVersion}
+                  AND status = 'waiting_for_plan'
+              `);
               return mapRow(promoted[0] as unknown as RawRequestRow);
             }
           }
@@ -265,21 +289,18 @@ export const createPostgresPositionPolicyInsightSynthesisQueueAdapter = (
     }: ClaimBatchInput): Promise<PositionPolicyInsightSynthesisClaim[]> => {
       const rows = await db.transaction(async (tx) => {
         const result = await tx.execute(sql`
-          WITH active_scopes AS (
-            SELECT DISTINCT scope_key
+          WITH scope_heads AS (
+            SELECT scope_key, MIN(id) AS head_id
             FROM regime_engine.policy_insight_synthesis_requests
-            WHERE status = 'processing' AND lease_expires_at_unix_ms > ${nowUnixMs}
+            WHERE status IN ('pending', 'processing')
+            GROUP BY scope_key
           ),
           candidate_ids AS (
-            SELECT MIN(id) AS id
-            FROM regime_engine.policy_insight_synthesis_requests
-            WHERE scope_key NOT IN (SELECT scope_key FROM active_scopes)
-              AND (
-                (status = 'pending' AND (next_attempt_at_unix_ms IS NULL OR next_attempt_at_unix_ms <= ${nowUnixMs}))
-                OR
-                (status = 'processing' AND lease_expires_at_unix_ms <= ${nowUnixMs})
-              )
-            GROUP BY scope_key
+            SELECT r.id
+            FROM regime_engine.policy_insight_synthesis_requests r
+            JOIN scope_heads sh ON r.id = sh.head_id
+            WHERE (r.status = 'pending' AND (r.next_attempt_at_unix_ms IS NULL OR r.next_attempt_at_unix_ms <= ${nowUnixMs}))
+               OR (r.status = 'processing' AND r.lease_expires_at_unix_ms <= ${nowUnixMs})
           ),
           batch AS (
             SELECT id

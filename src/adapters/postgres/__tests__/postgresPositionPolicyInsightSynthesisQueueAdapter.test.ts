@@ -759,5 +759,123 @@ describe.skipIf(!process.env.DATABASE_URL)(
       `);
       expect(allRows).toHaveLength(1);
     });
+
+    it("prevents newer requests for the same scope from bypassing a delayed head request (FIFO)", async () => {
+      const scopeKey = `${SUITE_PREFIX}-fifo-delay`;
+      const now = 1000;
+
+      const req1 = await adapter.enqueueOrReconcile({
+        scopeKey,
+        selectionHash: HASH_1,
+        planHash: HASH_2,
+        rulesetVersion: RULESET_V1,
+        nowUnixMs: now
+      });
+
+      await adapter.claimBatch({
+        leaseOwner: "worker-A",
+        leaseDurationMs: 60000,
+        batchSize: 10,
+        nowUnixMs: now
+      });
+
+      await adapter.releaseForRetry({
+        id: req1.id,
+        leaseOwner: "worker-A",
+        nowUnixMs: now + 100,
+        retryAtUnixMs: now + 10000,
+        errorCode: "TRANSIENT",
+        errorMessage: "retry later"
+      });
+
+      const req2 = await adapter.enqueueOrReconcile({
+        scopeKey,
+        selectionHash: HASH_2,
+        planHash: HASH_3,
+        rulesetVersion: RULESET_V1,
+        nowUnixMs: now + 200
+      });
+
+      // Claim attempt while req1 is delayed for retry
+      const claimsEarly = await adapter.claimBatch({
+        leaseOwner: "worker-B",
+        leaseDurationMs: 60000,
+        batchSize: 10,
+        nowUnixMs: now + 5000
+      });
+
+      // FIFO check: req2 must NOT bypass delayed req1
+      expect(claimsEarly).toHaveLength(0);
+
+      // Claim attempt after req1 delay expires
+      const claimsLate = await adapter.claimBatch({
+        leaseOwner: "worker-B",
+        leaseDurationMs: 60000,
+        batchSize: 10,
+        nowUnixMs: now + 11000
+      });
+
+      expect(claimsLate).toHaveLength(1);
+      expect(claimsLate[0].id).toBe(req1.id);
+
+      await adapter.complete({
+        id: req1.id,
+        leaseOwner: "worker-B",
+        nowUnixMs: now + 12000
+      });
+
+      // After req1 completes, req2 becomes the head and is claimable
+      const claimsReq2 = await adapter.claimBatch({
+        leaseOwner: "worker-B",
+        leaseDurationMs: 60000,
+        batchSize: 10,
+        nowUnixMs: now + 13000
+      });
+
+      expect(claimsReq2).toHaveLength(1);
+      expect(claimsReq2[0].id).toBe(req2.id);
+    });
+
+    it("cleans up dangling partial requests when both hashes promote one partial request", async () => {
+      const scopeKey = `${SUITE_PREFIX}-dangling-cleanup`;
+      const now = 1000;
+
+      // Partial evidence enqueue
+      const reqEv = await adapter.enqueueOrReconcile({
+        scopeKey,
+        selectionHash: HASH_1,
+        rulesetVersion: RULESET_V1,
+        nowUnixMs: now
+      });
+      expect(reqEv.status).toBe("waiting_for_plan");
+
+      // Partial plan enqueue
+      const reqPlan = await adapter.enqueueOrReconcile({
+        scopeKey,
+        planHash: HASH_2,
+        rulesetVersion: RULESET_V1,
+        nowUnixMs: now + 10
+      });
+      expect(reqPlan.status).toBe("waiting_for_evidence");
+
+      // Both hashes enqueued: promotes reqEv to pending and deletes reqPlan
+      const reqBoth = await adapter.enqueueOrReconcile({
+        scopeKey,
+        selectionHash: HASH_1,
+        planHash: HASH_2,
+        rulesetVersion: RULESET_V1,
+        nowUnixMs: now + 20
+      });
+
+      expect(reqBoth.id).toBe(reqEv.id);
+      expect(reqBoth.status).toBe("pending");
+
+      const allRows = await db.execute(sql`
+        SELECT * FROM regime_engine.policy_insight_synthesis_requests
+        WHERE scope_key = ${scopeKey}
+      `);
+      expect(allRows).toHaveLength(1);
+      expect(Number((allRows[0] as { id: number | bigint }).id)).toBe(reqEv.id);
+    });
   }
 );
