@@ -65,6 +65,25 @@ export interface RequestPositionPolicyInsightSynthesisUseCaseDeps {
   readonly selectionPolicy?: EvidenceSelectionPolicy;
 }
 
+async function mapConcurrent<T, R>(
+  items: readonly T[],
+  limit: number,
+  fn: (item: T) => Promise<R>
+): Promise<R[]> {
+  if (items.length === 0) return [];
+  const results: R[] = new Array(items.length);
+  let index = 0;
+  const workerCount = Math.min(limit, items.length);
+  const workers = Array.from({ length: workerCount }, async () => {
+    while (index < items.length) {
+      const i = index++;
+      results[i] = await fn(items[i]);
+    }
+  });
+  await Promise.all(workers);
+  return results;
+}
+
 export function parsePositionScopeKey(scopeKey: string): ConcretePositionScope | null {
   if (!scopeKey.startsWith("position:")) {
     return null;
@@ -74,17 +93,24 @@ export function parsePositionScopeKey(scopeKey: string): ConcretePositionScope |
   const parsePrefix = (): string | null => {
     const colonIdx = rest.indexOf(":", pos);
     if (colonIdx === -1) return null;
-    const len = parseInt(rest.slice(pos, colonIdx), 10);
-    if (isNaN(len)) return null;
+    const lenStr = rest.slice(pos, colonIdx);
+    const len = parseInt(lenStr, 10);
+    if (isNaN(len) || len < 0 || String(len) !== lenStr) return null;
     const start = colonIdx + 1;
     const val = rest.slice(start, start + len);
+    if (val.length !== len) return null;
     pos = start + len;
     return val;
   };
   const walletAddress = parsePrefix();
   const whirlpoolAddress = parsePrefix();
   const positionId = parsePrefix();
-  if (walletAddress === null || whirlpoolAddress === null || positionId === null) {
+  if (
+    walletAddress === null ||
+    whirlpoolAddress === null ||
+    positionId === null ||
+    pos !== rest.length
+  ) {
     return null;
   }
   return {
@@ -162,7 +188,7 @@ export const createRequestPositionPolicyInsightSynthesisUseCase = (
         : await deps.queue.hasWaitingRequest(scopeKey, "waiting_for_plan");
 
       if (isWaitingForPlan) {
-        // Query evidence without 5-minute restriction to see if evidence exists but is expired
+        // Query evidence without 5-minute restriction to see if evidence exists but is expired or purged
         const allRecordsForScope = await deps.evidenceRepository.getLatest({
           pair: "SOL/USDC",
           scope,
@@ -176,23 +202,14 @@ export const createRequestPositionPolicyInsightSynthesisUseCase = (
             (r) => r.lifecycle === "EXPIRED" || Date.parse(r.bundle.expiresAt) < nowUnixMs
           );
 
-        if (hasScopeRecords && allScopeRecordsExpired) {
-          const failedReq = await deps.queue.failWaitingForPlan({
+        if (!hasScopeRecords || allScopeRecordsExpired) {
+          await deps.queue.failWaitingForPlan({
             scopeKey,
             rulesetVersion,
             nowUnixMs,
             errorCode: "POSITION_STALE",
             errorMessage: "Evidence expired before plan arrived"
           });
-          if (failedReq) {
-            return {
-              requestId: failedReq.id,
-              status: failedReq.status,
-              selectionHash: failedReq.selectionHash,
-              planHash: validPlanHash,
-              freshEvidenceRequired: true
-            };
-          }
         }
       }
     }
@@ -293,13 +310,13 @@ export const createRequestPositionPolicyInsightSynthesisUseCase = (
         }
       }
 
-      const results: RequestPositionPolicyInsightSynthesisResult[] = [];
-      for (const scope of scopeMap.values()) {
-        const res = await reconcileSingle(scope, nowUnixMs, waitingScopeSet);
-        if (res) {
-          results.push(res);
-        }
-      }
+      const scopes = Array.from(scopeMap.values());
+      const rawResults = await mapConcurrent(scopes, 10, (scope) =>
+        reconcileSingle(scope, nowUnixMs, waitingScopeSet)
+      );
+      const results = rawResults.filter(
+        (res): res is RequestPositionPolicyInsightSynthesisResult => res !== null
+      );
 
       return {
         reconciledCount: results.length,

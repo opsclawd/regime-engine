@@ -27,6 +27,7 @@ import { sha256Hex } from "../../../contract/v1/hash.js";
 import { toCanonicalJson } from "../../../contract/v1/canonical.js";
 import {
   createRequestPositionPolicyInsightSynthesisUseCase,
+  parsePositionScopeKey,
   type RequestPositionPolicyInsightSynthesisUseCase,
   type RequestPositionPolicyInsightSynthesisResult,
   type RequestPositionPolicyInsightSynthesisStartupResult
@@ -668,7 +669,7 @@ describe("requestPositionPolicyInsightSynthesisUseCase", () => {
     expect(res2.status).toBe("pending");
   });
 
-  test("an expired waiting evidence request fails with POSITION_STALE when a plan arrives", async () => {
+  test("an expired waiting evidence request fails with POSITION_STALE when a plan arrives, and enqueues a new waiting_for_evidence request", async () => {
     const scope = makeSampleScope("pos1", "wallet1", "pool1");
     const expTimeIso = new Date(nowUnixMs - 1000).toISOString();
     const oldTimeIso = new Date(nowUnixMs - 3600000).toISOString();
@@ -688,11 +689,58 @@ describe("requestPositionPolicyInsightSynthesisUseCase", () => {
       selectedAtUnixMs: nowUnixMs
     })) as RequestPositionPolicyInsightSynthesisResult;
 
-    expect(resPlanArrives.requestId).toBe(resWaiting.requestId);
-    expect(resPlanArrives.status).toBe("failed");
     const storedReq = await fakeQueue.getById(resWaiting.requestId);
     expect(storedReq?.status).toBe("failed");
     expect(storedReq?.lastErrorCode).toBe("POSITION_STALE");
+
+    expect(resPlanArrives.requestId).not.toBe(resWaiting.requestId);
+    expect(resPlanArrives.status).toBe("waiting_for_evidence");
+    expect(resPlanArrives.planHash).toBe(plan.planResponse.planHash);
+    expect(resPlanArrives.freshEvidenceRequired).toBe(true);
+  });
+
+  test("a waiting_for_plan request fails with POSITION_STALE if evidence was purged when a plan arrives", async () => {
+    const scope = makeSampleScope("pos1", "wallet1", "pool1");
+    const rec = makeSampleEvidenceBundleRecord(scope);
+    fakeEvidenceRepo.records.push(rec);
+
+    const resWaiting = (await useCase({
+      scope,
+      selectedAtUnixMs: nowUnixMs - 1800000
+    })) as RequestPositionPolicyInsightSynthesisResult;
+    expect(resWaiting.status).toBe("waiting_for_plan");
+
+    // Purge evidence repository completely
+    fakeEvidenceRepo.records = [];
+
+    const plan = makeSampleStoredPlan("pos1", "pool1", "wallet1", nowUnixMs);
+    fakePlanLedger.plans.push(plan);
+
+    const resPlanArrives = (await useCase({
+      scope,
+      selectedAtUnixMs: nowUnixMs
+    })) as RequestPositionPolicyInsightSynthesisResult;
+
+    const storedReq = await fakeQueue.getById(resWaiting.requestId);
+    expect(storedReq?.status).toBe("failed");
+    expect(storedReq?.lastErrorCode).toBe("POSITION_STALE");
+
+    expect(resPlanArrives.status).toBe("waiting_for_evidence");
+  });
+
+  test("parsePositionScopeKey strictly validates length prefixes and scope bounds", () => {
+    expect(parsePositionScopeKey("position:20:short5:pool14:pos1")).toBeNull();
+    expect(parsePositionScopeKey("position:7:wallet15:pool14:pos1extra")).toBeNull();
+    expect(parsePositionScopeKey("position:invalid:wallet15:pool14:pos1")).toBeNull();
+    expect(parsePositionScopeKey("position:-5:wallet15:pool14:pos1")).toBeNull();
+    const valid = parsePositionScopeKey("position:7:wallet15:pool14:pos1");
+    expect(valid).toEqual({
+      kind: "position",
+      network: "solana-mainnet",
+      positionId: "pos1",
+      whirlpoolAddress: "pool1",
+      walletAddress: "wallet1"
+    });
   });
 
   test("explicit single-mode request without a scope throws before any queue or repository calls", async () => {
