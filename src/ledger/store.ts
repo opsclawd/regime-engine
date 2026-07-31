@@ -63,9 +63,12 @@ const migratePlanRequests = (db: DatabaseSync): void => {
 
       for (const row of rows) {
         const parsed = JSON.parse(row.request_json) as PlanRequest;
-        const positionId = parsed.position?.positionId ?? null;
+        const positionId = parsed.position?.positionId;
         const walletId = parsed.position?.walletId ?? null;
-        const poolAddress = parsed.market?.poolAddress ?? null;
+        const poolAddress = parsed.market?.poolAddress;
+        if (!positionId || !poolAddress) {
+          throw new Error("Invalid position identity");
+        }
         updateStmt.run(positionId, walletId, poolAddress, row.id);
         lastId = row.id;
       }

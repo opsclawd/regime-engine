@@ -275,7 +275,7 @@ describe("Plan Ledger Position Migration & Store", () => {
     }
   });
 
-  it("handles legacy request JSON missing position or market fields without throwing TypeError", () => {
+  it("aborts migration when legacy request JSON is missing position identity", () => {
     const dbPath = getTempDbPath();
     const rawDb = new DatabaseSync(dbPath);
     rawDb.exec(`
@@ -304,24 +304,7 @@ describe("Plan Ledger Position Migration & Store", () => {
     rawDb.close();
 
     // Reopen through createLedgerStore (triggers migration)
-    const store = createLedgerStore(dbPath);
-    try {
-      const row = store.db
-        .prepare(
-          "SELECT position_id, wallet_id, pool_address FROM plan_requests WHERE plan_id = 'plan-partial'"
-        )
-        .get() as {
-        position_id: string | null;
-        wallet_id: string | null;
-        pool_address: string | null;
-      };
-
-      expect(row.position_id).toBeNull();
-      expect(row.wallet_id).toBeNull();
-      expect(row.pool_address).toBeNull();
-    } finally {
-      store.close();
-    }
+    expect(() => createLedgerStore(dbPath)).toThrow("Invalid position identity");
   });
 
   it("migrates large ledgers (>500 rows) in batches without error", () => {
