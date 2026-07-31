@@ -775,4 +775,25 @@ describe("runPositionPolicyInsightSynthesisCycle", () => {
       requestId: 42
     });
   });
+
+  it("enforces batchSize: 1 in claimBatch even if config.batchSize is greater than 1", async () => {
+    vi.mocked(queue.claimBatch).mockResolvedValue([]);
+
+    await runPositionPolicyInsightSynthesisCycle({
+      queue,
+      planLedger,
+      synthesizePolicyInsight,
+      config: { ...config, batchSize: 5 },
+      logger,
+      leaseOwner,
+      clock
+    });
+
+    expect(queue.claimBatch).toHaveBeenCalledWith({
+      leaseOwner,
+      leaseDurationMs: config.leaseMs,
+      batchSize: 1,
+      nowUnixMs: 1700000000000
+    });
+  });
 });

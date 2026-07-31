@@ -1,6 +1,6 @@
 # Task Context: Task 8
 
-Title: Add stable cursor history through the port and adapter
+Title: Process position requests with structured retry and supersession
 ## Workspace & Scope Constraints
 
 ## WORKSPACE CONSTRAINTS
@@ -9,91 +9,61 @@ Your working directory is a dedicated git worktree with the repository's complet
 
 .ai-orchestrator.local.json, if one exists, lives only in the main checkout and is intentionally not copied into your worktree — it is operator-machine-specific and not part of your task. Do not search for it or read it outside this directory. Reason about configuration using only .ai-orchestrator.json in your own working directory; treat it as the effective config for your task.
 
-Working Directory: /home/gary/.openclaw/workspace/regime-engine/.ai-worktrees/issue-61
+Working Directory: /home/gary/.openclaw/workspace/regime-engine/.ai-worktrees/issue-79
 Repository: opsclawd/regime-engine
-Branch: ai/issue-61
-Start Commit: 8eb83b2403a525df9fbb640f75379bc56dc7bc3c
+Branch: ai/issue-79
+Start Commit: d64e12669d308cc998d484d6eb84f9e0cbc35898
 
 ## Task Requirements
 
 **Files:**
 
-- Modify: `src/application/ports/policyInsightRepositoryPort.ts`
-- Modify: `src/adapters/postgres/postgresPolicyInsightRepository.ts`
-- Create: `src/adapters/postgres/__tests__/postgresPolicyInsightRepository.history.test.ts`
-- Create: `src/application/use-cases/getPolicyInsightHistoryUseCase.ts`
-- Create: `src/application/use-cases/__tests__/getPolicyInsightHistoryUseCase.test.ts`
+- Create: `src/workers/policyInsight/runPositionSynthesisCycle.ts`
+- Create: `src/workers/policyInsight/__tests__/runPositionSynthesisCycle.test.ts`
 
-**Port/interface rule:** Add `getHistory` and its PostgreSQL implementation in this same task.
+**Exported API changes:** Add `runPositionPolicyInsightSynthesisCycle`, its dependencies, and discriminated result type.
 
-**Invariants implemented first:**
+**Behavioral invariants / tests written first:**
 
-- `history pagination is stable across equal generation timestamps`
-- `history returns changed canonical inputs as distinct rows`
-- `history never returns legacy externally authored rows`
+- `returns idle when no request can be claimed`.
+- `loads the exact plan by hash and completes one matching request`.
+- `supersedes a claim when a newer eligible plan exists`.
+- `supersedes a claim when recomputed selectionHash differs`.
+- `fails missing plan invalid hash stale evidence and scope mismatch with their structured codes`.
+- `retries market evidence and policy store outages without inspecting messages`.
+- `fails a transient request after the configured retry budget is exhausted`.
+- `returns lease_lost when a stale worker cannot mutate the claimed request`.
 
-- [ ] **Step 1: Write failing history tests**
-
-  Cover empty history, default/max limit, invalid limits, exact scope filtering, equal-timestamp tie-breaking, cursor encode/decode round-trip, no duplicates or gaps across pages, and canonical JSON round-trip.
-
-- [ ] **Step 2: Confirm RED**
-
-  Run: `DATABASE_URL=postgres://test:test@localhost:5432/regime_engine_test PG_SSL=false pnpm exec vitest run src/adapters/postgres/__tests__/postgresPolicyInsightRepository.history.test.ts src/application/use-cases/__tests__/getPolicyInsightHistoryUseCase.test.ts`
-
-  Expected: FAIL because history support does not exist.
-
-- [ ] **Step 3: Add the port method, adapter query, and use case together**
-
-  ```ts
-  export interface PolicyInsightHistoryCursor {
-    readonly generatedAtUnixMs: number;
-    readonly id: number;
-  }
-
-  getHistory(input: {
-    readonly pair: "SOL/USDC";
-    readonly scopeKey: string;
-    readonly limit: number;
-    readonly cursor: PolicyInsightHistoryCursor | null;
-  }): Promise<{
-    readonly records: readonly StoredPolicyInsight[];
-    readonly nextCursor: PolicyInsightHistoryCursor | null;
-  }>;
-  ```
-
-  Query with the strict tuple predicate `(generated_at_unix_ms, id) < (cursor.generatedAtUnixMs, cursor.id)`, request `limit + 1`, and derive the next cursor from the last returned item. Map results into #63's history envelope in the use case, not the repository.
-
-- [ ] **Step 4: Verify pagination**
-
-  Run: `DATABASE_URL=postgres://test:test@localhost:5432/regime_engine_test PG_SSL=false pnpm exec vitest run src/adapters/postgres/__tests__/postgresPolicyInsightRepository.history.test.ts src/application/use-cases/__tests__/getPolicyInsightHistoryUseCase.test.ts`
-
-  Run: `pnpm exec eslint src/application/ports/policyInsightRepositoryPort.ts src/adapters/postgres/postgresPolicyInsightRepository.ts src/adapters/postgres/__tests__/postgresPolicyInsightRepository.history.test.ts src/application/use-cases/getPolicyInsightHistoryUseCase.ts src/application/use-cases/__tests__/getPolicyInsightHistoryUseCase.test.ts`
-
-- [ ] **Step 5: Commit the task**
-
-  Run: `git add src/application/ports/policyInsightRepositoryPort.ts src/adapters/postgres/postgresPolicyInsightRepository.ts src/adapters/postgres/__tests__/postgresPolicyInsightRepository.history.test.ts src/application/use-cases/getPolicyInsightHistoryUseCase.ts src/application/use-cases/__tests__/getPolicyInsightHistoryUseCase.test.ts && git commit -m "m61: paginate canonical policy insight history"`
+- [ ] Write one test per invariant with fake queue/read/synthesis ports and error messages deliberately unrelated to classification.
+- [ ] Run `pnpm exec vitest run src/workers/policyInsight/__tests__/runPositionSynthesisCycle.test.ts`; expect the missing cycle failure.
+- [ ] Claim a bounded batch, compare each claim with `getLatestPositionPlan` and `getPositionPlanByHash`, then call synthesis with exact `positionPlan` and `expectedSelectionHash`. Switch only on `error.errorCode`: validation codes fail, `EVIDENCE_SELECTION_SUPERSEDED` or newer plans supersede, and unavailable codes retry with capped attempts. All logs contain request/scope/hash/attempt/duration but no raw payload or secret.
+- [ ] Re-run the targeted test and `pnpm exec eslint src/workers/policyInsight/runPositionSynthesisCycle.ts src/workers/policyInsight/__tests__/runPositionSynthesisCycle.test.ts`; expect success and the automatic typecheck gate.
+- [ ] Commit with `git add src/workers/policyInsight/runPositionSynthesisCycle.ts src/workers/policyInsight/__tests__/runPositionSynthesisCycle.test.ts && git commit -m "m79: process position synthesis requests"`.
 
 ## Repository Targets
 
 ### Expected Files
-- src/application/ports/policyInsightRepositoryPort.ts
-- src/adapters/postgres/postgresPolicyInsightRepository.ts
-- src/adapters/postgres/__tests__/postgresPolicyInsightRepository.history.test.ts
-- src/application/use-cases/getPolicyInsightHistoryUseCase.ts
-- src/application/use-cases/__tests__/getPolicyInsightHistoryUseCase.test.ts
+- src/workers/policyInsight/runPositionSynthesisCycle.ts
+- src/workers/policyInsight/__tests__/runPositionSynthesisCycle.test.ts
+
+### Reference Files
+- src/workers/policyInsight/runSynthesisCycle.ts
+- src/workers/policyInsight/config.ts
+- src/application/use-cases/synthesizePolicyInsightUseCase.ts
 
 ## Validation Commands
 
 ```bash
-DATABASE_URL=postgres://test:test@localhost:5432/regime_engine_test PG_SSL=false pnpm exec vitest run src/adapters/postgres/__tests__/postgresPolicyInsightRepository.history.test.ts src/application/use-cases/__tests__/getPolicyInsightHistoryUseCase.test.ts
-pnpm exec eslint src/application/ports/policyInsightRepositoryPort.ts src/adapters/postgres/postgresPolicyInsightRepository.ts src/adapters/postgres/__tests__/postgresPolicyInsightRepository.history.test.ts src/application/use-cases/getPolicyInsightHistoryUseCase.ts src/application/use-cases/__tests__/getPolicyInsightHistoryUseCase.test.ts
+pnpm exec vitest run src/workers/policyInsight/__tests__/runPositionSynthesisCycle.test.ts
+pnpm exec eslint src/workers/policyInsight/runPositionSynthesisCycle.ts src/workers/policyInsight/__tests__/runPositionSynthesisCycle.test.ts
 ```
 
 ## Behavioral Invariants
 
 You MUST implement the following behavioral invariants as named tests first (TDD):
 
-- **stable tuple cursor**: Equal generation timestamps page without duplicates or gaps by using row ID as the tie-breaker. (Test: `history pagination is stable across equal generation timestamps`)
-- **changed inputs remain historical**: Distinct synthesis input hashes are retained and returned as separate ordered rows. (Test: `history returns changed canonical inputs as distinct rows`)
-- **canonical history isolation**: History reads only policy_insights and ignores externally authored legacy rows. (Test: `history never returns legacy externally authored rows`)
+- **exact claimed identity**: The worker loads the claimed plan hash and selected evidence hash before completing. (Test: `loads the exact plan by hash and completes one matching request`)
+- **newer plan supersession**: A claim for a plan older than the latest eligible plan is superseded without synthesis. (Test: `supersedes a claim when a newer eligible plan exists`)
+- **code based retry**: Only structured unavailable codes retry; messages do not affect classification. (Test: `retries market evidence and policy store outages without inspecting messages`)
+- **stale owner containment**: A lost lease prevents completion and returns lease_lost. (Test: `returns lease_lost when a stale worker cannot mutate the claimed request`)
 

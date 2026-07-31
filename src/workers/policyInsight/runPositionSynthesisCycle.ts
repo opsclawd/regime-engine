@@ -129,12 +129,11 @@ export async function runPositionPolicyInsightSynthesisCycle(
   deps: PositionPolicyInsightSynthesisCycleDeps
 ): Promise<PositionPolicyInsightSynthesisCycleResult> {
   const startMs = deps.clock.nowUnixMs();
-  const batchSize = deps.config.batchSize ?? 1;
 
   const claims = await deps.queue.claimBatch({
     leaseOwner: deps.leaseOwner,
     leaseDurationMs: deps.config.leaseMs,
-    batchSize,
+    batchSize: 1,
     nowUnixMs: startMs
   });
 
