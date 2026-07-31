@@ -353,35 +353,19 @@ export async function runPositionPolicyInsightSynthesisCycle(
     }
 
     const isPermanent = isPermanentError(err, errorCode);
-    const isExhausted = !isPermanent && attemptCount >= deps.config.maxAttempts;
 
-    if (isPermanent || isExhausted) {
-      if (isExhausted) {
-        deps.logger.error("position_policy_insight_synthesis_retry_budget_exhausted", {
-          requestId,
-          scopeKey: claim.scopeKey,
-          planHash: claim.planHash,
-          selectionHash: claim.selectionHash,
-          durationMs,
-          attemptCount,
-          maxAttempts: deps.config.maxAttempts,
-          outcome: "permanent_failure",
-          errorCode,
-          errorMessage
-        });
-      } else {
-        deps.logger.error("position_policy_insight_synthesis_failed", {
-          requestId,
-          scopeKey: claim.scopeKey,
-          planHash: claim.planHash,
-          selectionHash: claim.selectionHash,
-          durationMs,
-          attemptCount,
-          outcome: "permanent_failure",
-          errorCode,
-          errorMessage
-        });
-      }
+    if (isPermanent) {
+      deps.logger.error("position_policy_insight_synthesis_failed", {
+        requestId,
+        scopeKey: claim.scopeKey,
+        planHash: claim.planHash,
+        selectionHash: claim.selectionHash,
+        durationMs,
+        attemptCount,
+        outcome: "permanent_failure",
+        errorCode,
+        errorMessage
+      });
 
       const updated = await deps.queue.fail({
         id: requestId,
@@ -402,17 +386,34 @@ export async function runPositionPolicyInsightSynthesisCycle(
         errorMessage
       };
     } else {
-      deps.logger.warn("position_policy_insight_synthesis_transient_failure", {
-        requestId,
-        scopeKey: claim.scopeKey,
-        planHash: claim.planHash,
-        selectionHash: claim.selectionHash,
-        durationMs,
-        attemptCount,
-        outcome: "transient_failure",
-        errorCode,
-        errorMessage
-      });
+      const isExhausted = attemptCount >= deps.config.maxAttempts;
+
+      if (isExhausted) {
+        deps.logger.error("position_policy_insight_synthesis_retry_budget_exhausted", {
+          requestId,
+          scopeKey: claim.scopeKey,
+          planHash: claim.planHash,
+          selectionHash: claim.selectionHash,
+          durationMs,
+          attemptCount,
+          maxAttempts: deps.config.maxAttempts,
+          outcome: "permanent_failure",
+          errorCode,
+          errorMessage
+        });
+      } else {
+        deps.logger.warn("position_policy_insight_synthesis_transient_failure", {
+          requestId,
+          scopeKey: claim.scopeKey,
+          planHash: claim.planHash,
+          selectionHash: claim.selectionHash,
+          durationMs,
+          attemptCount,
+          outcome: "transient_failure",
+          errorCode,
+          errorMessage
+        });
+      }
 
       const updated = await deps.queue.releaseForRetry({
         id: requestId,
@@ -426,6 +427,15 @@ export async function runPositionPolicyInsightSynthesisCycle(
 
       if (!updated) {
         return { outcome: "lease_lost", requestId };
+      }
+
+      if (isExhausted) {
+        return {
+          outcome: "permanent_failure",
+          requestId,
+          errorCode: "EXHAUSTED_RETRIES",
+          errorMessage
+        };
       }
 
       return {

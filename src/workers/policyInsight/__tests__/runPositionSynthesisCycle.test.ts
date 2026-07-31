@@ -704,7 +704,7 @@ describe("runPositionPolicyInsightSynthesisCycle", () => {
     vi.mocked(synthesizePolicyInsight).mockRejectedValue(
       new EvidenceStoreUnavailableError("Evidence database connection reset")
     );
-    vi.mocked(queue.fail).mockResolvedValue(true);
+    vi.mocked(queue.releaseForRetry).mockResolvedValue(true);
 
     const result = await runPositionPolicyInsightSynthesisCycle({
       queue,
@@ -725,19 +725,21 @@ describe("runPositionPolicyInsightSynthesisCycle", () => {
       })
     );
 
-    expect(queue.fail).toHaveBeenCalledWith({
+    expect(queue.releaseForRetry).toHaveBeenCalledWith({
       id: 42,
       leaseOwner,
       nowUnixMs: 1700000000000,
+      retryAtUnixMs: 1700000005000,
       errorCode: "EVIDENCE_STORE_UNAVAILABLE",
-      errorMessage: "Evidence database connection reset"
+      errorMessage: "Evidence database connection reset",
+      maxAttempts: 5
     });
-    expect(queue.releaseForRetry).not.toHaveBeenCalled();
+    expect(queue.fail).not.toHaveBeenCalled();
 
     expect(result).toEqual({
       outcome: "permanent_failure",
       requestId: 42,
-      errorCode: "EVIDENCE_STORE_UNAVAILABLE",
+      errorCode: "EXHAUSTED_RETRIES",
       errorMessage: "Evidence database connection reset"
     });
   });
