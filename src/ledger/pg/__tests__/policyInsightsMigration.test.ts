@@ -16,7 +16,8 @@ describe.skipIf(!process.env.DATABASE_URL)("policy_insights migration (PG)", () 
              generated_at_unix_ms, as_of_unix_ms, expires_at_unix_ms, persisted_at_unix_ms,
              market_hash, position_hash, selection_hash, synthesis_input_hash,
              selection_policy_version, synthesis_input_json, synthesis_output_json,
-             payload_canonical, payload_hash, selected_lineage_json, excluded_lineage_json)
+             payload_canonical, payload_hash, selected_lineage_json, excluded_lineage_json,
+             wire_contract_sha256)
             VALUES
             ('0000000000000000000000000000000000000000000000000000000000000001',
              'policy-insight.v1', 'ruleset.v1', 'SOL/USDC', 'scope-key', 'position-id',
@@ -27,10 +28,11 @@ describe.skipIf(!process.env.DATABASE_URL)("policy_insights migration (PG)", () 
              '0000000000000000000000000000000000000000000000000000000000000005',
              'policy-v1', '{}', '{}', 'canonical payload',
              '0000000000000000000000000000000000000000000000000000000000000006',
-             '[]', '[]')`
+             '[]', '[]',
+             '0000000000000000000000000000000000000000000000000000000000000007')`
     );
 
-    // Try inserting another row with different insight_id but identical (schema_version, ruleset_version, synthesis_input_hash)
+    // Try inserting another row with different insight_id but identical (schema_version, wire_contract_sha256, ruleset_version, synthesis_input_hash)
     await expect(
       db.execute(
         sql`INSERT INTO regime_engine.policy_insights
@@ -38,7 +40,8 @@ describe.skipIf(!process.env.DATABASE_URL)("policy_insights migration (PG)", () 
                generated_at_unix_ms, as_of_unix_ms, expires_at_unix_ms, persisted_at_unix_ms,
                market_hash, position_hash, selection_hash, synthesis_input_hash,
                selection_policy_version, synthesis_input_json, synthesis_output_json,
-               payload_canonical, payload_hash, selected_lineage_json, excluded_lineage_json)
+               payload_canonical, payload_hash, selected_lineage_json, excluded_lineage_json,
+               wire_contract_sha256)
               VALUES
               ('0000000000000000000000000000000000000000000000000000000000000099',
                'policy-insight.v1', 'ruleset.v1', 'SOL/USDC', 'scope-key', 'position-id',
@@ -49,7 +52,8 @@ describe.skipIf(!process.env.DATABASE_URL)("policy_insights migration (PG)", () 
                '0000000000000000000000000000000000000000000000000000000000000005',
                'policy-v1', '{}', '{}', 'canonical payload',
                '0000000000000000000000000000000000000000000000000000000000000006',
-               '[]', '[]')`
+               '[]', '[]',
+               '0000000000000000000000000000000000000000000000000000000000000007')`
       )
     ).rejects.toThrow();
 

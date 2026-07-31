@@ -87,7 +87,7 @@ const testOutput: PolicyInsightContent = {
     maxCapitalDeploymentBps: 8000
   },
   levels: {
-    supportsUsdcPerSol: ["140.5", "141"],
+    supportsUsdcPerSol: ["141", "140.5"],
     resistancesUsdcPerSol: ["180.25", "181"]
   },
   evidence: {
