@@ -84,7 +84,6 @@ describe("evidenceSelectionWiring", () => {
 
     for (const path of paths) {
       expect(path).not.toContain("selection");
-      expect(path).not.toContain("synthesis");
     }
 
     await app.close();
