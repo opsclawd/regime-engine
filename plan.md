@@ -1,495 +1,355 @@
 <!-- plan-review-required -->
 
-# Postgres-Backed Support/Resistance Policy Synthesis Implementation Plan
+# Dual-Source Pair PolicyInsight Trigger Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Make every canonical `PolicyInsight` synthesis read the latest `mco` support/resistance brief from the Postgres-backed v2 store, include that input in replay identity, and combine its levels and directional bias with existing evidence-bundle signals deterministically.
+**Goal:** Make pair-scoped PolicyInsight synthesis claim work whenever either SOL/USDC evidence bundles or SOL/USDC `sr_theses_v2` rows advance, while retaining safe lease, retry, and compare-and-set behavior for one atomic dual-pointer claim.
 
-**Architecture:** Keep `src/engine/` pure by projecting the v2 current-response contract into a synthesis-only value that carries `source` and `briefId`. Expose the existing Postgres store to the application layer through a read port, wire it in the composition root, sort the projected theses before hashing and persistence, and let the reducer merge SR-ledger inputs with (not replace) evidence-bundle inputs. The existing policy repository remains the only writer; this change adds no SQLite SR fallback and no new production write path.
+**Architecture:** Extend the existing PostgreSQL synthesis cursor with independent last-processed and in-flight targets for SR theses. The PostgreSQL trigger adapter will snapshot both source maxima under the existing cursor-row lock, treat the pair of maxima as the claim identity, and advance or release the pair together. The worker remains responsible only for coordinating synthesis and will propagate both target components through every terminal path.
 
-**Tech Stack:** TypeScript, Node.js, Vitest, Drizzle/Postgres, canonical JSON and SHA-256 helpers, dependency-cruiser, pnpm.
+**Tech Stack:** TypeScript, Node.js, Drizzle ORM/Drizzle Kit, PostgreSQL, Vitest, ESLint, pnpm.
 
 ---
 
 ## Goal
 
-For pair-, whirlpool-, and position-scoped synthesis using `buildApplication`, load `SrThesesV2Store.getCurrent("SOL/USDC", "mco")`, persist the canonical SR projection in `synthesisInputJson`, include it in `synthesisInputHash`, and expose eligible numeric support/resistance levels plus bias-derived policy effects in the resulting `PolicyInsight`.
+Allow a fresh `regime_engine.sr_theses_v2` row with `symbol = 'SOL/USDC'` to trigger the existing pair synthesis worker even when `regime_engine.evidence_bundles` has not advanced. Preserve evidence-only triggering and prevent repeated cycles by completing, retrying, and compare-and-setting against a two-component cursor.
 
 ## Non-goals
 
-- Do not modify `crypto-aggregator`; its producer must be changed in a companion issue to POST the real feed to `/v2/sr-levels`.
-- Do not claim the production acceptance criterion `regime_engine.sr_theses_v2 > 0` until that companion deployment is complete and verified.
-- Do not repair `sol-usdc-clmm-intelligence` or remove its evidence-bundle `supportResistance` path.
-- Do not change the v1 SQLite `/v1/sr-levels` route, schema, writer, or volume topology.
-- Do not change the v2 HTTP request/response contract, database schema, or `SrThesesV2Store.getCurrent` query semantics.
-- Do not add multi-source lookup, source precedence, freshness expiry, retry behavior, or an environment variable for the primary source; this issue uses the explicitly approved source `mco`.
-- Do not change the published `policy-insight.v1` output contract. Only the persisted synthesis input and the values already supported by that output contract change.
+- Do not repair or reconfigure the `sol-usdc-clmm-intelligence` collectors.
+- Do not alter position-scoped synthesis or `policy_insight_synthesis_requests`.
+- Do not change PolicyInsight synthesis inputs, selection logic, hashing, or output contracts.
+- Do not add on-chain execution behavior or change the HTTP ingestion contracts.
+- Do not generalize the cursor into an arbitrary trigger registry; this change adds only the known SR-thesis pointer.
+- Do not reinterpret `targetReceiptId` as an opaque combined value. It remains the evidence-bundle component, and `targetSrThesesMaxId` is the SR component.
 
-## Assumptions and decisions
+## Assumptions
 
-- A synthesis-specific thesis must retain `source` and `briefId` because `SrThesisV2` alone contains neither. Define `PolicySynthesisSrThesis` as `SrThesisV2` plus those two identity fields; do not widen the public v2 HTTP contract.
-- `source`, `briefId`, `asset`, and `sourceHandle` form the stable thesis ordering key. Nested producer arrays retain their ingested order; only the outer thesis list is reordered.
-- A missing current `mco` brief is a valid empty input (`srTheses: []`). A database read failure is not equivalent to no data and must propagate before policy lookup or persistence so the worker can retry its existing cycle.
-- SR-ledger and evidence-bundle direction votes share the existing bullish/bearish counters. Opposing votes therefore trigger the existing conflict tightening; same-direction votes corroborate one another. Numeric levels are unioned by the reducer's existing `Set` logic, so duplicates do not multiply output levels.
-- Only finite, positive numeric strings are eligible for extraction. The existing downstream rules continue to reject supports above current price and resistances below current price, sort them nearest-first, deduplicate them, and cap each side at 16.
-- New persisted envelopes always contain `srTheses`, including an empty array. The field remains optional on `PolicySynthesisEnvelope` so historical persisted inputs and direct reducer fixtures remain readable.
-- The plan requires review because the new input changes canonical replay identity and the contents of records written by the existing policy repository.
+- `sr_theses_v2.id` is the monotonically increasing trigger pointer and `sr_theses_v2.symbol` uses the same pair string passed to `claimLatestPairEvidence` (default `SOL/USDC`).
+- Existing cursor rows are pair rows and may safely backfill `last_processed_sr_theses_max_id` to `0`.
+- An empty source table has an effective maximum of `0`; a claim is idle only when both effective maxima are less than or equal to their respective last-processed values.
+- For an SR-only cycle, the existing worker result/log field `receiptId` may be `0` or the unchanged evidence maximum. It remains the evidence component for backward compatibility; this issue does not widen worker result or logging contracts.
+- `complete(..., outcome: "permanent_failure")` intentionally consumes both claimed pointers, matching current permanent-failure behavior for evidence receipts. A transient failure consumes neither.
 
 ## Affected files
 
-| Path                                                                          | Responsibility                      | Planned change                                                                                                 |
-| ----------------------------------------------------------------------------- | ----------------------------------- | -------------------------------------------------------------------------------------------------------------- |
-| `src/engine/policy/synthesizePolicyInsight.ts`                                | Pure policy envelope and reducer    | Add the synthesis SR projection and merge levels, bias, and identifiers into shared evaluation.                |
-| `src/engine/policy/__tests__/synthesizePolicyInsight.srTheses.test.ts`        | Focused reducer invariants          | New tests for level eligibility, coexistence, conflicts, identifiers, and determinism.                         |
-| `src/application/ports/srThesesReadPort.ts`                                   | Application-facing SR read boundary | New one-method read port returning the existing v2 current-response type.                                      |
-| `src/ledger/srThesesV2Store.ts`                                               | Postgres v2 SR store                | Declare conformance to the read port without changing `getCurrent` behavior.                                   |
-| `src/application/use-cases/synthesizePolicyInsightUseCase.ts`                 | Synthesis orchestration             | Read `mco`, canonicalize the current brief, hash it, place it in the envelope, and fail closed on read errors. |
-| `src/application/use-cases/policyInsightFingerprints.ts`                      | Canonical replay identity           | Add canonical SR content to `synthesisInputHash`.                                                              |
-| `src/application/use-cases/__tests__/synthesizePolicyInsightUseCase.test.ts`  | Existing orchestration invariants   | Supply the required empty SR reader to existing fixtures; no existing assertions change.                       |
-| `src/application/use-cases/__tests__/synthesizePolicyInsightSrTheses.test.ts` | Focused SR orchestration invariants | New tests for lookup arguments, sorting, null/error behavior, hashes, replay, and persisted input.             |
-| `src/composition/buildApplication.ts`                                         | Runtime dependency wiring           | Require the Postgres SR store when constructing synthesis and inject it through the port.                      |
-| `src/composition/__tests__/policyInsightWiring.test.ts`                       | Composition capability tests        | Prove synthesis is exposed only when the SR reader is present with the other Postgres dependencies.            |
-| `src/workers/__tests__/policyInsightSrTheses.e2e.pg.test.ts`                  | Postgres worker integration         | New end-to-end test that seeds v2 SR, runs pair synthesis, and inspects the persisted input/output.            |
-| `package.json`                                                                | Test command registration           | Add the new PG end-to-end file to `test:pg`.                                                                   |
+- `src/ledger/pg/schema/policyInsightSynthesisCursor.ts` — define the two SR cursor columns and extend cursor constraints.
+- `drizzle/0011_extend_policy_insight_synthesis_cursor.sql` — add/backfill columns and replace constraints safely.
+- `drizzle/meta/0011_snapshot.json` — generated Drizzle schema snapshot.
+- `drizzle/meta/_journal.json` — register migration 0011.
+- `src/ledger/pg/__tests__/policyInsightSynthesisCursorMigration.test.ts` — prove defaults, non-negativity, and four-field lease coherence.
+- `src/application/ports/policyInsightSynthesisTriggerPort.ts` — expose both cursor components in claims, completion, and retry inputs.
+- `src/adapters/postgres/postgresPolicyInsightSynthesisTriggerAdapter.ts` — claim, compare, complete, and release both cursor components atomically.
+- `src/adapters/postgres/__tests__/postgresPolicyInsightSynthesisTriggerAdapter.test.ts` — cover all dual-source state transitions and compare-and-set behavior.
+- `src/workers/policyInsight/runSynthesisCycle.ts` — propagate the SR target through success, permanent-failure, and retry paths.
+- `src/workers/policyInsight/__tests__/runSynthesisCycle.test.ts` — update claim fixtures and assert propagation on each terminal path.
+- `src/workers/__tests__/policyInsightSrTheses.e2e.pg.test.ts` — prove an SR-only ingestion produces and exposes an insight, then becomes idle.
+- `src/workers/__tests__/policyInsightSynthesis.e2e.pg.test.ts` — retain evidence-only coverage and assert both cursor components settle without retriggering.
 
-## Task 1: Merge canonical SR theses in the pure policy reducer
+## Behavioral invariants
 
-**Files:**
+These names are the exact test names to write before implementation:
 
-- Modify: `src/engine/policy/synthesizePolicyInsight.ts`
-- Create: `src/engine/policy/__tests__/synthesizePolicyInsight.srTheses.test.ts`
-- Reference: `src/contract/v2/srLevels.ts`
-- Reference: `src/engine/policy/__tests__/policyFixtures.ts`
-- Reference: `src/engine/policy/reasoning.ts`
+- `defaults the SR last-processed cursor to zero for existing and new rows`: migrated and newly inserted cursor rows start with `last_processed_sr_theses_max_id = 0` unless explicitly supplied.
+- `requires both claim targets whenever a lease is active`: an active lease is valid only when owner, expiry, evidence target, and SR target are all non-null; an idle cursor requires all four lease/target fields to be null; a retry-cooldown cursor requires both target fields non-null, next_attempt_at_unix_ms non-null, and lease fields null.
+- `rejects negative SR cursor values`: neither SR last-processed nor SR target may be negative.
+- `claims when only evidence advances and snapshots both source maxima`: evidence advancement produces one claim even with no new SR row, and the claim stores the current maximum for each source.
+- `claims when only SR theses advance and snapshots both source maxima`: SR advancement produces one claim even with no evidence row.
+- `returns idle when neither source has advanced`: equal or lower source maxima do not create a lease.
+- `coalesces simultaneous evidence and SR advances into one dual-pointer claim`: when both sources advance before polling, one claim targets both newest IDs.
+- `increments attempts only when reclaiming the same dual-pointer target`: an expired/retried identical target pair increments `attempt_count`; a change to either target resets it to `1`.
+- `completion requires the matching owner and both targets`: any owner, evidence-target, or SR-target mismatch loses the compare-and-set and advances neither pointer.
+- `completion advances both pointers to the exact claimed targets`: success and permanent failure copy both targets to their last-processed columns and clear both targets plus lease/retry state.
+- `transient release preserves both processed pointers and retries the same target pair`: retry release clears lease owner and expiry, preserves both target pointers and both last-processed values, schedules retry in next_attempt_at_unix_ms, and later reclaims the unchanged target pair with an incremented attempt.
+- `does not ping-pong after completing a single-source advance`: after either source alone caused a completed claim, the next poll is idle until one source advances again.
+- `propagates both claim targets through every worker terminal path`: worker success, permanent failure, retry, and lease-loss handling use the SR target from the same claim as the evidence target.
+- `synthesizes and serves a pair insight from an SR-only trigger`: with candles and SR theses but zero evidence bundles, one worker cycle succeeds, the current endpoint reflects SR levels, both cursor pointers settle, and the next cycle is idle.
+- `evidence-only synthesis remains independently triggerable`: with evidence and no SR theses, the worker still succeeds, leaves the SR pointer at zero, advances the evidence pointer, and the next cycle is idle.
 
-**Behavioral invariants (write these named tests first):**
-
-1. `adds valid SR thesis levels and identities without replacing evidence-derived inputs`
-   - Given valid SR-ledger supports/resistances and an evidence-derived numeric level, the output contains the eligible union and reasoning includes the SR `briefId` exactly once even when the brief has multiple theses; neither source removes the other.
-2. `combines SR and evidence bias votes and treats opposition as conflict`
-   - Given a bullish SR thesis and bearish contextual evidence, the existing conflict policy applies: risk is elevated and confidence is capped low. Given aligned votes, the normal directional vote behavior applies once, without bypassing higher-precedence locks.
-3. `ignores non-finite non-positive and side-ineligible SR level strings`
-   - `NaN`, infinities, zero, negatives, supports above current price, and resistances below current price do not appear in output levels; valid supports and resistances do.
-4. `deduplicates sorts and caps SR levels with existing output rules`
-   - Duplicate strings/numeric equivalents collapse, supports sort descending, resistances sort ascending, and each output side contains at most 16 values.
-5. `produces byte-identical output for the same canonical SR thesis input`
-   - Repeated reducer calls with the same envelope produce byte-identical JSON.
-6. `preserves legacy reducer behavior when SR theses are absent`
-   - Omitting `srTheses` is equivalent to passing `srTheses: []`, preserving historical input compatibility.
-
-- [ ] **Step 1: Create the focused failing reducer tests**
-
-Build envelopes from `calmChopMarket` and `makeMockEvidenceSummary`. Use a synthesis thesis with explicit identity and string levels:
-
-```ts
-const srThesis: PolicySynthesisSrThesis = {
-  source: "mco",
-  briefId: "mco-sol-2026-07-30",
-  asset: "SOL",
-  timeframe: "1d",
-  bias: "bullish",
-  setupType: null,
-  supportLevels: ["95", "90", "0", "not-a-number"],
-  resistanceLevels: ["105", "110"],
-  entryZone: null,
-  targets: [],
-  invalidation: null,
-  trigger: null,
-  chartReference: null,
-  sourceHandle: "morecryptoonline",
-  sourceChannel: null,
-  sourceKind: "youtube",
-  sourceReliability: null,
-  rawThesisText: null,
-  collectedAt: null,
-  publishedAt: null,
-  sourceUrl: null,
-  notes: null
-};
-```
-
-Run:
-
-```bash
-pnpm exec vitest run src/engine/policy/__tests__/synthesizePolicyInsight.srTheses.test.ts
-```
-
-Expected: FAIL because `PolicySynthesisSrThesis` and `PolicySynthesisEnvelope.srTheses` do not exist and the reducer ignores the values.
-
-- [ ] **Step 2: Add the synthesis-only SR type and envelope field**
-
-Import `SrThesisV2` from the contract and add the identity-preserving type without changing the v2 wire contract:
-
-```ts
-export interface PolicySynthesisSrThesis extends SrThesisV2 {
-  readonly source: string;
-  readonly briefId: string;
-}
-
-export interface PolicySynthesisEnvelope {
-  // existing fields stay unchanged
-  readonly srTheses?: readonly PolicySynthesisSrThesis[];
-}
-```
-
-- [ ] **Step 3: Merge SR values into shared rule evaluation**
-
-After evidence-derived feature levels are collected and before conflict evaluation, process `envelope.srTheses ?? []`. Parse price strings with `Number`, accept only `Number.isFinite(value) && value > 0`, increment the existing counters only for exact `bullish`/`bearish` bias values, and add `briefId` to `boundedIdentifiers`:
-
-```ts
-for (const thesis of envelope.srTheses ?? []) {
-  for (const raw of thesis.supportLevels) {
-    const value = Number(raw);
-    if (Number.isFinite(value) && value > 0) extractedSupport.push(value);
-  }
-  for (const raw of thesis.resistanceLevels) {
-    const value = Number(raw);
-    if (Number.isFinite(value) && value > 0) extractedResistance.push(value);
-  }
-  if (thesis.bias === "bullish") bullishCount += 1;
-  if (thesis.bias === "bearish") bearishCount += 1;
-}
-```
-
-Add each SR brief identifier once, preserving first occurrence in the canonical thesis order:
-
-```ts
-const seenSrBriefIds = new Set<string>();
-for (const thesis of envelope.srTheses ?? []) {
-  if (!seenSrBriefIds.has(thesis.briefId)) {
-    seenSrBriefIds.add(thesis.briefId);
-    boundedIdentifiers.push(thesis.briefId);
-  }
-}
-```
-
-Do not add a new action, reason code, warning code, or output field. Reuse the current vote/conflict rules, level sets, ordering, and caps.
-
-- [ ] **Step 4: Run the scoped reducer checks**
-
-```bash
-pnpm exec vitest run src/engine/policy/__tests__/synthesizePolicyInsight.srTheses.test.ts
-pnpm exec eslint src/engine/policy/synthesizePolicyInsight.ts src/engine/policy/__tests__/synthesizePolicyInsight.srTheses.test.ts
-pnpm exec prettier --check src/engine/policy/synthesizePolicyInsight.ts src/engine/policy/__tests__/synthesizePolicyInsight.srTheses.test.ts
-```
-
-Expected: the focused test file passes; ESLint and Prettier exit 0.
-
-- [ ] **Step 5: Commit the reducer slice**
-
-```bash
-git add src/engine/policy/synthesizePolicyInsight.ts src/engine/policy/__tests__/synthesizePolicyInsight.srTheses.test.ts
-git commit -m "m82: merge SR theses into policy synthesis"
-```
-
-## Task 2: Read, canonicalize, hash, and wire Postgres SR theses
+## Task 1: Add the dual-pointer cursor migration and schema constraints
 
 **Files:**
 
-- Create: `src/application/ports/srThesesReadPort.ts`
-- Modify: `src/ledger/srThesesV2Store.ts`
-- Modify: `src/application/use-cases/synthesizePolicyInsightUseCase.ts`
-- Modify: `src/application/use-cases/policyInsightFingerprints.ts`
-- Modify: `src/application/use-cases/__tests__/synthesizePolicyInsightUseCase.test.ts`
-- Create: `src/application/use-cases/__tests__/synthesizePolicyInsightSrTheses.test.ts`
-- Modify: `src/composition/buildApplication.ts`
-- Modify: `src/composition/__tests__/policyInsightWiring.test.ts`
-- Reference: `src/contract/v2/srLevels.ts`
-- Reference: `src/composition/buildStoreContext.ts`
-- Reference: `src/engine/policy/synthesizePolicyInsight.ts`
-- Reference: `.dependency-cruiser.cjs`
+- Modify: `src/ledger/pg/schema/policyInsightSynthesisCursor.ts`
+- Create: `drizzle/0011_extend_policy_insight_synthesis_cursor.sql`
+- Create: `drizzle/meta/0011_snapshot.json`
+- Modify: `drizzle/meta/_journal.json`
+- Modify: `src/ledger/pg/__tests__/policyInsightSynthesisCursorMigration.test.ts`
+- Reference only: `drizzle/0009_create_policy_insight_synthesis_cursor.sql`
+- Reference only: `src/ledger/pg/schema/srThesesV2.ts`
+- Reference only: `src/ledger/pg/schema/index.ts`
+- Reference only: `src/workers/__tests__/policyInsightSynthesis.e2e.pg.test.ts`
 
-This task intentionally contains the new read-port method, the concrete Postgres implementation declaration, and the composition update together. Do not split them: the workspace-wide typecheck gate must see a complete vertical slice.
+**Behavioral invariants:**
 
-**Behavioral invariants (write these named tests first):**
+- `defaults the SR last-processed cursor to zero for existing and new rows`
+- `requires both claim targets whenever a lease is active`
+- `rejects negative SR cursor values`
 
-1. `queries the primary mco SR brief for SOL USDC before fingerprint lookup`
-   - The use case calls `getCurrent("SOL/USDC", "mco")` exactly once before `findBySynthesisInputHash` and persists the returned brief projection.
-2. `canonicalizes SR theses by source brief asset and source handle`
-   - Two current responses with identical theses in different database-return order produce the same persisted `srTheses` order and the same synthesis input hash.
-3. `treats a missing current SR brief as a canonical empty input`
-   - A `null` read yields `srTheses: []`, still synthesizes, and includes the empty input in the fingerprint.
-4. `changes synthesis replay identity when SR thesis content changes`
-   - With market, plan, and evidence unchanged, changing levels, bias, identity, or other thesis content changes `synthesisInputHash` and creates distinct history.
-5. `exact SR replay returns the stored canonical winner`
-   - The same canonical SR input reuses the existing policy record, just like existing market/position/evidence replay.
-6. `does not persist or replay when the SR store read fails`
-   - A rejected `getCurrent` promise propagates; neither repository read nor insert is called, preventing a database outage from being silently interpreted as no SR data.
-7. `requires the Postgres SR reader before exposing synthesis capability`
-   - `buildApplication` returns `synthesizePolicyInsight: null` when Postgres/evidence are present but `srThesesV2Store` is absent, and returns a function when all are present.
+- [ ] **Step 1: Write the failing migration tests.** Extend the insert/select assertions with `last_processed_sr_theses_max_id` and `target_sr_theses_max_id`. Add focused cases that verify migration backfills `target_sr_theses_max_id = 0` for active legacy leases, insert of negative SR values is rejected, and all three valid lease/target states (idle, leased, and retry cooldown) are validated. Keep the existing primary-key, legacy non-negative, and outcome checks.
 
-- [ ] **Step 1: Add failing focused use-case and wiring tests**
+  The new assertions should use the exact test names above and explicitly verify an insert that omits `last_processed_sr_theses_max_id` reads back as numeric `0`.
 
-Create a small fake `SrThesesReadPort` and repository in the new test file. Assert call order with a shared event array, inspect `repository.insertCalls[0].synthesisInputJson.srTheses`, and compare `insightId`/`synthesisInputHash` across reordered and changed briefs. Update the existing 643-line use-case test only mechanically by injecting an empty reader into every factory call:
+- [ ] **Step 2: Run the focused migration test and confirm it fails because the SR cursor columns do not exist.**
 
-```ts
-const emptySrThesesReadPort = (): SrThesesReadPort => ({
-  getCurrent: vi.fn().mockResolvedValue(null)
-});
+  Run: `DATABASE_URL=postgres://test:test@localhost:5432/regime_engine_test PG_SSL=false pnpm exec vitest run src/ledger/pg/__tests__/policyInsightSynthesisCursorMigration.test.ts`
 
-const useCase = createSynthesizePolicyInsightUseCase({
-  getCurrentRegime,
-  selectEvidence,
-  srThesesReadPort: emptySrThesesReadPort(),
-  repository,
-  clock,
-  ruleset: SOL_USDC_POLICY_V1
-});
-```
+  Expected: FAIL on the first reference to `last_processed_sr_theses_max_id` or `target_sr_theses_max_id`, before the migration is added and applied.
 
-In `policyInsightWiring.test.ts`, use a structural fake with `getCurrent: vi.fn().mockResolvedValue(null)` for the positive case and retain `null` for the negative case.
+- [ ] **Step 3: Extend the Drizzle table definition.** Add:
 
-Run:
+  ```ts
+  lastProcessedSrThesesMaxId: bigint("last_processed_sr_theses_max_id", {
+    mode: "number"
+  })
+    .notNull()
+    .default(0),
+  targetSrThesesMaxId: bigint("target_sr_theses_max_id", { mode: "number" }),
+  ```
 
-```bash
-pnpm exec vitest run src/application/use-cases/__tests__/synthesizePolicyInsightSrTheses.test.ts src/application/use-cases/__tests__/synthesizePolicyInsightUseCase.test.ts src/composition/__tests__/policyInsightWiring.test.ts
-```
+  Extend `chk_synthesis_cursor_non_negative` so both new values are non-negative (with the target nullable). Extend `chk_synthesis_cursor_lease_coherence` to cover all three valid cursor states: idle (`leaseOwner` NULL, `targetReceiptId` NULL, `targetSrThesesMaxId` NULL, `nextAttemptAtUnixMs` NULL), leased (`leaseOwner` NOT NULL, `leaseExpiresAtUnixMs` NOT NULL, `targetReceiptId` NOT NULL, `targetSrThesesMaxId` NOT NULL), and retry cooldown (`leaseOwner` NULL, `leaseExpiresAtUnixMs` NULL, `targetReceiptId` NOT NULL, `targetSrThesesMaxId` NOT NULL, `nextAttemptAtUnixMs` NOT NULL).
 
-Expected: FAIL until the port, dependency, fingerprint, and composition changes exist.
+- [ ] **Step 4: Generate and inspect the additive migration artifacts.**
 
-- [ ] **Step 2: Add the application read port and declare the adapter implementation**
+  Run: `pnpm exec drizzle-kit generate --name=extend_policy_insight_synthesis_cursor`
 
-Create the boundary type using the existing contract response:
+  Expected: creates `drizzle/0011_extend_policy_insight_synthesis_cursor.sql`, `drizzle/meta/0011_snapshot.json`, and appends entry 11 to `drizzle/meta/_journal.json`.
 
-```ts
-import type { SrLevelsV2CurrentResponse } from "../../contract/v2/srLevels.js";
+  Inspect the SQL and keep only an additive/backward-safe sequence: add `last_processed_sr_theses_max_id bigint DEFAULT 0 NOT NULL`, add nullable `target_sr_theses_max_id`, backfill existing active and retry-cooldown leases (`UPDATE regime_engine.policy_insight_synthesis_cursor SET target_sr_theses_max_id = 0 WHERE (lease_owner IS NOT NULL OR target_receipt_id IS NOT NULL) AND target_sr_theses_max_id IS NULL;`), drop the two named cursor constraints, then recreate them with both pointer components supporting idle, leased, and retry-cooldown cursor states. Do not drop/recreate the table or alter unrelated objects.
 
-export interface SrThesesReadPort {
-  getCurrent(symbol: string, source: string): Promise<SrLevelsV2CurrentResponse | null>;
-}
-```
+- [ ] **Step 5: Apply the migration to the test database and run the focused tests.**
 
-Update `SrThesesV2Store` to `implements SrThesesReadPort` and import the port type. Do not alter its method body, SQL ordering, return contract, or error behavior.
+  Run: `DATABASE_URL=postgres://test:test@localhost:5432/regime_engine_test PG_SSL=false pnpm run db:migrate`
 
-- [ ] **Step 3: Canonically project current-response identity into synthesis theses**
+  Run: `DATABASE_URL=postgres://test:test@localhost:5432/regime_engine_test PG_SSL=false pnpm exec vitest run src/ledger/pg/__tests__/policyInsightSynthesisCursorMigration.test.ts`
 
-Add the required `srThesesReadPort` member to `SynthesizePolicyInsightUseCaseDeps`. In the use-case module, add a private projection that enriches every thesis and sorts a copied array without mutating the store response:
+  Expected: migration applies once; the focused test passes and confirms defaulting, non-negativity, and lease coherence.
 
-```ts
-const compareText = (left: string, right: string): number =>
-  left < right ? -1 : left > right ? 1 : 0;
+- [ ] **Step 6: Check only the changed TypeScript files for lint/format issues.**
 
-const projectSrTheses = (current: SrLevelsV2CurrentResponse | null): PolicySynthesisSrThesis[] =>
-  current === null
-    ? []
-    : current.theses
-        .map((thesis) => ({
-          ...thesis,
-          source: current.source,
-          briefId: current.brief.briefId
-        }))
-        .sort(
-          (left, right) =>
-            compareText(left.source, right.source) ||
-            compareText(left.briefId, right.briefId) ||
-            compareText(left.asset, right.asset) ||
-            compareText(left.sourceHandle, right.sourceHandle)
-        );
-```
+  Run: `pnpm exec eslint src/ledger/pg/schema/policyInsightSynthesisCursor.ts src/ledger/pg/__tests__/policyInsightSynthesisCursorMigration.test.ts`
 
-After evidence selection/time/hash validation and before computing fingerprints or querying the policy repository, call:
+  Run: `pnpm exec prettier --check src/ledger/pg/schema/policyInsightSynthesisCursor.ts src/ledger/pg/__tests__/policyInsightSynthesisCursorMigration.test.ts drizzle/0011_extend_policy_insight_synthesis_cursor.sql drizzle/meta/0011_snapshot.json drizzle/meta/_journal.json`
 
-```ts
-const srTheses = projectSrTheses(await deps.srThesesReadPort.getCurrent("SOL/USDC", "mco"));
-```
+  Expected: both commands exit 0.
 
-Do not catch this read as an empty response. Pass `srTheses` to both fingerprint computation and the persisted envelope.
+- [ ] **Step 7: Commit the schema unit.**
 
-- [ ] **Step 4: Include canonical SR content in replay identity**
+  ```bash
+  git add src/ledger/pg/schema/policyInsightSynthesisCursor.ts src/ledger/pg/__tests__/policyInsightSynthesisCursorMigration.test.ts drizzle/0011_extend_policy_insight_synthesis_cursor.sql drizzle/meta/0011_snapshot.json drizzle/meta/_journal.json
+  git commit -m "m84: add dual-source synthesis cursor"
+  ```
 
-Add a required `srTheses: readonly PolicySynthesisSrThesis[]` member to `FingerprintsInput`. Compute a component hash and add it to the canonical `inputForHash` object:
-
-```ts
-const srThesesHash = sha256Hex(toCanonicalJson(input.srTheses));
-
-const inputForHash = {
-  rulesetVersion: input.rulesetVersion,
-  pair: input.pair,
-  scopeKey,
-  marketHash,
-  positionHash,
-  selectionHash,
-  srThesesHash
-};
-```
-
-No database column or `PolicyInsightFingerprints` return member is needed: `synthesisInputHash` remains the persisted aggregate identity.
-
-- [ ] **Step 5: Wire the port and preserve capability truthfulness**
-
-In `buildApplication`, require `ctx.srThesesV2Store` in the same condition that currently requires the policy and evidence repositories, then pass it as `srThesesReadPort`. Because `buildStoreContext` constructs that store from the same `Db`, both the HTTP lifecycle worker and standalone worker receive a Postgres-backed reader; no SQLite `/data` path is consulted for SR.
-
-```ts
-const synthesizePolicyInsight =
-  policyInsightRepository && selectEvidenceForSynthesis && ctx.srThesesV2Store
-    ? createSynthesizePolicyInsightUseCase({
-        getCurrentRegime,
-        selectEvidence: selectEvidenceForSynthesis,
-        srThesesReadPort: ctx.srThesesV2Store,
-        repository: policyInsightRepository,
-        clock,
-        ruleset: SOL_USDC_POLICY_V1
-      })
-    : null;
-```
-
-- [ ] **Step 6: Run the scoped vertical-slice checks**
-
-```bash
-pnpm exec vitest run src/application/use-cases/__tests__/synthesizePolicyInsightSrTheses.test.ts src/application/use-cases/__tests__/synthesizePolicyInsightUseCase.test.ts src/composition/__tests__/policyInsightWiring.test.ts
-pnpm exec eslint src/application/ports/srThesesReadPort.ts src/ledger/srThesesV2Store.ts src/application/use-cases/synthesizePolicyInsightUseCase.ts src/application/use-cases/policyInsightFingerprints.ts src/application/use-cases/__tests__/synthesizePolicyInsightUseCase.test.ts src/application/use-cases/__tests__/synthesizePolicyInsightSrTheses.test.ts src/composition/buildApplication.ts src/composition/__tests__/policyInsightWiring.test.ts
-pnpm exec prettier --check src/application/ports/srThesesReadPort.ts src/ledger/srThesesV2Store.ts src/application/use-cases/synthesizePolicyInsightUseCase.ts src/application/use-cases/policyInsightFingerprints.ts src/application/use-cases/__tests__/synthesizePolicyInsightUseCase.test.ts src/application/use-cases/__tests__/synthesizePolicyInsightSrTheses.test.ts src/composition/buildApplication.ts src/composition/__tests__/policyInsightWiring.test.ts
-```
-
-Expected: all three test files pass; ESLint and Prettier exit 0. The automatic implementation gate then runs `pnpm -r typecheck` workspace-wide with the port and adapter already aligned.
-
-- [ ] **Step 7: Commit the vertical slice**
-
-```bash
-git add src/application/ports/srThesesReadPort.ts src/ledger/srThesesV2Store.ts src/application/use-cases/synthesizePolicyInsightUseCase.ts src/application/use-cases/policyInsightFingerprints.ts src/application/use-cases/__tests__/synthesizePolicyInsightUseCase.test.ts src/application/use-cases/__tests__/synthesizePolicyInsightSrTheses.test.ts src/composition/buildApplication.ts src/composition/__tests__/policyInsightWiring.test.ts
-git commit -m "m82: read Postgres SR theses during policy synthesis"
-```
-
-## Task 3: Prove the Postgres-backed worker path end to end
+## Task 2: Implement atomic dual-source claim, completion, and retry coordination
 
 **Files:**
 
-- Create: `src/workers/__tests__/policyInsightSrTheses.e2e.pg.test.ts`
-- Modify: `package.json`
-- Reference: `src/workers/policyInsight/runSynthesisCycle.ts`
-- Reference: `src/workers/policyInsightSynthesisWorker.ts`
-- Reference: `src/composition/buildStoreContext.ts`
-- Reference: `src/composition/buildApplication.ts`
-- Reference: `src/ledger/srThesesV2Store.ts`
-- Reference: `src/ledger/pg/schema/policyInsights.ts`
-- Reference: `src/workers/__tests__/policyInsightSynthesis.e2e.pg.test.ts`
+- Modify: `src/application/ports/policyInsightSynthesisTriggerPort.ts`
+- Modify: `src/adapters/postgres/postgresPolicyInsightSynthesisTriggerAdapter.ts`
+- Modify: `src/adapters/postgres/__tests__/postgresPolicyInsightSynthesisTriggerAdapter.test.ts`
+- Modify: `src/workers/policyInsight/runSynthesisCycle.ts`
+- Modify: `src/workers/policyInsight/__tests__/runSynthesisCycle.test.ts`
+- Reference only: `src/ledger/pg/schema/srThesesV2.ts`
+- Reference only: `src/ledger/pg/schema/policyInsightSynthesisCursor.ts`
+- Reference only: `src/workers/policyInsightSynthesisWorker.ts`
+- Reference only: `src/workers/__tests__/policyInsightSynthesisWorker.test.ts`
 
-**Behavioral invariants (write these named tests first):**
+This task intentionally keeps the exported port shapes, their only PostgreSQL implementation, the worker consumer, and all affected fixtures together. The required-member changes would otherwise fail the automatic workspace typecheck between tasks.
 
-1. `persists Postgres SR theses and derived levels through the pair synthesis worker`
-   - Seed candles, a pair evidence bundle, and an `mco` v2 brief; run `runPolicyInsightSynthesisCycle`; verify `policy_insights.synthesis_input_json.srTheses` retains `source`/`briefId`, and `synthesis_output_json.levels` contains the eligible support and resistance.
-2. `uses Postgres SR data when the SQLite ledger contains no SR rows`
-   - Use an in-memory empty SQLite ledger while seeding only `sr_theses_v2`; synthesis still observes the v2 levels, proving the SR path does not depend on `/data/ledger.sqlite`.
+**Behavioral invariants:**
 
-- [ ] **Step 1: Add the focused Postgres integration fixture**
+- `claims when only evidence advances and snapshots both source maxima`
+- `claims when only SR theses advance and snapshots both source maxima`
+- `returns idle when neither source has advanced`
+- `coalesces simultaneous evidence and SR advances into one dual-pointer claim`
+- `increments attempts only when reclaiming the same dual-pointer target`
+- `completion requires the matching owner and both targets`
+- `completion advances both pointers to the exact claimed targets`
+- `transient release preserves both processed pointers and retries the same target pair`
+- `does not ping-pong after completing a single-source advance`
+- `propagates both claim targets through every worker terminal path`
 
-Follow the existing PG test's `describe.skipIf(!process.env.DATABASE_URL)` convention. Seed candles and evidence as that test does, then insert an SR brief through `ctx.srThesesV2Store!.insertBrief`:
+- [ ] **Step 1: Write failing adapter transition tests first.** Add an `insertSrThesis` helper that inserts a minimal unique `sr_theses_v2` row for a requested symbol and returns its numeric ID; delete those test rows in `afterEach`. Update existing completion/retry calls to carry `targetSrThesesMaxId`, then add the exact invariant-named cases above. Assert claim values include:
 
-```ts
-await ctx.srThesesV2Store!.insertBrief({
-  capturedAtUnixMs: FIXED_NOW - 5_000,
-  request: {
-    schemaVersion: "2.0",
-    source: "mco",
-    symbol: "SOL/USDC",
-    brief: {
-      briefId: "mco-sol-worker-e2e",
-      sourceRecordedAtIso: new Date(FIXED_NOW - 10_000).toISOString(),
-      summary: "Worker integration fixture"
-    },
-    theses: [
-      {
-        asset: "SOL",
-        timeframe: "1d",
-        bias: "bullish",
-        setupType: null,
-        supportLevels: ["90"],
-        resistanceLevels: ["160"],
-        entryZone: null,
-        targets: [],
-        invalidation: null,
-        trigger: null,
-        chartReference: null,
-        sourceHandle: "morecryptoonline",
-        sourceChannel: null,
-        sourceKind: "youtube",
-        sourceReliability: null,
-        rawThesisText: null,
-        collectedAt: null,
-        publishedAt: null,
-        sourceUrl: null,
-        notes: null
-      }
-    ]
+  ```ts
+  {
+    targetReceiptId: expectedEvidenceMax,
+    targetSrThesesMaxId: expectedSrMax,
+    lastProcessedReceiptId: expectedProcessedEvidence,
+    lastProcessedSrThesesMaxId: expectedProcessedSr
   }
-});
-```
+  ```
 
-Use an empty `:memory:` ledger in the runtime context, run the real pair synthesis cycle with `buildApplication(ctx).synthesizePolicyInsight!`, query the inserted `policy_insights` row, and assert both persisted input identity and output levels. Cleanup must delete `regime_engine.sr_theses_v2` in addition to the existing policy/evidence/candle rows.
+  Cover empty-table maxima as `0`, custom `pair` as both the evidence `pair` filter and SR `symbol` filter, mismatched SR-target compare-and-set, completion of evidence-only and SR-only claims followed by an idle poll, and retry/reclaim of the same target pair.
 
-- [ ] **Step 2: Register and run the focused PG test**
+- [ ] **Step 2: Write failing worker propagation tests.** Add `targetSrThesesMaxId` and `lastProcessedSrThesesMaxId` to every mocked claim. In the existing success, validation/permanent, exhausted-retry/permanent, transient, and lease-loss cases, assert `complete` or `releaseForRetry` receives the same `targetSrThesesMaxId`. Use the exact test name `propagates both claim targets through every worker terminal path` for the focused table-driven/parameterized coverage; do not split this 500-plus-line test file into a standalone test-only task.
 
-Append the exact new file path to `test:pg`; do not broaden the command with a new directory glob.
+- [ ] **Step 3: Run the focused tests and confirm the required fields/behavior fail.**
 
-```bash
-DATABASE_URL=postgres://test:test@localhost:5432/regime_engine_test PG_SSL=false pnpm exec vitest run src/workers/__tests__/policyInsightSrTheses.e2e.pg.test.ts
-pnpm exec eslint src/workers/__tests__/policyInsightSrTheses.e2e.pg.test.ts
-pnpm exec prettier --check src/workers/__tests__/policyInsightSrTheses.e2e.pg.test.ts package.json
-```
+  Run: `DATABASE_URL=postgres://test:test@localhost:5432/regime_engine_test PG_SSL=false pnpm exec vitest run src/adapters/postgres/__tests__/postgresPolicyInsightSynthesisTriggerAdapter.test.ts src/workers/policyInsight/__tests__/runSynthesisCycle.test.ts`
 
-Expected: with the test database available, the test passes and shows `90`/`160` in the persisted policy output; ESLint and Prettier exit 0. The pair-scoped reducer currently uses its established fallback current price of 100 when no position is supplied, so the fixture deliberately places support below 100 and resistance above 100. If `DATABASE_URL` is intentionally absent, Vitest reports the suite skipped, which is not sufficient for task acceptance.
+  Expected: FAIL because the port claim lacks SR fields and the adapter neither queries nor coordinates the SR maximum.
 
-- [ ] **Step 3: Commit the worker integration proof**
+- [ ] **Step 4: Change the exported port shapes and their documentation.** Make these required additions:
 
-```bash
-git add src/workers/__tests__/policyInsightSrTheses.e2e.pg.test.ts package.json
-git commit -m "m82: verify worker SR synthesis from Postgres"
-```
+  ```ts
+  export interface PolicyInsightSynthesisClaim {
+    cursorKey: string;
+    targetReceiptId: number;
+    targetSrThesesMaxId: number;
+    attemptCount: number;
+    leaseOwner: string;
+    leaseExpiresAtUnixMs: number;
+    lastProcessedReceiptId: number;
+    lastProcessedSrThesesMaxId: number;
+  }
+  ```
+
+  Add `targetSrThesesMaxId: number` to both `CompletePolicyInsightSynthesisInput` and `ReleaseForRetryInput`. Document `targetReceiptId` as the evidence-bundle component and the new property as the SR-thesis component. Do not add a new port method or alter `ClaimLatestPairEvidenceInput`.
+
+- [ ] **Step 5: Implement the dual-pointer claim transaction.** Extend `CursorRow` with both snake-case SR fields. The cursor insert must initialize `last_processed_sr_theses_max_id` to `0`, and the locked select must read both SR fields. Query unfiltered maxima within the already scoped pair predicates and coalesce nulls to zero:
+
+  ```sql
+  SELECT COALESCE(MAX(id), 0) AS max_id
+  FROM regime_engine.evidence_bundles
+  WHERE pair = ${pair} AND scope_key = ${scopeKey}
+  ```
+
+  ```sql
+  SELECT COALESCE(MAX(id), 0) AS max_id
+  FROM regime_engine.sr_theses_v2
+  WHERE symbol = ${pair}
+  ```
+
+  Return `null` only when both `targetReceiptId <= lastProcessedReceiptId` and `targetSrThesesMaxId <= lastProcessedSrThesesMaxId`. Treat the target pair as the retry identity:
+
+  ```ts
+  const isSameTarget =
+    currentTargetReceiptId === targetReceiptId &&
+    currentTargetSrThesesMaxId === targetSrThesesMaxId;
+  const newAttemptCount = isSameTarget ? Number(cursor.attempt_count) + 1 : 1;
+  ```
+
+  Store both targets in the lease update and return both target and last-processed components in the claim. Keep next-attempt and unexpired-lease guards unchanged and before source queries.
+
+- [ ] **Step 6: Implement two-component completion and retry compare-and-set.** Destructure `targetSrThesesMaxId` in both methods. `complete` must set both last-processed columns from the supplied targets, clear both target columns to NULL, clear lease fields and `next_attempt_at_unix_ms`, reset `attempt_count` to 0, and include both target values plus owner in its `WHERE`. `releaseForRetry` must leave both last-processed columns unchanged, PRESERVE both target columns (`target_receipt_id` and `target_sr_theses_max_id`), clear lease owner and expiry (`lease_owner = NULL`, `lease_expires_at_unix_ms = NULL`), schedule retry (`next_attempt_at_unix_ms = retryAtUnixMs`), and include both target values plus owner in its `WHERE`. Retain attempt reset on completion and attempt preservation on retry.
+
+- [ ] **Step 7: Propagate the SR target through the worker.** Immediately capture `const targetSrThesesMaxId = claim.targetSrThesesMaxId` beside `receiptId`, and pass it to every `complete` and `releaseForRetry` call. Do not change synthesis inputs, result unions, or log field names.
+
+- [ ] **Step 8: Run the focused transition and worker tests.**
+
+  Run: `DATABASE_URL=postgres://test:test@localhost:5432/regime_engine_test PG_SSL=false pnpm exec vitest run src/adapters/postgres/__tests__/postgresPolicyInsightSynthesisTriggerAdapter.test.ts src/workers/policyInsight/__tests__/runSynthesisCycle.test.ts`
+
+  Expected: PASS, including evidence-only, SR-only, simultaneous, idle, retry, ownership-loss, and no-ping-pong cases.
+
+- [ ] **Step 9: Check only the changed implementation/test files.**
+
+  Run: `pnpm exec eslint src/application/ports/policyInsightSynthesisTriggerPort.ts src/adapters/postgres/postgresPolicyInsightSynthesisTriggerAdapter.ts src/adapters/postgres/__tests__/postgresPolicyInsightSynthesisTriggerAdapter.test.ts src/workers/policyInsight/runSynthesisCycle.ts src/workers/policyInsight/__tests__/runSynthesisCycle.test.ts`
+
+  Run: `pnpm exec prettier --check src/application/ports/policyInsightSynthesisTriggerPort.ts src/adapters/postgres/postgresPolicyInsightSynthesisTriggerAdapter.ts src/adapters/postgres/__tests__/postgresPolicyInsightSynthesisTriggerAdapter.test.ts src/workers/policyInsight/runSynthesisCycle.ts src/workers/policyInsight/__tests__/runSynthesisCycle.test.ts`
+
+  Expected: both commands exit 0. The orchestrated implementation loop also runs `pnpm -r typecheck` after this complete task, with port, adapter, worker, and test fixtures already synchronized.
+
+- [ ] **Step 10: Commit the coordination unit.**
+
+  ```bash
+  git add src/application/ports/policyInsightSynthesisTriggerPort.ts src/adapters/postgres/postgresPolicyInsightSynthesisTriggerAdapter.ts src/adapters/postgres/__tests__/postgresPolicyInsightSynthesisTriggerAdapter.test.ts src/workers/policyInsight/runSynthesisCycle.ts src/workers/policyInsight/__tests__/runSynthesisCycle.test.ts
+  git commit -m "m84: trigger pair synthesis from evidence or sr theses"
+  ```
+
+## Task 3: Prove SR-only and evidence-only behavior end to end
+
+**Files:**
+
+- Modify: `src/workers/__tests__/policyInsightSrTheses.e2e.pg.test.ts`
+- Modify: `src/workers/__tests__/policyInsightSynthesis.e2e.pg.test.ts`
+- Reference only: `src/adapters/http/handlers/srLevelsV2Current.ts`
+- Reference only: `src/application/use-cases/synthesizePolicyInsightUseCase.ts`
+
+Each existing test file is below the oversized test-update thresholds (the SR file has two cases; the synthesis file has six cases), so one acceptance-test task remains independently committable.
+
+**Behavioral invariants:**
+
+- `synthesizes and serves a pair insight from an SR-only trigger`
+- `evidence-only synthesis remains independently triggerable`
+
+- [ ] **Step 1: Convert the first SR worker E2E case into the failing SR-only acceptance test.** Seed candles and insert the SR brief, but do not POST an evidence bundle. Run the real trigger adapter and synthesis worker, then assert:
+  - the cycle outcome is `succeeded`;
+  - `GET /v1/insights/sol-usdc/current` returns 200 and contains support `90` and resistance `160`;
+  - the persisted synthesis input contains the inserted SR thesis;
+  - the cursor has `lastProcessedReceiptId === 0`, `lastProcessedSrThesesMaxId === insertedSrMaxId`, and both targets null;
+  - an immediate second cycle returns `{ outcome: "idle" }` and does not add a second PolicyInsight row.
+
+  Name the test exactly `synthesizes and serves a pair insight from an SR-only trigger`.
+
+- [ ] **Step 2: Strengthen the existing evidence backfill E2E case.** Rename or add the exact case `evidence-only synthesis remains independently triggerable`. Assert the completed cursor has the evidence receipt ID, `lastProcessedSrThesesMaxId === 0`, both targets null, and an immediate second worker cycle is idle with only one insight persisted.
+
+- [ ] **Step 3: Run the two focused E2E files.**
+
+  Run: `DATABASE_URL=postgres://test:test@localhost:5432/regime_engine_test PG_SSL=false pnpm exec vitest run src/workers/__tests__/policyInsightSrTheses.e2e.pg.test.ts src/workers/__tests__/policyInsightSynthesis.e2e.pg.test.ts`
+
+  Expected: PASS and demonstrate both trigger sources independently, real synthesis persistence/current retrieval, and no redundant second cycle.
+
+- [ ] **Step 4: Check only the changed E2E files.**
+
+  Run: `pnpm exec eslint src/workers/__tests__/policyInsightSrTheses.e2e.pg.test.ts src/workers/__tests__/policyInsightSynthesis.e2e.pg.test.ts`
+
+  Run: `pnpm exec prettier --check src/workers/__tests__/policyInsightSrTheses.e2e.pg.test.ts src/workers/__tests__/policyInsightSynthesis.e2e.pg.test.ts`
+
+  Expected: both commands exit 0.
+
+- [ ] **Step 5: Commit the acceptance coverage.**
+
+  ```bash
+  git add src/workers/__tests__/policyInsightSrTheses.e2e.pg.test.ts src/workers/__tests__/policyInsightSynthesis.e2e.pg.test.ts
+  git commit -m "m84: verify dual-source synthesis triggers end to end"
+  ```
 
 ## Tests to add or update
 
-- New pure reducer coverage: `src/engine/policy/__tests__/synthesizePolicyInsight.srTheses.test.ts`.
-- New focused orchestration/replay coverage: `src/application/use-cases/__tests__/synthesizePolicyInsightSrTheses.test.ts`.
-- Mechanical dependency updates only in `src/application/use-cases/__tests__/synthesizePolicyInsightUseCase.test.ts`; do not expand this 643-line file with new scenarios.
-- Composition capability update: `src/composition/__tests__/policyInsightWiring.test.ts`.
-- New real-Postgres worker proof: `src/workers/__tests__/policyInsightSrTheses.e2e.pg.test.ts`, registered explicitly in `test:pg`.
-- No output-contract snapshots or generated contract artifacts should change because no published `PolicyInsight` schema field is added.
+- Migration tests for the SR pointer default, non-negative checks, active-lease backfill safety, and 3-state lease/target coherence.
+- PostgreSQL adapter tests for evidence-only, SR-only, simultaneous, empty/idle, custom-pair, expired-lease, retry, completion, compare-and-set mismatch, and no-ping-pong transitions.
+- Worker unit tests proving the SR target is forwarded on success, permanent failure, retry exhaustion, transient release, and lease-loss paths.
+- PostgreSQL E2E coverage proving SR-only data triggers real pair synthesis and is visible from the current-insight endpoint.
+- PostgreSQL E2E regression coverage proving evidence-only ingestion remains an independent trigger and both paths settle idle after completion.
 
 ## Validation commands
 
-Task-local commands are listed in each task and target only that task's changed files. After all implementation tasks complete, the dedicated validate phase (not an implementation task) must run:
+Run these after all implementation tasks complete; this is the validate phase, not a standalone implementation task:
 
 ```bash
+DATABASE_URL=postgres://test:test@localhost:5432/regime_engine_test PG_SSL=false pnpm run db:migrate
 pnpm run typecheck
 pnpm run test
-pnpm run lint
-pnpm run boundaries
-pnpm run build
 DATABASE_URL=postgres://test:test@localhost:5432/regime_engine_test PG_SSL=false pnpm run test:pg
+pnpm run lint
+pnpm run build
+git diff --check
 ```
 
-Expected: every command exits 0. The PG command must execute, not skip, the new worker test.
-
-For production acceptance after the out-of-repo producer deployment, use the platform's approved SQL/observability tooling rather than adding a repository script:
-
-```sql
-SELECT count(*)
-FROM regime_engine.sr_theses_v2
-WHERE source = 'mco' AND symbol = 'SOL/USDC';
-```
-
-The result must be greater than zero. Trigger one pair-scoped synthesis and inspect the new `policy_insights.synthesis_input_json`/`synthesis_output_json` row for the same `briefId` and expected levels. This rollout check is external coordination, not a fourth implementation task.
+Expected: every command exits 0. The migration reports no pending work on a second run; unit tests and PG tests pass; lint has zero warnings; build emits successfully; and `git diff --check` reports no whitespace errors.
 
 ## Risk areas
 
-- **Replay identity migration:** Adding `srThesesHash` means the first synthesis after deployment creates a new insight even when market/evidence inputs are unchanged. This is intended, but consumers may observe a new current insight immediately.
-- **Identity loss:** Mapping only `.theses` would discard `briefId`; the projection must retain it before hashing and persistence.
-- **Nondeterministic array order:** `getCurrent` currently orders rows by database id. Sorting by the explicit identity tuple is required before both fingerprinting and envelope persistence.
-- **Silent degradation:** Converting a rejected Postgres read into `[]` would persist a misleading no-SR insight. Only a real `null` response means no current brief.
-- **Source hardcoding:** `mco` is intentionally fixed for this issue. Adding sources later needs an explicit precedence/deduplication design rather than appending them ad hoc.
-- **Double counting:** Evidence and SR theses intentionally coexist. Opposing signals tighten via conflict; duplicate price levels deduplicate. Directional claims are distinct observations and therefore each count once.
-- **Unvalidated numeric strings:** The v2 contract allows arbitrary strings in level arrays. Reducer parsing must reject non-finite/non-positive values and retain existing current-price side checks.
-- **Capability mismatch:** A test-only `pg` context can currently omit `srThesesV2Store`; composition must report synthesis unavailable in that invalid topology instead of constructing a partially wired use case.
-- **Operational dependency:** Repository code cannot populate production v2 data. The companion producer change is required before the end-user outcome can be verified.
+- **Migration safety:** Replacing named checks must preserve all existing predicates and safely backfill `target_sr_theses_max_id = 0` for existing active legacy leases before applying the new constraint. A generated table recreation, missing `DEFAULT 0`, or un-backfilled active lease could cause migration failure.
+- **Lease coherence:** Claim/release/complete updates must preserve or clear target pairs consistently across idle, leased, and retry-cooldown states so the database check accepts valid transitions.
+- **Compare-and-set races:** Owner plus both target components must be matched. Checking only the evidence target would allow a stale worker to complete a newer SR claim.
+- **Retry identity:** Attempt count is keyed by the target pair. `releaseForRetry` must preserve `target_receipt_id` and `target_sr_theses_max_id` during retry cooldown so subsequent claims recognize the identical target pair and increment `attempt_count` rather than resetting it to 1.
+- **Null maxima:** PostgreSQL `MAX` returns null on empty tables. Failing to normalize each independently breaks SR-only or evidence-only startup.
+- **Source scoping:** Evidence uses `pair` plus `scope_key`; SR uses `symbol`. Accidentally omitting either predicate could trigger cross-pair or position-derived work.
+- **High-water semantics:** Completion deliberately advances both pointers to the exact maxima captured during claim, not maxima re-read after synthesis. New rows arriving during synthesis must remain pending for the next poll.
+- **Observability semantics:** The existing `receiptId` result/log remains the evidence component, so SR-only cycles may report zero. Changing that public/logging behavior is out of scope and should not be done implicitly.
+- **Query performance:** `MAX(id)` on SR rows filtered by symbol should use the existing symbol-leading index sufficiently at current volume; unexpected query-plan regressions should be investigated before adding a new index.
 
 ## Stop conditions
 
-- Stop and do not implement a direct `src/application/** -> src/ledger/**` import; use the planned read port so `.dependency-cruiser.cjs` remains satisfied.
-- Stop if implementing the port would leave any concrete adapter or fake required by the typecheck gate for a later task; keep all method implementations in Task 2.
-- Stop if the real producer's v2 payload cannot satisfy the existing strict v2 contract. Coordinate a companion contract-mapping change rather than weakening validation here.
-- Stop if product requirements require multiple SR sources, source precedence, or freshness expiry; those materially change fingerprint and conflict semantics and need a revised design.
-- Stop if the implementation requires reading v1 SQLite SR data or mounting the API service's `/data` volume into a separate worker for SR. That violates the selected Postgres topology.
-- Stop if the new PG integration test cannot run because migrations or the test database are unavailable. Report the environment blocker; do not replace the test with mocks or claim the worker acceptance criterion passed.
-- Stop if the published `policy-insight.v1` schema or generated wire-contract hash changes. The requested behavior fits existing level/reasoning fields and should not require a contract revision.
-- Stop short of closing the overall issue if the companion producer has not populated `regime_engine.sr_theses_v2` in production, even when all repository implementation and tests pass.
+Abort implementation and report the evidence instead of continuing if any of the following occurs:
+
+- Drizzle generates a destructive table rebuild, drops data, or changes unrelated schema objects rather than an additive two-column migration plus constraint replacement.
+- Production-compatible migration ordering cannot satisfy existing leased rows. In particular, if any deployed cursor can have an active legacy lease during migration, a deployment/lease-drain strategy must be agreed before enforcing the new coherence check.
+- Repository inspection finds another implementation of `PolicyInsightSynthesisTriggerPort` or an external contract consumer that cannot be updated atomically in Task 2.
+- `sr_theses_v2.symbol` does not contain the claim input's pair format or `id` is not a reliable monotonically increasing high-water mark.
+- The acceptance test requires changing PolicyInsight synthesis logic, HTTP response contracts, or position-scoped synthesis; that indicates scope has expanded beyond this trigger fix.
+- Focused PG failures reproduce on the unchanged baseline or require deleting/resetting shared database state outside the test-owned tables; do not mask environmental or migration-history failures with destructive cleanup.

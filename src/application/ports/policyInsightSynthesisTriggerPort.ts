@@ -1,12 +1,19 @@
 export type PolicyInsightSynthesisOutcome = "success" | "permanent_failure" | "transient_failure";
 
 export interface PolicyInsightSynthesisClaim {
+  /** The cursor key identifier */
   cursorKey: string;
+  /** Highest evidence bundle receipt id claimed */
   targetReceiptId: number;
+  /** Highest SR thesis id claimed */
+  targetSrThesesMaxId: number;
   attemptCount: number;
   leaseOwner: string;
   leaseExpiresAtUnixMs: number;
+  /** Last completed evidence bundle receipt id */
   lastProcessedReceiptId: number;
+  /** Last completed SR thesis id */
+  lastProcessedSrThesesMaxId: number;
 }
 
 export interface ClaimLatestPairEvidenceInput {
@@ -21,7 +28,10 @@ export interface ClaimLatestPairEvidenceInput {
 export interface CompletePolicyInsightSynthesisInput {
   cursorKey: string;
   leaseOwner: string;
+  /** Evidence bundle component of target pair */
   targetReceiptId: number;
+  /** SR thesis component of target pair */
+  targetSrThesesMaxId: number;
   nowUnixMs: number;
   outcome: "success" | "permanent_failure";
   errorCode?: string;
@@ -31,7 +41,10 @@ export interface CompletePolicyInsightSynthesisInput {
 export interface ReleaseForRetryInput {
   cursorKey: string;
   leaseOwner: string;
+  /** Evidence bundle component of target pair */
   targetReceiptId: number;
+  /** SR thesis component of target pair */
+  targetSrThesesMaxId: number;
   nowUnixMs: number;
   classification: string;
   sanitizedMessage: string;

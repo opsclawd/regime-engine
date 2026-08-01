@@ -1,6 +1,6 @@
 # Task Context: Task 1
 
-Title: Merge canonical SR theses in the pure policy reducer
+Title: Add the dual-pointer cursor migration and schema constraints
 ## Workspace & Scope Constraints
 
 ## WORKSPACE CONSTRAINTS
@@ -9,168 +9,113 @@ Your working directory is a dedicated git worktree with the repository's complet
 
 .ai-orchestrator.local.json, if one exists, lives only in the main checkout and is intentionally not copied into your worktree — it is operator-machine-specific and not part of your task. Do not search for it or read it outside this directory. Reason about configuration using only .ai-orchestrator.json in your own working directory; treat it as the effective config for your task.
 
-Working Directory: /home/gary/.openclaw/workspace/regime-engine/.ai-worktrees/issue-82
+Working Directory: /home/gary/.openclaw/workspace/regime-engine/.ai-worktrees/issue-84
 Repository: opsclawd/regime-engine
-Branch: ai/issue-82
-Start Commit: cd8632d937da99fe51784b51216fc82d9df84458
+Branch: ai/issue-84
+Start Commit: fe6cd852f09f3928795fb106d28125a71fbc74d7
 
 ## Task Requirements
 
 **Files:**
 
-- Modify: `src/engine/policy/synthesizePolicyInsight.ts`
-- Create: `src/engine/policy/__tests__/synthesizePolicyInsight.srTheses.test.ts`
-- Reference: `src/contract/v2/srLevels.ts`
-- Reference: `src/engine/policy/__tests__/policyFixtures.ts`
-- Reference: `src/engine/policy/reasoning.ts`
+- Modify: `src/ledger/pg/schema/policyInsightSynthesisCursor.ts`
+- Create: `drizzle/0011_extend_policy_insight_synthesis_cursor.sql`
+- Create: `drizzle/meta/0011_snapshot.json`
+- Modify: `drizzle/meta/_journal.json`
+- Modify: `src/ledger/pg/__tests__/policyInsightSynthesisCursorMigration.test.ts`
+- Reference only: `drizzle/0009_create_policy_insight_synthesis_cursor.sql`
+- Reference only: `src/ledger/pg/schema/srThesesV2.ts`
+- Reference only: `src/ledger/pg/schema/index.ts`
+- Reference only: `src/workers/__tests__/policyInsightSynthesis.e2e.pg.test.ts`
 
-**Behavioral invariants (write these named tests first):**
+**Behavioral invariants:**
 
-1. `adds valid SR thesis levels and identities without replacing evidence-derived inputs`
-   - Given valid SR-ledger supports/resistances and an evidence-derived numeric level, the output contains the eligible union and reasoning includes the SR `briefId` exactly once even when the brief has multiple theses; neither source removes the other.
-2. `combines SR and evidence bias votes and treats opposition as conflict`
-   - Given a bullish SR thesis and bearish contextual evidence, the existing conflict policy applies: risk is elevated and confidence is capped low. Given aligned votes, the normal directional vote behavior applies once, without bypassing higher-precedence locks.
-3. `ignores non-finite non-positive and side-ineligible SR level strings`
-   - `NaN`, infinities, zero, negatives, supports above current price, and resistances below current price do not appear in output levels; valid supports and resistances do.
-4. `deduplicates sorts and caps SR levels with existing output rules`
-   - Duplicate strings/numeric equivalents collapse, supports sort descending, resistances sort ascending, and each output side contains at most 16 values.
-5. `produces byte-identical output for the same canonical SR thesis input`
-   - Repeated reducer calls with the same envelope produce byte-identical JSON.
-6. `preserves legacy reducer behavior when SR theses are absent`
-   - Omitting `srTheses` is equivalent to passing `srTheses: []`, preserving historical input compatibility.
+- `defaults the SR last-processed cursor to zero for existing and new rows`
+- `requires both claim targets whenever a lease is active`
+- `rejects negative SR cursor values`
 
-- [ ] **Step 1: Create the focused failing reducer tests**
+- [ ] **Step 1: Write the failing migration tests.** Extend the insert/select assertions with `last_processed_sr_theses_max_id` and `target_sr_theses_max_id`. Add focused cases that verify migration backfills `target_sr_theses_max_id = 0` for active legacy leases, insert of negative SR values is rejected, and all three valid lease/target states (idle, leased, and retry cooldown) are validated. Keep the existing primary-key, legacy non-negative, and outcome checks.
 
-Build envelopes from `calmChopMarket` and `makeMockEvidenceSummary`. Use a synthesis thesis with explicit identity and string levels:
+  The new assertions should use the exact test names above and explicitly verify an insert that omits `last_processed_sr_theses_max_id` reads back as numeric `0`.
 
-```ts
-const srThesis: PolicySynthesisSrThesis = {
-  source: "mco",
-  briefId: "mco-sol-2026-07-30",
-  asset: "SOL",
-  timeframe: "1d",
-  bias: "bullish",
-  setupType: null,
-  supportLevels: ["95", "90", "0", "not-a-number"],
-  resistanceLevels: ["105", "110"],
-  entryZone: null,
-  targets: [],
-  invalidation: null,
-  trigger: null,
-  chartReference: null,
-  sourceHandle: "morecryptoonline",
-  sourceChannel: null,
-  sourceKind: "youtube",
-  sourceReliability: null,
-  rawThesisText: null,
-  collectedAt: null,
-  publishedAt: null,
-  sourceUrl: null,
-  notes: null
-};
-```
+- [ ] **Step 2: Run the focused migration test and confirm it fails because the SR cursor columns do not exist.**
 
-Run:
+  Run: `DATABASE_URL=postgres://test:test@localhost:5432/regime_engine_test PG_SSL=false pnpm exec vitest run src/ledger/pg/__tests__/policyInsightSynthesisCursorMigration.test.ts`
 
-```bash
-pnpm exec vitest run src/engine/policy/__tests__/synthesizePolicyInsight.srTheses.test.ts
-```
+  Expected: FAIL on the first reference to `last_processed_sr_theses_max_id` or `target_sr_theses_max_id`, before the migration is added and applied.
 
-Expected: FAIL because `PolicySynthesisSrThesis` and `PolicySynthesisEnvelope.srTheses` do not exist and the reducer ignores the values.
+- [ ] **Step 3: Extend the Drizzle table definition.** Add:
 
-- [ ] **Step 2: Add the synthesis-only SR type and envelope field**
+  ```ts
+  lastProcessedSrThesesMaxId: bigint("last_processed_sr_theses_max_id", {
+    mode: "number"
+  })
+    .notNull()
+    .default(0),
+  targetSrThesesMaxId: bigint("target_sr_theses_max_id", { mode: "number" }),
+  ```
 
-Import `SrThesisV2` from the contract and add the identity-preserving type without changing the v2 wire contract:
+  Extend `chk_synthesis_cursor_non_negative` so both new values are non-negative (with the target nullable). Extend `chk_synthesis_cursor_lease_coherence` to cover all three valid cursor states: idle (`leaseOwner` NULL, `targetReceiptId` NULL, `targetSrThesesMaxId` NULL, `nextAttemptAtUnixMs` NULL), leased (`leaseOwner` NOT NULL, `leaseExpiresAtUnixMs` NOT NULL, `targetReceiptId` NOT NULL, `targetSrThesesMaxId` NOT NULL), and retry cooldown (`leaseOwner` NULL, `leaseExpiresAtUnixMs` NULL, `targetReceiptId` NOT NULL, `targetSrThesesMaxId` NOT NULL, `nextAttemptAtUnixMs` NOT NULL).
 
-```ts
-export interface PolicySynthesisSrThesis extends SrThesisV2 {
-  readonly source: string;
-  readonly briefId: string;
-}
+- [ ] **Step 4: Generate and inspect the additive migration artifacts.**
 
-export interface PolicySynthesisEnvelope {
-  // existing fields stay unchanged
-  readonly srTheses?: readonly PolicySynthesisSrThesis[];
-}
-```
+  Run: `pnpm exec drizzle-kit generate --name=extend_policy_insight_synthesis_cursor`
 
-- [ ] **Step 3: Merge SR values into shared rule evaluation**
+  Expected: creates `drizzle/0011_extend_policy_insight_synthesis_cursor.sql`, `drizzle/meta/0011_snapshot.json`, and appends entry 11 to `drizzle/meta/_journal.json`.
 
-After evidence-derived feature levels are collected and before conflict evaluation, process `envelope.srTheses ?? []`. Parse price strings with `Number`, accept only `Number.isFinite(value) && value > 0`, increment the existing counters only for exact `bullish`/`bearish` bias values, and add `briefId` to `boundedIdentifiers`:
+  Inspect the SQL and keep only an additive/backward-safe sequence: add `last_processed_sr_theses_max_id bigint DEFAULT 0 NOT NULL`, add nullable `target_sr_theses_max_id`, backfill existing active and retry-cooldown leases (`UPDATE regime_engine.policy_insight_synthesis_cursor SET target_sr_theses_max_id = 0 WHERE (lease_owner IS NOT NULL OR target_receipt_id IS NOT NULL) AND target_sr_theses_max_id IS NULL;`), drop the two named cursor constraints, then recreate them with both pointer components supporting idle, leased, and retry-cooldown cursor states. Do not drop/recreate the table or alter unrelated objects.
 
-```ts
-for (const thesis of envelope.srTheses ?? []) {
-  for (const raw of thesis.supportLevels) {
-    const value = Number(raw);
-    if (Number.isFinite(value) && value > 0) extractedSupport.push(value);
-  }
-  for (const raw of thesis.resistanceLevels) {
-    const value = Number(raw);
-    if (Number.isFinite(value) && value > 0) extractedResistance.push(value);
-  }
-  if (thesis.bias === "bullish") bullishCount += 1;
-  if (thesis.bias === "bearish") bearishCount += 1;
-}
-```
+- [ ] **Step 5: Apply the migration to the test database and run the focused tests.**
 
-Add each SR brief identifier once, preserving first occurrence in the canonical thesis order:
+  Run: `DATABASE_URL=postgres://test:test@localhost:5432/regime_engine_test PG_SSL=false pnpm run db:migrate`
 
-```ts
-const seenSrBriefIds = new Set<string>();
-for (const thesis of envelope.srTheses ?? []) {
-  if (!seenSrBriefIds.has(thesis.briefId)) {
-    seenSrBriefIds.add(thesis.briefId);
-    boundedIdentifiers.push(thesis.briefId);
-  }
-}
-```
+  Run: `DATABASE_URL=postgres://test:test@localhost:5432/regime_engine_test PG_SSL=false pnpm exec vitest run src/ledger/pg/__tests__/policyInsightSynthesisCursorMigration.test.ts`
 
-Do not add a new action, reason code, warning code, or output field. Reuse the current vote/conflict rules, level sets, ordering, and caps.
+  Expected: migration applies once; the focused test passes and confirms defaulting, non-negativity, and lease coherence.
 
-- [ ] **Step 4: Run the scoped reducer checks**
+- [ ] **Step 6: Check only the changed TypeScript files for lint/format issues.**
 
-```bash
-pnpm exec vitest run src/engine/policy/__tests__/synthesizePolicyInsight.srTheses.test.ts
-pnpm exec eslint src/engine/policy/synthesizePolicyInsight.ts src/engine/policy/__tests__/synthesizePolicyInsight.srTheses.test.ts
-pnpm exec prettier --check src/engine/policy/synthesizePolicyInsight.ts src/engine/policy/__tests__/synthesizePolicyInsight.srTheses.test.ts
-```
+  Run: `pnpm exec eslint src/ledger/pg/schema/policyInsightSynthesisCursor.ts src/ledger/pg/__tests__/policyInsightSynthesisCursorMigration.test.ts`
 
-Expected: the focused test file passes; ESLint and Prettier exit 0.
+  Run: `pnpm exec prettier --check src/ledger/pg/schema/policyInsightSynthesisCursor.ts src/ledger/pg/__tests__/policyInsightSynthesisCursorMigration.test.ts drizzle/0011_extend_policy_insight_synthesis_cursor.sql drizzle/meta/0011_snapshot.json drizzle/meta/_journal.json`
 
-- [ ] **Step 5: Commit the reducer slice**
+  Expected: both commands exit 0.
 
-```bash
-git add src/engine/policy/synthesizePolicyInsight.ts src/engine/policy/__tests__/synthesizePolicyInsight.srTheses.test.ts
-git commit -m "m82: merge SR theses into policy synthesis"
-```
+- [ ] **Step 7: Commit the schema unit.**
+
+  ```bash
+  git add src/ledger/pg/schema/policyInsightSynthesisCursor.ts src/ledger/pg/__tests__/policyInsightSynthesisCursorMigration.test.ts drizzle/0011_extend_policy_insight_synthesis_cursor.sql drizzle/meta/0011_snapshot.json drizzle/meta/_journal.json
+  git commit -m "m84: add dual-source synthesis cursor"
+  ```
 
 ## Repository Targets
 
 ### Expected Files
-- src/engine/policy/synthesizePolicyInsight.ts
-- src/engine/policy/__tests__/synthesizePolicyInsight.srTheses.test.ts
+- src/ledger/pg/schema/policyInsightSynthesisCursor.ts
+- drizzle/0011_extend_policy_insight_synthesis_cursor.sql
+- drizzle/meta/0011_snapshot.json
+- drizzle/meta/_journal.json
+- src/ledger/pg/__tests__/policyInsightSynthesisCursorMigration.test.ts
 
 ### Reference Files
-- src/contract/v2/srLevels.ts
-- src/engine/policy/__tests__/policyFixtures.ts
-- src/engine/policy/reasoning.ts
+- drizzle/0009_create_policy_insight_synthesis_cursor.sql
+- src/ledger/pg/schema/srThesesV2.ts
+- src/ledger/pg/schema/index.ts
+- src/workers/__tests__/policyInsightSynthesis.e2e.pg.test.ts
 
 ## Validation Commands
 
 ```bash
-pnpm exec vitest run src/engine/policy/__tests__/synthesizePolicyInsight.srTheses.test.ts
-pnpm exec eslint src/engine/policy/synthesizePolicyInsight.ts src/engine/policy/__tests__/synthesizePolicyInsight.srTheses.test.ts
-pnpm exec prettier --check src/engine/policy/synthesizePolicyInsight.ts src/engine/policy/__tests__/synthesizePolicyInsight.srTheses.test.ts
+DATABASE_URL=postgres://test:test@localhost:5432/regime_engine_test PG_SSL=false pnpm exec vitest run src/ledger/pg/__tests__/policyInsightSynthesisCursorMigration.test.ts
+["pnpm","exec","eslint","src/ledger/pg/schema/policyInsightSynthesisCursor.ts","src/ledger/pg/__tests__/policyInsightSynthesisCursorMigration.test.ts"]
+["pnpm","exec","prettier","--check","src/ledger/pg/schema/policyInsightSynthesisCursor.ts","src/ledger/pg/__tests__/policyInsightSynthesisCursorMigration.test.ts","drizzle/0011_extend_policy_insight_synthesis_cursor.sql","drizzle/meta/0011_snapshot.json","drizzle/meta/_journal.json"]
 ```
 
 ## Behavioral Invariants
 
 You MUST implement the following behavioral invariants as named tests first (TDD):
 
-- **SR and evidence level coexistence**: Eligible SR-ledger levels and evidence-derived numeric levels are unioned, while each SR brief identity is retained exactly once in reasoning. (Test: `adds valid SR thesis levels and identities without replacing evidence-derived inputs`)
-- **Cross-source directional conflict**: SR thesis bias contributes to the same directional vote totals as contextual evidence, so opposing inputs trigger existing conflict tightening. (Test: `combines SR and evidence bias votes and treats opposition as conflict`)
-- **Level eligibility**: Non-finite, non-positive, and wrong-side price levels cannot enter the published support or resistance arrays. (Test: `ignores non-finite non-positive and side-ineligible SR level strings`)
-- **Level bounds and ordering**: SR levels use the existing deduplication, nearest-first sorting, and sixteen-value caps. (Test: `deduplicates sorts and caps SR levels with existing output rules`)
-- **Reducer determinism**: A fixed envelope containing canonical SR theses produces byte-identical output on repeated reduction. (Test: `produces byte-identical output for the same canonical SR thesis input`)
-- **Historical envelope compatibility**: An omitted optional srTheses member behaves exactly like an empty array. (Test: `preserves legacy reducer behavior when SR theses are absent`)
+- **SR cursor defaults to zero**: Existing and newly inserted cursor rows use zero as the last-processed SR high-water mark unless explicitly supplied. (Test: `defaults the SR last-processed cursor to zero for existing and new rows`)
+- **Dual-target lease coherence**: An active lease has owner, expiry, evidence target, and SR target; an idle cursor has all four fields null. (Test: `requires both claim targets whenever a lease is active`)
+- **Non-negative SR pointers**: The database rejects negative last-processed or target SR IDs while allowing a null target. (Test: `rejects negative SR cursor values`)
 
