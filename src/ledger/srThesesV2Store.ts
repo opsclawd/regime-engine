@@ -1,4 +1,4 @@
-import { and, asc, desc, eq } from "drizzle-orm";
+import { and, asc, desc, eq, lte } from "drizzle-orm";
 import { srThesesV2 } from "./pg/schema/index.js";
 import type { SrThesesV2Row } from "./pg/schema/index.js";
 import type { Db } from "./pg/db.js";
@@ -62,7 +62,9 @@ const rowToThesis = (row: SrThesesV2Row): SrThesisV2 => ({
   notes: row.notes
 });
 
-export class SrThesesV2Store {
+import type { SrThesesReadPort } from "../application/ports/srThesesReadPort.js";
+
+export class SrThesesV2Store implements SrThesesReadPort {
   public constructor(private readonly db: Db) {}
 
   public async insertBrief(input: SrThesesV2InsertInput): Promise<SrThesesV2InsertResult> {
@@ -168,12 +170,18 @@ export class SrThesesV2Store {
 
   public async getCurrent(
     symbol: string,
-    source: string
+    source: string,
+    asOfUnixMs?: number
   ): Promise<SrLevelsV2CurrentResponse | null> {
+    const conditions = [eq(srThesesV2.symbol, symbol), eq(srThesesV2.source, source)];
+    if (asOfUnixMs !== undefined) {
+      conditions.push(lte(srThesesV2.capturedAtUnixMs, asOfUnixMs));
+    }
+
     const latest = await this.db
       .select()
       .from(srThesesV2)
-      .where(and(eq(srThesesV2.symbol, symbol), eq(srThesesV2.source, source)))
+      .where(and(...conditions))
       .orderBy(desc(srThesesV2.capturedAtUnixMs), desc(srThesesV2.id))
       .limit(1);
 

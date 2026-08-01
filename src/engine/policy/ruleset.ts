@@ -10,7 +10,7 @@ export const POLICY_POSTURE_ORDER = [
 export const POLICY_RANGE_BIAS_ORDER = ["tight", "medium", "wide", "passive"] as const;
 export const POLICY_REBALANCE_SENSITIVITY_ORDER = ["low", "normal", "high", "paused"] as const;
 
-export const POLICY_RULESET_VERSION = "sol-usdc-policy.v1" as const;
+export const POLICY_RULESET_VERSION = "sol-usdc-policy.v2" as const;
 
 export interface PolicyFeatureBinding {
   readonly bindingId: string;

@@ -1,86 +1,50 @@
-# Design Document: Durable Position-Scoped PolicyInsight Synthesis Pipeline
+# Design: Wire PolicyInsight synthesis to real support/resistance data
 
-## 1. Problem and Context
+## The problem being solved and why it matters
 
-The `clmm-v2` plan submission pipeline is blocked because the position-scoped PolicyInsight synthesis pipeline lacks durable, queued execution. Currently, `POST /v1/plan` is unused. For the system to react to position evidence and matching plans by synthesizing canonical `PolicyInsight` records, we need a reliable background worker.
+Currently, the `synthesizePolicyInsightUseCase` relies on evidence-bundle context for Support/Resistance data (`ctx.supportResistance`), but the intelligence collector responsible for that data is broken. Meanwhile, real TA-driven SR data (e.g., from `mco`) is successfully ingested via a `/v1/sr-levels` endpoint. However, this v1 data is stored in a local SQLite ledger, which the `regime-engine-synthesis-worker` cannot read due to its deployment on an isolated Railway volume.
 
-The previous queue design was flawed because it keyed requests on `scopeKey + evidenceHash + rulesetVersion`, which fails to trigger a new synthesis when a new plan is submitted against unchanged evidence. Furthermore, the plan storage uses a SQLite ledger that lacks lookup columns for position/wallet/pool, making it inefficient to fetch the latest plan for a position. We need a robust architecture to enqueue, process, and persist position-scoped synthesis requests.
+A v2 endpoint (`/v2/sr-levels`) backed by Postgres exists, which the synthesis worker _can_ read, but no data is currently pushed to it and the synthesizer does not query it. This matters because our policy engine lacks critical real-world support and resistance levels, significantly limiting the accuracy and effectiveness of the trading policy generation.
 
-## 2. Key Design Decisions and Trade-offs
+## Key design decisions and trade-offs considered
 
-### 2.1. Plan Storage Topology
+- **Dependency Injection vs. Direct Store Access:** We could pass `SrThesesV2Store` directly into `createSynthesizePolicyInsightUseCase`, or we could create a dedicated `GetCurrentSrThesesUseCase`. We will pass `srThesesV2Store` (or a lightweight read port) directly in `buildApplication.ts`. This avoids over-engineering a use-case for a simple cross-service DB read, keeping changes concise.
+- **Data Integration in the Synthesizer:** The v2 store has rich data (arrays of `supportLevels` and `resistanceLevels`, plus `bias`). We could shoehorn this into the existing `ContextualEvidence` format, but that risks losing data fidelity. Instead, we will add a new top-level field `srTheses: SrThesisV2[]` to the `PolicySynthesisEnvelope` and process it natively in `synthesizePolicyInsight.ts`.
+- **Handling the `source` parameter:** `srThesesV2Store.getCurrent(symbol, source)` requires a source string. We will query for a configured primary source (e.g., `"mco"`), but architect the envelope so that multiple sources could easily be appended in the future.
 
-**Decision:** We will adopt **Option A: Run the synthesis worker in the same service/container as the HTTP API.**
+## Proposed approach with rationale
 
-- **Trade-offs:**
-  - _Option A (Co-location)_ is the simplest approach and requires the least architectural churn. It avoids the complexity of dual-writes or a massive migration of the ledger from SQLite to Postgres.
-  - _Option B (Move/mirror to Postgres)_ would allow transactional boundaries between plan persistence and queue wake-ups, which is cleaner long-term, but it introduces cross-database sync issues if we mirror, or requires significant rewrites if we move completely.
-- **Rationale:** The HTTP service already manages connections to both SQLite (for ledger) and Postgres (for evidence/insights). Running the worker (`policyInsightSynthesizer`) as part of the same deployment (or as a background thread/process in the same container) guarantees filesystem access to the SQLite volume, avoiding distributed system complexity for now.
+1. **Producer Integration (External):** Ensure the `crypto-aggregator` agent POSTs its data to `/v2/sr-levels` to land in Postgres. (Out of repo scope).
+2. **App Composition:** In `buildApplication.ts`, pass `ctx.srThesesV2Store` to the `createSynthesizePolicyInsightUseCase` dependencies.
+3. **Use Case Modification:** Update `synthesizePolicyInsightUseCase.ts` to query `srThesesV2Store.getCurrent(pair, "mco")`. We will extract the `.theses` array from the response.
+4. **Envelope Update:** Add `srTheses?: SrThesisV2[]` to `PolicySynthesisEnvelope`.
+5. **Synthesis Engine:** In `evaluateSharedRules` (inside `synthesizePolicyInsight.ts`), iterate over `envelope.srTheses`.
+   - Add all `supportLevels` to `extractedSupport`.
+   - Add all `resistanceLevels` to `extractedResistance`.
+   - Map `bias === "bullish"` to increment `bullishCount` and `bias === "bearish"` to increment `bearishCount`.
+   - Ensure the bounded identifiers from the theses (e.g. `briefId`) are added to `boundedIdentifiers`.
+6. **Coexistence:** This new path operates independently of the evidence-bundle `ctx.supportResistance`. When the bundle collector is fixed, both sources will add to the extracted levels natively without conflict.
 
-### 2.2. Queue Identity
+## Assumptions made
 
-**Decision:** The durable queue in Postgres (`policy_insight_synthesis_requests`) will use a unique constraint based on:
-`scopeKey + selectionHash + planHash + rulesetVersion`
+- The primary source identifier for the SR data is `"mco"`, which will be used when querying `srThesesV2Store.getCurrent`.
+- The Postgres v2 table (`regime_engine.sr_theses_v2`) is accessible by the synthesis worker's DB credentials and correctly migrated.
+- Adding the theses' levels directly to `extractedSupport` and `extractedResistance` is semantically correct and properly integrates with the downstream `supportSet` and `resistanceSet` trimming logic (which expects non-zero positive numbers).
+- Adding `srTheses` to `PolicySynthesisEnvelope` will naturally be included in the canonical JSON hashing if we ensure the array is sorted and deterministic.
 
-- **Rationale:** This fixes the identity gap. If a new plan arrives for existing evidence, `planHash` changes, resulting in a new queue entry. This ensures that every unique combination of evidence and plan produces a synthesis attempt.
+## What is in scope and what is explicitly out of scope
 
-### 2.3. Temporal Compatibility Rules
+- **In scope:**
+  - Modifying `buildApplication.ts`, `synthesizePolicyInsightUseCase.ts`, and `synthesizePolicyInsight.ts`.
+  - Passing `srThesesV2Store` into the use case and retrieving Postgres-backed SR data.
+  - Updating the `PolicySynthesisEnvelope` type and canonicalization.
+  - Adding test coverage for this new deterministic input.
+- **Out of scope:**
+  - Fixing the broken `sol-usdc-clmm-intelligence` collector.
+  - Updating the `crypto-aggregator` producer to point to `/v2/sr-levels` (this requires a companion issue in that repo).
+  - Removing or migrating the existing v1 SQLite SR storage mechanisms.
 
-**Decision:**
+## Any risks or concerns identified from code analysis
 
-- **Equality:** Exact wallet, position, and pool address equality must exist between the evidence scope and the plan.
-- **Observation Skew:** Evidence age must be within 5 minutes of the plan's `asOfUnixMs` (aligned with `clmm-v2`'s staleness tolerance).
-- **Expiration:** If evidence expires while waiting for a plan, the queued request permanently fails with `POSITION_STALE`. A fresh intelligence run will provide new evidence.
-- **Superseding:** Since the queue identity includes `planHash`, a newer plan creates a new queue request. The worker will always resolve the _latest_ eligible plan. If an older request is processed, it will detect that a newer plan exists and can be skipped or naturally produce a superseded insight.
-
-## 3. Proposed Approach
-
-1.  **SQLite Migration:**
-    We will add denormalized columns to the `plan_requests` SQLite table: `position_id`, `wallet_id`, and `pool_address`. This allows `PlanLedgerReadPort.getLatestPositionPlan()` to do indexed lookups rather than full JSON table scans.
-2.  **Durable Queue (Postgres):**
-    Create `policy_insight_synthesis_requests` in Postgres with:
-    - `id` (PK)
-    - `scope_key`, `selection_hash`, `plan_hash`, `ruleset_version` (Unique Constraint)
-    - `status` (pending, processing, completed, failed)
-    - `locked_at`, `locked_by`, `lease_expires_at` (for robust lease recovery, allowing crashed workers to drop leases)
-    - `error_code`, `error_message`
-3.  **Synthesis Worker (`src/workers/policyInsightSynthesizer.ts`):**
-    A new worker that polls `policy_insight_synthesis_requests` using `FOR UPDATE SKIP LOCKED`. It will:
-    - Claim a batch of requests by updating `locked_at`, `locked_by`, and `lease_expires_at`.
-    - Read the exact `PlanRequest`/`PlanResponse` from SQLite using the new indexed columns.
-    - Invoke `synthesizePolicyInsightUseCase`.
-    - Classify errors using structured error codes to decide between retry and permanent failure.
-4.  **Structured Error Codes:**
-    We will add an `errorCode` string literal to `PolicyInsightValidationError` and `PolicyInsightStoreUnavailableError`. The worker will match on codes like `POSITION_PLAN_MISSING`, `PLAN_HASH_INVALID`, etc., rather than string-matching the message.
-5.  **Internal Trigger Endpoint:**
-    Implement `POST /v1/internal/insights/sol-usdc/synthesis-requests` in the HTTP adapter. It will enqueue requests into the Postgres table and return `202 Accepted` with a request ID.
-
-## 4. Assumptions Made
-
-- The SQLite database file is physically accessible to the worker process (guaranteed by our decision to co-locate the worker with the HTTP service).
-- The 5-minute staleness tolerance for evidence vs plan is a hard limit; anything older is rejected.
-- The `plan_requests` table can be safely migrated without downtime (or downtime is acceptable for this deployment).
-- We only need to enqueue position scopes that are unexpired on deployment; scopes without eligible evidence will just wait for the next intelligence run.
-
-## 5. Scope Definition
-
-### 5.1. In Scope
-
-- Updating SQLite `plan_requests` schema with `position_id`, `wallet_id`, `pool_address`.
-- Creating Postgres table `policy_insight_synthesis_requests`.
-- Implementing the worker `policyInsightSynthesizer`.
-- Implementing the internal `POST` trigger endpoint.
-- Enforcing temporal compatibility and structured error codes.
-
-### 5.2. Out of Scope
-
-- Pair/whirlpool-scoped synthesis (tracked in #78).
-- Any changes to `clmm-v2` or its smart contracts.
-- Modifying the HTTP `POST /v1/plan` endpoint (aside from having it trigger enqueueing).
-- Moving plan storage completely to Postgres.
-
-## 6. Risks and Concerns
-
-- **Co-location Coupling:** While running the worker in the same service avoids Postgres migration, it tightly couples the worker's scaling to the HTTP API's scaling. If the HTTP API scales horizontally, multiple workers might fight over the SQLite lock (since SQLite concurrency is limited), though SQLite is currently only used for plan ledger appends.
-- **SQLite Concurrency:** If the synthesis worker does heavy reads on the SQLite db while the HTTP API does writes, it could cause `SQLITE_BUSY` errors. We need to ensure WAL (Write-Ahead Logging) is enabled.
-- **Lease Expiration Tuning:** The `lease_expires_at` window needs to be tuned correctly. If it's too short, a long-running synthesis might have its lease stolen; if too long, crashed workers will stall requests.
+- **Determinism:** The `synthesisInputHash` relies on the `envelope` being byte-for-byte deterministic. When adding `srTheses` to the envelope, we must ensure they are canonically sorted (e.g., by `sourceHandle` or `asset`) before hashing, otherwise the policy insight fingerprint tests will fail and produce non-deterministic artifacts.
+- **Source Hardcoding:** Querying specifically for `"mco"` could become a bottleneck if additional sources (e.g., `"internal_quant"`) are added later. We may need to update the store to allow fetching the latest brief across _all_ sources if this becomes a requirement.
