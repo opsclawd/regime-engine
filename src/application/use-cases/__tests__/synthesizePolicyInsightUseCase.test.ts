@@ -18,6 +18,11 @@ import {
 } from "../synthesizePolicyInsightUseCase.js";
 import { SOL_USDC_POLICY_V1 } from "../../../engine/policy/ruleset.js";
 import { PolicyInsightValidationError } from "../../errors/policyInsightErrors.js";
+import type { SrThesesReadPort } from "../../ports/srThesesReadPort.js";
+
+const emptySrThesesReadPort = (): SrThesesReadPort => ({
+  getCurrent: vi.fn().mockResolvedValue(null)
+});
 
 // Mock Repository
 class FakePolicyInsightRepository implements PolicyInsightRepositoryPort {
@@ -173,6 +178,7 @@ describe("SynthesizePolicyInsightUseCase Invariants", () => {
     const useCase = createSynthesizePolicyInsightUseCase({
       getCurrentRegime,
       selectEvidence,
+      srThesesReadPort: emptySrThesesReadPort(),
       repository,
       clock,
       ruleset: SOL_USDC_POLICY_V1
@@ -212,6 +218,7 @@ describe("SynthesizePolicyInsightUseCase Invariants", () => {
     const useCase = createSynthesizePolicyInsightUseCase({
       getCurrentRegime,
       selectEvidence,
+      srThesesReadPort: emptySrThesesReadPort(),
       repository,
       clock,
       ruleset: SOL_USDC_POLICY_V1
@@ -270,6 +277,7 @@ describe("SynthesizePolicyInsightUseCase Invariants", () => {
     const useCase2 = createSynthesizePolicyInsightUseCase({
       getCurrentRegime,
       selectEvidence: selectEvidenceOk,
+      srThesesReadPort: emptySrThesesReadPort(),
       repository,
       clock,
       ruleset: SOL_USDC_POLICY_V1
@@ -289,6 +297,7 @@ describe("SynthesizePolicyInsightUseCase Invariants", () => {
     const useCase = createSynthesizePolicyInsightUseCase({
       getCurrentRegime,
       selectEvidence,
+      srThesesReadPort: emptySrThesesReadPort(),
       repository,
       clock,
       ruleset: SOL_USDC_POLICY_V1
@@ -326,6 +335,7 @@ describe("SynthesizePolicyInsightUseCase Invariants", () => {
     const useCase = createSynthesizePolicyInsightUseCase({
       getCurrentRegime,
       selectEvidence,
+      srThesesReadPort: emptySrThesesReadPort(),
       repository,
       clock,
       ruleset: SOL_USDC_POLICY_V1
@@ -377,6 +387,7 @@ describe("SynthesizePolicyInsightUseCase Invariants", () => {
     const useCase = createSynthesizePolicyInsightUseCase({
       getCurrentRegime,
       selectEvidence,
+      srThesesReadPort: emptySrThesesReadPort(),
       repository,
       clock,
       ruleset: SOL_USDC_POLICY_V1
@@ -406,6 +417,7 @@ describe("SynthesizePolicyInsightUseCase Invariants", () => {
     const useCase = createSynthesizePolicyInsightUseCase({
       getCurrentRegime,
       selectEvidence,
+      srThesesReadPort: emptySrThesesReadPort(),
       repository,
       clock,
       ruleset: SOL_USDC_POLICY_V1
@@ -526,6 +538,7 @@ describe("SynthesizePolicyInsightUseCase Invariants", () => {
     const useCase = createSynthesizePolicyInsightUseCase({
       getCurrentRegime,
       selectEvidence,
+      srThesesReadPort: emptySrThesesReadPort(),
       repository,
       clock,
       ruleset: SOL_USDC_POLICY_V1
@@ -618,6 +631,7 @@ describe("SynthesizePolicyInsightUseCase Invariants", () => {
     const useCase = createSynthesizePolicyInsightUseCase({
       getCurrentRegime,
       selectEvidence,
+      srThesesReadPort: emptySrThesesReadPort(),
       repository,
       clock,
       ruleset: SOL_USDC_POLICY_V1

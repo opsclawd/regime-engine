@@ -32,13 +32,31 @@ describe("policyInsightWiring", () => {
     expect(depsNoPg.getCurrentPolicyInsight).toBeNull();
     expect(depsNoPg.getPolicyInsightHistory).toBeNull();
 
-    // 2. With Postgres
+    // 2. With Postgres but without srThesesV2Store
     const dbDouble = {} as unknown as Db;
-    const ctxWithPg: RuntimeStoreContext = {
+    const ctxWithPgNoSr: RuntimeStoreContext = {
       ledger: store,
       pg: dbDouble,
       candleStore: null,
       srThesesV2Store: null,
+      close: async () => {}
+    };
+
+    const depsWithPgNoSr = buildApplication(ctxWithPgNoSr);
+    expect(depsWithPgNoSr.synthesizePolicyInsight).toBeNull();
+    expect(depsWithPgNoSr.getCurrentPolicyInsight).not.toBeNull();
+    expect(depsWithPgNoSr.getPolicyInsightHistory).not.toBeNull();
+
+    // 3. With Postgres AND srThesesV2Store
+    const fakeSrStore = {
+      getCurrent: vi.fn().mockResolvedValue(null)
+    } as unknown as import("../../ledger/srThesesV2Store.js").SrThesesV2Store;
+
+    const ctxWithPg: RuntimeStoreContext = {
+      ledger: store,
+      pg: dbDouble,
+      candleStore: null,
+      srThesesV2Store: fakeSrStore,
       close: async () => {}
     };
 

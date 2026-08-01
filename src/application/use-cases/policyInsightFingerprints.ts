@@ -5,6 +5,7 @@ import type {
   PlanResponse
 } from "../../contract/v1/types.js";
 import type { SelectedEvidenceSummary } from "../../engine/evidence/selectEvidence.js";
+import type { PolicySynthesisSrThesis } from "../../engine/policy/synthesizePolicyInsight.js";
 import { sha256Hex } from "../../contract/v1/hash.js";
 import { toCanonicalJson } from "../../contract/v1/canonical.js";
 import { evidenceScopeKey } from "../ports/evidenceBundleRepositoryPort.js";
@@ -19,6 +20,7 @@ export interface FingerprintsInput {
     readonly plan: PlanResponse;
   } | null;
   readonly evidence: SelectedEvidenceSummary;
+  readonly srTheses: readonly PolicySynthesisSrThesis[];
 }
 
 export interface PolicyInsightFingerprints {
@@ -56,7 +58,10 @@ export function computePolicyInsightFingerprints(
   // 3. selectionHash: full selection result excluding only presentation-time fields (selectedAtUnixMs)
   const selectionHash = computeEvidenceSelectionHash(input.evidence);
 
-  // 4. synthesisInputHash: hash ruleset+pair+scope+component hashes
+  // 4. srThesesHash: canonicalize and SHA-256 the projected SR theses
+  const srThesesHash = sha256Hex(toCanonicalJson(input.srTheses));
+
+  // 5. synthesisInputHash: hash ruleset+pair+scope+component hashes
   const scopeKey = evidenceScopeKey(input.scope);
   const inputForHash = {
     rulesetVersion: input.rulesetVersion,
@@ -64,7 +69,8 @@ export function computePolicyInsightFingerprints(
     scopeKey,
     marketHash,
     positionHash,
-    selectionHash
+    selectionHash,
+    srThesesHash
   };
   const synthesisInputHash = sha256Hex(toCanonicalJson(inputForHash));
 

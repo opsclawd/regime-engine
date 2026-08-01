@@ -3,6 +3,8 @@ import type { PlanRequestPosition, PlanResponse } from "../../contract/v1/types.
 import type { ClockPort } from "../ports/clock.js";
 import type { GetCurrentRegimeUseCase } from "./getCurrentRegimeUseCase.js";
 import type { SelectEvidenceForSynthesisUseCase } from "./selectEvidenceForSynthesisUseCase.js";
+import type { SrThesesReadPort } from "../ports/srThesesReadPort.js";
+import type { SrLevelsV2CurrentResponse } from "../../contract/v2/srLevels.js";
 import type {
   PolicyInsightRepositoryPort,
   StoredPolicyInsight,
@@ -19,7 +21,8 @@ import {
 } from "./policyInsightFingerprints.js";
 import {
   synthesizePolicyInsightV1,
-  type PolicySynthesisEnvelope
+  type PolicySynthesisEnvelope,
+  type PolicySynthesisSrThesis
 } from "../../engine/policy/synthesizePolicyInsight.js";
 import { sha256Hex } from "../../contract/v1/hash.js";
 import { toCanonicalJson } from "../../contract/v1/canonical.js";
@@ -55,10 +58,31 @@ export type SynthesizePolicyInsightUseCase = (
 export interface SynthesizePolicyInsightUseCaseDeps {
   readonly getCurrentRegime: GetCurrentRegimeUseCase;
   readonly selectEvidence: SelectEvidenceForSynthesisUseCase;
+  readonly srThesesReadPort: SrThesesReadPort;
   readonly repository: PolicyInsightRepositoryPort;
   readonly clock: ClockPort;
   readonly ruleset: PolicyRuleset;
 }
+
+const compareText = (left: string, right: string): number =>
+  left < right ? -1 : left > right ? 1 : 0;
+
+const projectSrTheses = (current: SrLevelsV2CurrentResponse | null): PolicySynthesisSrThesis[] =>
+  current === null
+    ? []
+    : current.theses
+        .map((thesis) => ({
+          ...thesis,
+          source: current.source,
+          briefId: current.brief.briefId
+        }))
+        .sort(
+          (left, right) =>
+            compareText(left.source, right.source) ||
+            compareText(left.briefId, right.briefId) ||
+            compareText(left.asset, right.asset) ||
+            compareText(left.sourceHandle, right.sourceHandle)
+        );
 
 export const createSynthesizePolicyInsightUseCase = (
   deps: SynthesizePolicyInsightUseCaseDeps
@@ -204,6 +228,8 @@ export const createSynthesizePolicyInsightUseCase = (
       );
     }
 
+    const srTheses = projectSrTheses(await deps.srThesesReadPort.getCurrent("SOL/USDC", "mco"));
+
     // 5. Compute fingerprints and check repository for exact replay (short-circuit)
     const fingerprints = computePolicyInsightFingerprints({
       rulesetVersion: deps.ruleset.version,
@@ -211,7 +237,8 @@ export const createSynthesizePolicyInsightUseCase = (
       scope,
       market,
       positionPlan: positionPlan ?? null,
-      evidence
+      evidence,
+      srTheses
     });
 
     let existing: StoredPolicyInsight | null = null;
@@ -252,7 +279,8 @@ export const createSynthesizePolicyInsightUseCase = (
       hashes: {
         inputHash: fingerprints.synthesisInputHash,
         rulesetHash: sha256Hex(toCanonicalJson(deps.ruleset))
-      }
+      },
+      srTheses
     };
 
     const draft = synthesizePolicyInsightV1(envelope, deps.ruleset);

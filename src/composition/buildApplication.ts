@@ -178,10 +178,11 @@ export const buildApplication = (ctx: RuntimeStoreContext): ApplicationDependenc
 
   const policyInsightRepository = ctx.pg ? createPostgresPolicyInsightRepository(ctx.pg) : null;
   const synthesizePolicyInsight =
-    policyInsightRepository && selectEvidenceForSynthesis
+    policyInsightRepository && selectEvidenceForSynthesis && ctx.srThesesV2Store
       ? createSynthesizePolicyInsightUseCase({
           getCurrentRegime,
           selectEvidence: selectEvidenceForSynthesis,
+          srThesesReadPort: ctx.srThesesV2Store,
           repository: policyInsightRepository,
           clock,
           ruleset: SOL_USDC_POLICY_V1

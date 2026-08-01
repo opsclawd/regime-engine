@@ -62,7 +62,9 @@ const rowToThesis = (row: SrThesesV2Row): SrThesisV2 => ({
   notes: row.notes
 });
 
-export class SrThesesV2Store {
+import type { SrThesesReadPort } from "../application/ports/srThesesReadPort.js";
+
+export class SrThesesV2Store implements SrThesesReadPort {
   public constructor(private readonly db: Db) {}
 
   public async insertBrief(input: SrThesesV2InsertInput): Promise<SrThesesV2InsertResult> {
