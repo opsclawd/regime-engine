@@ -106,6 +106,7 @@ export async function runPolicyInsightSynthesisCycle(
   }
 
   const receiptId = claim.targetReceiptId;
+  const targetSrThesesMaxId = claim.targetSrThesesMaxId;
   const attemptCount = claim.attemptCount;
 
   try {
@@ -122,6 +123,7 @@ export async function runPolicyInsightSynthesisCycle(
       cursorKey: "pair",
       leaseOwner: deps.leaseOwner,
       targetReceiptId: receiptId,
+      targetSrThesesMaxId,
       nowUnixMs: endMs,
       outcome: "success"
     });
@@ -183,6 +185,7 @@ export async function runPolicyInsightSynthesisCycle(
         cursorKey: "pair",
         leaseOwner: deps.leaseOwner,
         targetReceiptId: receiptId,
+        targetSrThesesMaxId,
         nowUnixMs: endMs,
         outcome: "permanent_failure",
         errorCode,
@@ -214,6 +217,7 @@ export async function runPolicyInsightSynthesisCycle(
         cursorKey: "pair",
         leaseOwner: deps.leaseOwner,
         targetReceiptId: receiptId,
+        targetSrThesesMaxId,
         nowUnixMs: endMs,
         classification: errorCode,
         sanitizedMessage: errorMessage,

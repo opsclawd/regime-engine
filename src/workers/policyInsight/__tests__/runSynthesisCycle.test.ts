@@ -119,10 +119,12 @@ describe("runPolicyInsightSynthesisCycle", () => {
     vi.mocked(triggerPort.claimLatestPairEvidence).mockResolvedValue({
       cursorKey: "pair",
       targetReceiptId: 42,
+      targetSrThesesMaxId: 100,
       attemptCount: 1,
       leaseOwner,
       leaseExpiresAtUnixMs: 1700000060000,
-      lastProcessedReceiptId: 41
+      lastProcessedReceiptId: 41,
+      lastProcessedSrThesesMaxId: 99
     });
     vi.mocked(synthesizePolicyInsight).mockResolvedValue(mockInsightRead);
     vi.mocked(triggerPort.complete).mockResolvedValue(true);
@@ -148,10 +150,12 @@ describe("runPolicyInsightSynthesisCycle", () => {
     vi.mocked(triggerPort.claimLatestPairEvidence).mockResolvedValue({
       cursorKey: "pair",
       targetReceiptId: 42,
+      targetSrThesesMaxId: 100,
       attemptCount: 1,
       leaseOwner,
       leaseExpiresAtUnixMs: 1700000060000,
-      lastProcessedReceiptId: 41
+      lastProcessedReceiptId: 41,
+      lastProcessedSrThesesMaxId: 99
     });
     vi.mocked(synthesizePolicyInsight).mockResolvedValue(mockInsightRead);
     vi.mocked(triggerPort.complete).mockResolvedValue(true);
@@ -175,6 +179,7 @@ describe("runPolicyInsightSynthesisCycle", () => {
       cursorKey: "pair",
       leaseOwner,
       targetReceiptId: 42,
+      targetSrThesesMaxId: 100,
       nowUnixMs: 1700000000150,
       outcome: "success"
     });
@@ -205,10 +210,12 @@ describe("runPolicyInsightSynthesisCycle", () => {
     vi.mocked(triggerPort.claimLatestPairEvidence).mockResolvedValue({
       cursorKey: "pair",
       targetReceiptId: 42,
+      targetSrThesesMaxId: 100,
       attemptCount: 1,
       leaseOwner,
       leaseExpiresAtUnixMs: 1700000060000,
-      lastProcessedReceiptId: 41
+      lastProcessedReceiptId: 41,
+      lastProcessedSrThesesMaxId: 99
     });
     vi.mocked(synthesizePolicyInsight).mockRejectedValue(
       new PolicyInsightValidationError("Position plan missing", "POSITION_PLAN_MISSING")
@@ -228,6 +235,7 @@ describe("runPolicyInsightSynthesisCycle", () => {
       cursorKey: "pair",
       leaseOwner,
       targetReceiptId: 42,
+      targetSrThesesMaxId: 100,
       nowUnixMs: 1700000000000,
       outcome: "permanent_failure",
       errorCode: "POSITION_PLAN_MISSING",
@@ -247,10 +255,12 @@ describe("runPolicyInsightSynthesisCycle", () => {
     vi.mocked(triggerPort.claimLatestPairEvidence).mockResolvedValue({
       cursorKey: "pair",
       targetReceiptId: 42,
+      targetSrThesesMaxId: 100,
       attemptCount: 2,
       leaseOwner,
       leaseExpiresAtUnixMs: 1700000060000,
-      lastProcessedReceiptId: 41
+      lastProcessedReceiptId: 41,
+      lastProcessedSrThesesMaxId: 99
     });
     vi.mocked(synthesizePolicyInsight).mockRejectedValue(
       new PolicyInsightStoreUnavailableError("DB connection pool exhausted")
@@ -270,6 +280,7 @@ describe("runPolicyInsightSynthesisCycle", () => {
       cursorKey: "pair",
       leaseOwner,
       targetReceiptId: 42,
+      targetSrThesesMaxId: 100,
       nowUnixMs: 1700000000000,
       classification: "POLICY_STORE_UNAVAILABLE",
       sanitizedMessage: "DB connection pool exhausted",
@@ -302,6 +313,7 @@ describe("runPolicyInsightSynthesisCycle", () => {
       cursorKey: "pair",
       leaseOwner,
       targetReceiptId: 42,
+      targetSrThesesMaxId: 100,
       nowUnixMs: 1700000000000,
       classification: "MARKET_DATA_UNAVAILABLE",
       sanitizedMessage: "Candles missing for timeframe 1h",
@@ -320,10 +332,12 @@ describe("runPolicyInsightSynthesisCycle", () => {
     vi.mocked(triggerPort.claimLatestPairEvidence).mockResolvedValue({
       cursorKey: "pair",
       targetReceiptId: 42,
+      targetSrThesesMaxId: 100,
       attemptCount: 5,
       leaseOwner,
       leaseExpiresAtUnixMs: 1700000060000,
-      lastProcessedReceiptId: 41
+      lastProcessedReceiptId: 41,
+      lastProcessedSrThesesMaxId: 99
     });
     vi.mocked(synthesizePolicyInsight).mockRejectedValue(
       new EvidenceStoreUnavailableError("Evidence database unreachable")
@@ -352,6 +366,7 @@ describe("runPolicyInsightSynthesisCycle", () => {
       cursorKey: "pair",
       leaseOwner,
       targetReceiptId: 42,
+      targetSrThesesMaxId: 100,
       nowUnixMs: 1700000000000,
       outcome: "permanent_failure",
       errorCode: "EVIDENCE_STORE_UNAVAILABLE",
@@ -371,10 +386,12 @@ describe("runPolicyInsightSynthesisCycle", () => {
     vi.mocked(triggerPort.claimLatestPairEvidence).mockResolvedValue({
       cursorKey: "pair",
       targetReceiptId: 42,
+      targetSrThesesMaxId: 100,
       attemptCount: 1,
       leaseOwner,
       leaseExpiresAtUnixMs: 1700000060000,
-      lastProcessedReceiptId: 41
+      lastProcessedReceiptId: 41,
+      lastProcessedSrThesesMaxId: 99
     });
     vi.mocked(synthesizePolicyInsight).mockRejectedValue(
       new Error("Unexpected network socket reset")
@@ -394,6 +411,7 @@ describe("runPolicyInsightSynthesisCycle", () => {
       cursorKey: "pair",
       leaseOwner,
       targetReceiptId: 42,
+      targetSrThesesMaxId: 100,
       nowUnixMs: 1700000000000,
       classification: "Error",
       sanitizedMessage: "Unexpected network socket reset",
@@ -413,10 +431,12 @@ describe("runPolicyInsightSynthesisCycle", () => {
     vi.mocked(triggerPort.claimLatestPairEvidence).mockResolvedValue({
       cursorKey: "pair",
       targetReceiptId: 42,
+      targetSrThesesMaxId: 100,
       attemptCount: 1,
       leaseOwner,
       leaseExpiresAtUnixMs: 1700000060000,
-      lastProcessedReceiptId: 41
+      lastProcessedReceiptId: 41,
+      lastProcessedSrThesesMaxId: 99
     });
     vi.mocked(synthesizePolicyInsight).mockResolvedValue(mockInsightRead);
     vi.mocked(triggerPort.complete).mockResolvedValue(false);
@@ -440,10 +460,12 @@ describe("runPolicyInsightSynthesisCycle", () => {
     vi.mocked(triggerPort.claimLatestPairEvidence).mockResolvedValue({
       cursorKey: "pair",
       targetReceiptId: 42,
+      targetSrThesesMaxId: 100,
       attemptCount: 1,
       leaseOwner,
       leaseExpiresAtUnixMs: 1700000060000,
-      lastProcessedReceiptId: 41
+      lastProcessedReceiptId: 41,
+      lastProcessedSrThesesMaxId: 99
     });
 
     // 1. Policy store failure with arbitrary message
@@ -509,5 +531,125 @@ describe("runPolicyInsightSynthesisCycle", () => {
       errorCode: "MARKET_DATA_UNAVAILABLE",
       errorMessage: "Candles unavailable custom msg"
     });
+  });
+
+  it("propagates both claim targets through every worker terminal path", async () => {
+    const claim = {
+      cursorKey: "pair",
+      targetReceiptId: 42,
+      targetSrThesesMaxId: 100,
+      attemptCount: 1,
+      leaseOwner,
+      leaseExpiresAtUnixMs: 1700000060000,
+      lastProcessedReceiptId: 41,
+      lastProcessedSrThesesMaxId: 99
+    };
+
+    // 1. Success path
+    vi.mocked(triggerPort.claimLatestPairEvidence).mockResolvedValueOnce(claim);
+    vi.mocked(synthesizePolicyInsight).mockResolvedValueOnce(mockInsightRead);
+    vi.mocked(triggerPort.complete).mockResolvedValueOnce(true);
+
+    const res1 = await runPolicyInsightSynthesisCycle({
+      triggerPort,
+      synthesizePolicyInsight,
+      config,
+      logger,
+      leaseOwner,
+      clock
+    });
+    expect(res1.outcome).toBe("succeeded");
+    expect(triggerPort.complete).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        targetReceiptId: 42,
+        targetSrThesesMaxId: 100,
+        outcome: "success"
+      })
+    );
+
+    // 2. Permanent validation failure path
+    vi.mocked(triggerPort.claimLatestPairEvidence).mockResolvedValueOnce(claim);
+    vi.mocked(synthesizePolicyInsight).mockRejectedValueOnce(
+      new PolicyInsightValidationError("Bad input", "POSITION_PLAN_MISSING")
+    );
+    vi.mocked(triggerPort.complete).mockResolvedValueOnce(true);
+
+    const res2 = await runPolicyInsightSynthesisCycle({
+      triggerPort,
+      synthesizePolicyInsight,
+      config,
+      logger,
+      leaseOwner,
+      clock
+    });
+    expect(res2.outcome).toBe("permanent_failure");
+    expect(triggerPort.complete).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        targetReceiptId: 42,
+        targetSrThesesMaxId: 100,
+        outcome: "permanent_failure"
+      })
+    );
+
+    // 3. Exhausted retry permanent failure path
+    vi.mocked(triggerPort.claimLatestPairEvidence).mockResolvedValueOnce({
+      ...claim,
+      attemptCount: 5
+    });
+    vi.mocked(synthesizePolicyInsight).mockRejectedValueOnce(new Error("Transient fail"));
+    vi.mocked(triggerPort.complete).mockResolvedValueOnce(true);
+
+    const res3 = await runPolicyInsightSynthesisCycle({
+      triggerPort,
+      synthesizePolicyInsight,
+      config,
+      logger,
+      leaseOwner,
+      clock
+    });
+    expect(res3.outcome).toBe("permanent_failure");
+    expect(triggerPort.complete).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        targetReceiptId: 42,
+        targetSrThesesMaxId: 100,
+        outcome: "permanent_failure"
+      })
+    );
+
+    // 4. Transient failure path
+    vi.mocked(triggerPort.claimLatestPairEvidence).mockResolvedValueOnce(claim);
+    vi.mocked(synthesizePolicyInsight).mockRejectedValueOnce(new Error("Transient fail"));
+    vi.mocked(triggerPort.releaseForRetry).mockResolvedValueOnce(true);
+
+    const res4 = await runPolicyInsightSynthesisCycle({
+      triggerPort,
+      synthesizePolicyInsight,
+      config,
+      logger,
+      leaseOwner,
+      clock
+    });
+    expect(res4.outcome).toBe("transient_failure");
+    expect(triggerPort.releaseForRetry).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        targetReceiptId: 42,
+        targetSrThesesMaxId: 100
+      })
+    );
+
+    // 5. Lease lost path
+    vi.mocked(triggerPort.claimLatestPairEvidence).mockResolvedValueOnce(claim);
+    vi.mocked(synthesizePolicyInsight).mockResolvedValueOnce(mockInsightRead);
+    vi.mocked(triggerPort.complete).mockResolvedValueOnce(false);
+
+    const res5 = await runPolicyInsightSynthesisCycle({
+      triggerPort,
+      synthesizePolicyInsight,
+      config,
+      logger,
+      leaseOwner,
+      clock
+    });
+    expect(res5.outcome).toBe("lease_lost");
   });
 });
