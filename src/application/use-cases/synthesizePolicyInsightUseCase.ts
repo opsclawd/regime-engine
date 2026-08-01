@@ -62,6 +62,7 @@ export interface SynthesizePolicyInsightUseCaseDeps {
   readonly repository: PolicyInsightRepositoryPort;
   readonly clock: ClockPort;
   readonly ruleset: PolicyRuleset;
+  readonly defaultSrSource?: string;
 }
 
 const compareText = (left: string, right: string): number =>
@@ -87,6 +88,8 @@ const projectSrTheses = (current: SrLevelsV2CurrentResponse | null): PolicySynth
 export const createSynthesizePolicyInsightUseCase = (
   deps: SynthesizePolicyInsightUseCaseDeps
 ): SynthesizePolicyInsightUseCase => {
+  const defaultSrSource = deps.defaultSrSource ?? "mco";
+
   return async (input) => {
     const synthesisAtUnixMs = deps.clock.nowUnixMs();
 
@@ -228,7 +231,9 @@ export const createSynthesizePolicyInsightUseCase = (
       );
     }
 
-    const srTheses = projectSrTheses(await deps.srThesesReadPort.getCurrent("SOL/USDC", "mco"));
+    const srTheses = projectSrTheses(
+      await deps.srThesesReadPort.getCurrent("SOL/USDC", defaultSrSource, synthesisAtUnixMs)
+    );
 
     // 5. Compute fingerprints and check repository for exact replay (short-circuit)
     const fingerprints = computePolicyInsightFingerprints({

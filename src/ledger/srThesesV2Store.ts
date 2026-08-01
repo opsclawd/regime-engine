@@ -1,4 +1,4 @@
-import { and, asc, desc, eq } from "drizzle-orm";
+import { and, asc, desc, eq, lte } from "drizzle-orm";
 import { srThesesV2 } from "./pg/schema/index.js";
 import type { SrThesesV2Row } from "./pg/schema/index.js";
 import type { Db } from "./pg/db.js";
@@ -170,12 +170,18 @@ export class SrThesesV2Store implements SrThesesReadPort {
 
   public async getCurrent(
     symbol: string,
-    source: string
+    source: string,
+    asOfUnixMs?: number
   ): Promise<SrLevelsV2CurrentResponse | null> {
+    const conditions = [eq(srThesesV2.symbol, symbol), eq(srThesesV2.source, source)];
+    if (asOfUnixMs !== undefined) {
+      conditions.push(lte(srThesesV2.capturedAtUnixMs, asOfUnixMs));
+    }
+
     const latest = await this.db
       .select()
       .from(srThesesV2)
-      .where(and(eq(srThesesV2.symbol, symbol), eq(srThesesV2.source, source)))
+      .where(and(...conditions))
       .orderBy(desc(srThesesV2.capturedAtUnixMs), desc(srThesesV2.id))
       .limit(1);
 

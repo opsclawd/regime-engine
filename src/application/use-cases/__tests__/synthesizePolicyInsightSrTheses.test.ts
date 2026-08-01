@@ -221,10 +221,12 @@ describe("synthesizePolicyInsight SrTheses", () => {
     const briefResponse = sampleBriefResponse([sampleThesis()]);
 
     const srThesesReadPort: SrThesesReadPort = {
-      getCurrent: vi.fn().mockImplementation(async (symbol: string, source: string) => {
-        events.push(`getCurrent:${symbol}:${source}`);
-        return briefResponse;
-      })
+      getCurrent: vi
+        .fn()
+        .mockImplementation(async (symbol: string, source: string, asOfUnixMs?: number) => {
+          events.push(`getCurrent:${symbol}:${source}:${asOfUnixMs}`);
+          return briefResponse;
+        })
     };
 
     const useCase = createSynthesizePolicyInsightUseCase({
@@ -239,9 +241,9 @@ describe("synthesizePolicyInsight SrTheses", () => {
     await useCase({ scope, marketSelector });
 
     expect(srThesesReadPort.getCurrent).toHaveBeenCalledTimes(1);
-    expect(srThesesReadPort.getCurrent).toHaveBeenCalledWith("SOL/USDC", "mco");
+    expect(srThesesReadPort.getCurrent).toHaveBeenCalledWith("SOL/USDC", "mco", nowUnixMs);
 
-    expect(events[0]).toBe("getCurrent:SOL/USDC:mco");
+    expect(events[0]).toBe(`getCurrent:SOL/USDC:mco:${nowUnixMs}`);
     expect(events[1]).toBe("findBySynthesisInputHash");
     expect(events[2]).toBe("insertOrGet");
 
@@ -253,6 +255,33 @@ describe("synthesizePolicyInsight SrTheses", () => {
         briefId: "brief-123"
       }
     ]);
+  });
+
+  it("queries the injected defaultSrSource when configured in deps", async () => {
+    const nowUnixMs = 1_000_000;
+    const clock = { nowUnixMs: () => nowUnixMs };
+    const getCurrentRegime = vi.fn().mockResolvedValue(makeDummyMarket(nowUnixMs));
+    const selectEvidence = vi.fn().mockResolvedValue(makeDummyEvidence(nowUnixMs));
+    const repository = new FakePolicyInsightRepository();
+
+    const srThesesReadPort: SrThesesReadPort = {
+      getCurrent: vi.fn().mockResolvedValue(sampleBriefResponse([sampleThesis()], "custom-ta"))
+    };
+
+    const useCase = createSynthesizePolicyInsightUseCase({
+      getCurrentRegime,
+      selectEvidence,
+      srThesesReadPort,
+      repository,
+      clock,
+      ruleset: SOL_USDC_POLICY_V1,
+      defaultSrSource: "custom-ta"
+    });
+
+    await useCase({ scope, marketSelector });
+
+    expect(srThesesReadPort.getCurrent).toHaveBeenCalledTimes(1);
+    expect(srThesesReadPort.getCurrent).toHaveBeenCalledWith("SOL/USDC", "custom-ta", nowUnixMs);
   });
 
   it("canonicalizes SR theses by source brief asset and source handle", async () => {
