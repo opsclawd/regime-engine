@@ -1,45 +1,33 @@
-# Add durable position-scoped PolicyInsight synthesis pipeline (blocked on clmm-v2 plan submission)
+# Wire PolicyInsight synthesis to real support/resistance data (currently reads only from evidence bundles, which are empty)
 
-## Corrections (verified against real code before rewriting)
+## Problem
 
-This issue's original queue design had real gaps, confirmed against the actual synthesis code:
+`synthesizePolicyInsightUseCase`'s `ctx.supportResistance` is populated exclusively from evidence-bundle contextual selection (`selectEvidence.ts`), sourced from `sol-usdc-clmm-intelligence`'s `support-resistance` collector. That collector is currently non-functional — `SUPPORT_RESISTANCE_API_URL` is unconfigured and it has never produced a single row (verified live: `SELECT count(*) FROM intelligence.normalized_observations WHERE evidence_family='support_resistance'` → 0).
 
-**Queue identity was insufficient.** `computePolicyInsightFingerprints` already hashes `positionPlan` (via `positionHash`) into `synthesisInputHash`, alongside evidence selection. A queue keyed on `scopeKey + evidenceHash + rulesetVersion` alone cannot represent "same evidence, newer plan" — after a first synthesis completes, a fresh plan against unchanged evidence needs to produce a new synthesis input. Key on `scopeKey + selectionHash + planHash + rulesetVersion` (or an equivalent "latest desired evidence+plan version" coordinator per scope), not a single evidence hash.
+Meanwhile, `regime-engine` already has real, live support/resistance data that policy synthesis never touches:
 
-**One claim from the original review that I checked and is false — do not implement it:** it stated "Regime Engine rejects plan positions older than sixty seconds." Checked `src/engine/policy/ruleset.ts` directly: `positionMaxAgeMs: 86400000` (24 hours), not 60 seconds. `clmm-v2`'s current 5-minute observation staleness tolerance is well within this. No freshness-limit alignment is needed here.
+```
+curl "$RE_URL/v1/sr-levels/current?symbol=SOL%2FUSDC&source=mco"
+→ real data: briefId "mco-sol-2026-07-30", supports [32, 43, 48, 64.68, ...], resistances [77.34, 82-93.92], notes, timeframe, etc.
+```
 
-## This issue remains blocked
+This is fed by a separate repo, `crypto-aggregator`, which runs an OpenClaw agent pipeline watching TA YouTube channels (including MoreCryptoOnline) and extracting structured theses. Confirmed via `grep`: `synthesizePolicyInsightUseCase`/`synthesizePolicyInsight.ts`/`selectEvidence.ts` have zero references connecting to this data — it's entirely separate from the evidence-bundle path.
 
-Confirmed via a 30-day production HTTP log search: `POST /v1/plan` has never been called. This issue cannot be completed independent of the companion `clmm-v2` issue (which turned out to require substantially more work than "start calling an endpoint" — see that issue for the real scope: endpoint mismatch, contract mismatch, missing auth, plan-identity handling).
+## The complication: two SR stores, neither one is a clean fit as-is
 
-## Revised scope
+- **v1** (`/v1/sr-levels`, `getCurrentSrLevels` in `src/ledger/srLevelsWriter.ts`) — has the real `mco` data, but is backed by the **local SQLite ledger** (`LEDGER_DB_PATH`, default `/data/ledger.sqlite` on a Railway volume). This is a real problem for reading it from the new `regime-engine-synthesis-worker` service (added for #78/#79): each Railway service gets its **own separate volume** — the synthesis worker's `/data` is a fresh, empty volume, not the main API service's. Wiring `synthesizePolicyInsightUseCase` to `getCurrentSrLevels` would work if synthesis ran inside the main API process, but not inside the separately-deployed worker that actually runs it today.
+- **v2** (`/v2/sr-levels`, `srThesesV2Store`, backed by Postgres `regime_engine.sr_theses_v2`) — cross-service accessible (any service with `DATABASE_URL` can read it, including the synthesis worker), richer schema (bias, setupType, entryZone, targets, invalidation), but **currently has zero rows**. Confirmed live: `SELECT count(*) FROM regime_engine.sr_theses_v2` → 0. Nothing writes to it yet — `crypto-aggregator` (or whatever produces the v1 `mco` data) only ever targets the v1 endpoint.
 
-1. **`PlanLedgerReadPort`** — read the exact stored `PlanRequest`/`PlanResponse` (not a lossy reconstruction; `planHash` is verified via `sha256Hex(toCanonicalJson(planWithoutHash))`).
-2. **Plan storage topology — needs an explicit decision, not an assumption.** Plans are currently written to a local SQLite store (`plan_requests` table via `writePlanLedgerEntry`), separate from the Postgres `regime_engine` schema evidence/insights live in. A separately-deployed worker process cannot assume filesystem access to the HTTP service's SQLite volume. Either:
-   - run the synthesis worker in the same service/container as the HTTP API (simplest), or
-   - move/mirror plan storage into Postgres so plan persistence and queue wake-up can be transactional (cleaner long-term, avoids a cross-database dual-write gap).
-   Decide and document this before writing the worker.
-3. **SQLite plan schema lacks position-indexed lookup columns** (`plan_requests` only has `plan_id`, `request_json`, `plan_json`, timestamps — no `position_id`/`wallet_id`/`pool_address` columns). If keeping SQLite (option A above), add a migration with denormalized lookup columns; `PlanLedgerReadPort.getLatestPositionPlan()` otherwise requires JSON scans.
-4. **Durable synthesis-request queue** (Postgres table, e.g. `policy_insight_synthesis_requests`) keyed as corrected above, enqueued from both the evidence-ingest and plan-write paths, with lease-recovery fields (`lockedAt`, `lockedBy`, `leaseExpiresAt`) — `FOR UPDATE SKIP LOCKED` alone doesn't recover a row a crashed process left `processing`.
-5. **Worker** (`src/workers/policyInsightSynthesizer.ts`, `pnpm start:policy-synthesis`) — claims requests, resolves the latest eligible evidence + matching plan, invokes `synthesizePolicyInsightUseCase`.
-6. **Internal trigger endpoint**: protected `POST /v1/internal/insights/sol-usdc/synthesis-requests`, returns `202` with the request ID, doesn't synthesize inline. Backfill/replay/deployment-verification use only.
-7. **Temporal compatibility rules** — specify explicitly: exact wallet/position/pool equality; max evidence↔position observation skew; behavior when evidence expires while waiting on a plan; whether a newer plan supersedes an older queued request.
-8. **Structured error codes** on `PolicyInsightValidationError`/`PolicyInsightStoreUnavailableError` (currently message-only) so the worker classifies retryable vs. permanent without string matching: `POSITION_PLAN_MISSING`, `POSITION_STALE`, `PLAN_HASH_INVALID`, `POSITION_SCOPE_MISMATCH`, `POOL_SCOPE_MISMATCH`, `MARKET_DATA_UNAVAILABLE`, `EVIDENCE_STORE_UNAVAILABLE`, `POLICY_STORE_UNAVAILABLE`, `OUTPUT_SCHEMA_INVALID`.
+## Scope
 
-## Explicitly out of scope for this issue
-
-- Pair/whirlpool-scoped synthesis (#78 — independent, no plan dependency).
-- Anything in `clmm-v2` (tracked in that repo's companion issue).
+1. **Point real SR ingestion at v2 instead of (or in addition to) v1.** Whatever in `crypto-aggregator` currently POSTs to `regime-engine`'s v1 `/v1/sr-levels` should also/instead POST to `/v2/sr-levels` (`POST /v2/sr-levels`), so the data lands in Postgres where every service — including the synthesis worker — can actually read it. This may be entirely out-of-repo work (in `crypto-aggregator`); confirm and coordinate, or file a companion issue there.
+2. **Add a read path from `sr_theses_v2` into `synthesizePolicyInsightUseCase`.** `srThesesV2Store` already exists and is wired into `buildApplication.ts`'s dependencies (`ctx.srThesesV2Store`), but `createSynthesizePolicyInsightUseCase`'s deps (`getCurrentRegime`, `selectEvidence`, `repository`, `clock`, `ruleset`) don't include it. Add a dependency (e.g. `getSrTheses`) and populate `ctx.supportResistance` (or an equivalent field the reducer at `synthesizePolicyInsight.ts` can consume) from it, independent of evidence-bundle contextual selection.
+3. **Decide the relationship between this path and the evidence-bundle `supportResistance` path** (from `sol-usdc-clmm-intelligence`, once that collector is eventually fixed too — separate scope, not this issue). They shouldn't silently double-count or conflict; likely this SR-ledger read becomes the primary/authoritative source given it's real data today, with evidence-bundle SR as an additional corroborating input once/if it exists.
+4. **Ensure `regime-engine-synthesis-worker`'s deploy config doesn't need the `/data` volume for this path** — confirm the v2/Postgres-backed read doesn't reintroduce a dependency on the local SQLite ledger.
 
 ## Acceptance criteria
 
-1. A newly published position evidence bundle creates a durable synthesis request.
-2. A matching recent position plan causes one canonical `PolicyInsight` to be persisted.
-3. `GET /v1/insights/sol-usdc/current?scope=position&walletAddress=...&whirlpoolAddress=...&positionId=...` returns that insight.
-4. Duplicate evidence publication does not create duplicate insights.
-5. A new plan against unchanged evidence produces a new synthesis (queue identity fix, not just evidence replay detection).
-6. Two positions from the same intelligence pipeline run synthesize independently.
-7. Evidence arriving before the plan waits and later completes; plan arriving before evidence later completes.
-8. A worker restart does not lose or duplicate work (lease recovery verified, not just SKIP LOCKED).
-9. Missing/stale candles and invalid plan hashes are classified via structured codes, not uniformly retried.
-10. Enqueue every currently eligible, unexpired position scope on deployment; for scopes with no eligible evidence, trigger a fresh intelligence run rather than treating it as a backfill gap.
+1. `crypto-aggregator`'s (or whatever's) real SR data lands in `regime_engine.sr_theses_v2`, confirmed via `SELECT count(*) FROM regime_engine.sr_theses_v2` > 0 in production.
+2. `synthesizePolicyInsightUseCase` incorporates that data into `ctx.supportResistance` (or equivalent) when synthesizing, running inside the actual `regime-engine-synthesis-worker` process (not just the main API process).
+3. A live pair-scoped `PolicyInsight` synthesis run reflects real support/resistance levels, verified by inspecting the persisted `synthesisOutputJson`.
+4. No regression to the existing evidence-bundle-sourced `supportResistance` path once `sol-usdc-clmm-intelligence`'s own collector is eventually fixed (tracked separately).
