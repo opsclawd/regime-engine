@@ -10,6 +10,8 @@ import type { Db } from "../../ledger/pg/db.js";
 import { createDb } from "../../ledger/pg/db.js";
 import type { WorkerLogger } from "../gecko/logger.js";
 import { policyInsights } from "../../ledger/pg/schema/policyInsights.js";
+import { policyInsightSynthesisCursor } from "../../ledger/pg/schema/policyInsightSynthesisCursor.js";
+import { srThesesV2 } from "../../ledger/pg/schema/srThesesV2.js";
 
 const PG_CONNECTION_STRING =
   process.env.DATABASE_URL ?? "postgres://test:test@localhost:5432/regime_engine_test";
@@ -175,19 +177,11 @@ const makePairEvidencePayload = (runId: string, sourceId: string = "src-001") =>
 });
 
 setupPg("Policy Insight Synthesis Worker SR Theses E2E (PG)", () => {
-  it("persists Postgres SR theses and derived levels through the pair synthesis worker", async () => {
+  it("synthesizes and serves a pair insight from an SR-only trigger", async () => {
     setEnv();
     const app = buildApp();
     const ctx = buildStoreContext();
     await seedCandles(ctx);
-
-    const ingestRes = await app.inject({
-      method: "POST",
-      url: "/v1/evidence/sol-usdc",
-      headers: { "x-evidence-ingest-token": EVIDENCE_TOKEN },
-      payload: makePairEvidencePayload("run-sr-worker-001")
-    });
-    expect(ingestRes.statusCode).toBe(201);
 
     await ctx.srThesesV2Store!.insertBrief({
       capturedAtUnixMs: FIXED_NOW - 5_000,
@@ -227,6 +221,10 @@ setupPg("Policy Insight Synthesis Worker SR Theses E2E (PG)", () => {
       }
     });
 
+    const [srRow] = await db.select({ id: srThesesV2.id }).from(srThesesV2);
+    expect(srRow).toBeDefined();
+    const insertedSrMaxId = srRow.id;
+
     const appDeps = buildApplication(ctx);
     const triggerPort = createPostgresPolicyInsightSynthesisTriggerAdapter(ctx.pg!);
     const config = parsePolicyInsightSynthesisWorkerConfig(process.env);
@@ -242,6 +240,17 @@ setupPg("Policy Insight Synthesis Worker SR Theses E2E (PG)", () => {
 
     expect(cycleResult.outcome).toBe("succeeded");
 
+    const currentRes = await app.inject({
+      method: "GET",
+      url: "/v1/insights/sol-usdc/current"
+    });
+    expect(currentRes.statusCode).toBe(200);
+    const currentBody = currentRes.json();
+    expect(currentBody.pair).toBe("SOL/USDC");
+    expect(currentBody.levels).toBeDefined();
+    expect(currentBody.levels.supportsUsdcPerSol).toContain("90");
+    expect(currentBody.levels.resistancesUsdcPerSol).toContain("160");
+
     const [insightRow] = await db.select().from(policyInsights);
     expect(insightRow).toBeDefined();
 
@@ -253,12 +262,27 @@ setupPg("Policy Insight Synthesis Worker SR Theses E2E (PG)", () => {
     expect(inputJson.srTheses![0].source).toBe("mco");
     expect(inputJson.srTheses![0].briefId).toBe("mco-sol-worker-e2e");
 
-    const outputJson = insightRow.synthesisOutputJson as {
-      levels: { supportsUsdcPerSol: string[]; resistancesUsdcPerSol: string[] };
-    };
-    expect(outputJson.levels).toBeDefined();
-    expect(outputJson.levels.supportsUsdcPerSol).toContain("90");
-    expect(outputJson.levels.resistancesUsdcPerSol).toContain("160");
+    const [cursorRow] = await db
+      .select()
+      .from(policyInsightSynthesisCursor)
+      .where(sql`cursor_key = 'pair'`);
+    expect(cursorRow.lastProcessedReceiptId).toBe(0);
+    expect(cursorRow.lastProcessedSrThesesMaxId).toBe(insertedSrMaxId);
+    expect(cursorRow.targetReceiptId).toBeNull();
+    expect(cursorRow.targetSrThesesMaxId).toBeNull();
+
+    const secondCycle = await runPolicyInsightSynthesisCycle({
+      triggerPort,
+      synthesizePolicyInsight: appDeps.synthesizePolicyInsight!,
+      config,
+      logger: nullLogger,
+      leaseOwner: "test-lease-owner-001",
+      clock
+    });
+    expect(secondCycle.outcome).toBe("idle");
+
+    const allInsights = await db.select().from(policyInsights);
+    expect(allInsights).toHaveLength(1);
 
     await app.close();
     await ctx.close();

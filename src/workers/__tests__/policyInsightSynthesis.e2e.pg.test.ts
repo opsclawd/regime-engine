@@ -176,7 +176,7 @@ const makePairEvidencePayload = (runId: string, sourceId: string = "src-001") =>
 });
 
 setupPg("Policy Insight Synthesis Worker E2E (PG)", () => {
-  it("backfills the newest pre-existing pair evidence into current insight", async () => {
+  it("evidence-only synthesis remains independently triggerable", async () => {
     setEnv();
     const app = buildApp();
     const ctx = buildStoreContext();
@@ -222,6 +222,22 @@ setupPg("Policy Insight Synthesis Worker E2E (PG)", () => {
       .from(policyInsightSynthesisCursor)
       .where(sql`cursor_key = 'pair'`);
     expect(cursorRow.lastProcessedReceiptId).toBe(receiptId);
+    expect(cursorRow.lastProcessedSrThesesMaxId).toBe(0);
+    expect(cursorRow.targetReceiptId).toBeNull();
+    expect(cursorRow.targetSrThesesMaxId).toBeNull();
+
+    const secondCycle = await runPolicyInsightSynthesisCycle({
+      triggerPort,
+      synthesizePolicyInsight: appDeps.synthesizePolicyInsight!,
+      config,
+      logger: nullLogger,
+      leaseOwner: "test-lease-owner-001",
+      clock
+    });
+    expect(secondCycle.outcome).toBe("idle");
+
+    const allInsights = await db.select().from(policyInsights);
+    expect(allInsights).toHaveLength(1);
 
     await app.close();
     await ctx.close();
