@@ -1,5 +1,6 @@
 import type { Scope } from "../../contract/evidence/v1/types.generated.js";
 import type { SelectedEvidenceSummary } from "../evidence/selectEvidence.js";
+import type { SrThesisV2 } from "../../contract/v2/srLevels.js";
 import type {
   RegimeCurrentResponse,
   PlanRequestPosition,
@@ -127,6 +128,11 @@ function toDecimalString(value: number): string {
   return value.toFixed(8).replace(/\.?0+$/, "");
 }
 
+export interface PolicySynthesisSrThesis extends SrThesisV2 {
+  readonly source: string;
+  readonly briefId: string;
+}
+
 export interface PolicySynthesisHashes {
   readonly inputHash: string;
   readonly rulesetHash: string;
@@ -143,6 +149,7 @@ export interface PolicySynthesisEnvelope {
   } | null;
   readonly evidence: SelectedEvidenceSummary;
   readonly hashes: PolicySynthesisHashes;
+  readonly srTheses?: readonly PolicySynthesisSrThesis[];
 }
 
 function deriveCanonicalRecommendedAction(input: {
@@ -439,6 +446,20 @@ function evaluateSharedRules(
 
   let bullishCount = 0;
   let bearishCount = 0;
+
+  for (const thesis of envelope.srTheses ?? []) {
+    for (const raw of thesis.supportLevels) {
+      const value = Number(raw);
+      if (Number.isFinite(value) && value > 0) extractedSupport.push(value);
+    }
+    for (const raw of thesis.resistanceLevels) {
+      const value = Number(raw);
+      if (Number.isFinite(value) && value > 0) extractedResistance.push(value);
+    }
+    if (thesis.bias === "bullish") bullishCount += 1;
+    if (thesis.bias === "bearish") bearishCount += 1;
+  }
+
   if (envelope.evidence.selected?.contextualEvidence) {
     const ctx = envelope.evidence.selected.contextualEvidence;
     const allClaims = [
@@ -518,6 +539,14 @@ function evaluateSharedRules(
   }
   if (envelope.evidence.selected?.researchBrief) {
     boundedIdentifiers.push(envelope.evidence.selected.researchBrief.candidateId);
+  }
+
+  const seenSrBriefIds = new Set<string>();
+  for (const thesis of envelope.srTheses ?? []) {
+    if (!seenSrBriefIds.has(thesis.briefId)) {
+      seenSrBriefIds.add(thesis.briefId);
+      boundedIdentifiers.push(thesis.briefId);
+    }
   }
 
   let earliestExpiryMs = envelope.synthesisAtUnixMs + ruleset.maxInsightLifetimeMs;
