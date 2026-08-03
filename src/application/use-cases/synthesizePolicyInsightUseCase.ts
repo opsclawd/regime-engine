@@ -296,7 +296,7 @@ export const createSynthesizePolicyInsightUseCase = (
     } as PolicyInsightContent;
 
     // 7. Validate output with PolicyInsightContent schema
-    const validationResult = parsePolicyInsightContent(output);
+    const validationResult = parsePolicyInsightContent(output, { strictRefs: true });
     if (!validationResult.ok) {
       throw new PolicyInsightValidationError(
         `Reducer output rejected by schema validation: ${validationResult.issues.length} issue(s)`,

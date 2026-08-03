@@ -274,6 +274,78 @@ describe("synthesizePolicyInsightV1 - Content, Quality, and Reasoning", () => {
     expect(result.evidence.selectedBundleRefs[1].bundleHash).toBe("bundle-2");
   });
 
+  it("deduplicates duplicate bundle hashes and source reference IDs when generating policy insight content", () => {
+    const envelope: PolicySynthesisEnvelope = {
+      synthesisAtUnixMs: AS_OF,
+      pair: "SOL/USDC",
+      scope: pairScope,
+      market: makeMockMarketResponse({ regime: "CHOP" }),
+      positionPlan: null,
+      evidence: makeMockEvidenceSummary({
+        sourceReferences: [
+          {
+            referenceId: "ref-dup",
+            sourceType: "api",
+            locator: "https://api.example.com/1",
+            observedAt: new Date(AS_OF).toISOString(),
+            bundleHash: "bundle-dup",
+            publisher: "pub-a",
+            sourceId: "src-a",
+            runId: "run-a",
+            correlationId: "corr-a",
+            receivedAtUnixMs: AS_OF,
+            isSelectedLineage: true,
+            isAuditOnly: false
+          },
+          {
+            referenceId: "ref-dup",
+            sourceType: "database",
+            locator: "https://api.example.com/2",
+            observedAt: new Date(AS_OF).toISOString(),
+            bundleHash: "bundle-dup",
+            publisher: "pub-b",
+            sourceId: "src-b",
+            runId: "run-b",
+            correlationId: "corr-b",
+            receivedAtUnixMs: AS_OF,
+            isSelectedLineage: true,
+            isAuditOnly: false
+          }
+        ],
+        bundles: [
+          {
+            bundleHash: "bundle-dup",
+            publisher: "pub-a",
+            sourceId: "src-a",
+            runId: "run-a",
+            correlationId: "corr-a",
+            receivedAtUnixMs: AS_OF,
+            status: "ACCEPTED",
+            reasons: []
+          },
+          {
+            bundleHash: "bundle-dup",
+            publisher: "pub-b",
+            sourceId: "src-b",
+            runId: "run-b",
+            correlationId: "corr-b",
+            receivedAtUnixMs: AS_OF,
+            status: "ACCEPTED",
+            reasons: []
+          }
+        ]
+      }),
+      hashes: { inputHash: "in-1", rulesetHash: "rules-1" }
+    };
+
+    const result = synthesizePolicyInsightV1(envelope, SOL_USDC_POLICY_V1);
+
+    expect(result.evidence.selectedBundleRefs.length).toBe(1);
+    expect(result.evidence.selectedSourceRefs.length).toBe(1);
+    expect(result.evidence.selectedBundleRefs[0].bundleHash).toBe("bundle-dup");
+    expect(result.evidence.selectedSourceRefs[0].referenceId).toBe("ref-dup");
+  });
+
   it("emits descending supports and ascending resistances from eligible structured price evidence only", () => {
     const envelope: PolicySynthesisEnvelope = {
       synthesisAtUnixMs: AS_OF,

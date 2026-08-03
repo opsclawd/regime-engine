@@ -280,17 +280,17 @@ describe("PolicyInsight validation", () => {
         { bundleHash: BUNDLE_HASH_B, publisher: "pub-a", sourceId: "src-a", runId: "run-a" }
       ];
 
-      expect(parsePolicyInsightContent(fixture).ok).toBe(true);
+      expect(parsePolicyInsightContent(fixture, { strictRefs: true }).ok).toBe(true);
     });
 
-    it("rejects selectedBundleRefs sorted by metadata but not bundleHash", () => {
+    it("rejects selectedBundleRefs sorted by metadata but not bundleHash under strictRefs", () => {
       const fixture = createValidPairContent();
       fixture.evidence.selectedBundleRefs = [
         { bundleHash: BUNDLE_HASH_B, publisher: "pub-a", sourceId: "src-a", runId: "run-a" },
         { bundleHash: BUNDLE_HASH_A, publisher: "pub-z", sourceId: "src-z", runId: "run-z" }
       ];
 
-      expect(parsePolicyInsightContent(fixture)).toEqual({
+      expect(parsePolicyInsightContent(fixture, { strictRefs: true })).toEqual({
         ok: false,
         issues: [
           {
@@ -302,14 +302,14 @@ describe("PolicyInsight validation", () => {
       });
     });
 
-    it("rejects duplicate selectedBundleRefs bundleHash values with different metadata", () => {
+    it("rejects duplicate selectedBundleRefs bundleHash values under strictRefs", () => {
       const fixture = createValidPairContent();
       fixture.evidence.selectedBundleRefs = [
         { bundleHash: BUNDLE_HASH_A, publisher: "pub-a", sourceId: "src-a", runId: "run-a" },
         { bundleHash: BUNDLE_HASH_A, publisher: "pub-b", sourceId: "src-b", runId: "run-b" }
       ];
 
-      expect(parsePolicyInsightContent(fixture)).toEqual({
+      expect(parsePolicyInsightContent(fixture, { strictRefs: true })).toEqual({
         ok: false,
         issues: [
           {
@@ -319,6 +319,16 @@ describe("PolicyInsight validation", () => {
           }
         ]
       });
+    });
+
+    it("accepts duplicate selectedBundleRefs bundleHash values on read path without strictRefs", () => {
+      const fixture = createValidPairContent();
+      fixture.evidence.selectedBundleRefs = [
+        { bundleHash: BUNDLE_HASH_A, publisher: "pub-a", sourceId: "src-a", runId: "run-a" },
+        { bundleHash: BUNDLE_HASH_A, publisher: "pub-b", sourceId: "src-b", runId: "run-b" }
+      ];
+
+      expect(parsePolicyInsightContent(fixture).ok).toBe(true);
     });
 
     it("accepts selectedSourceRefs sorted by referenceId when locator order diverges", () => {
@@ -338,10 +348,10 @@ describe("PolicyInsight validation", () => {
         }
       ];
 
-      expect(parsePolicyInsightContent(fixture).ok).toBe(true);
+      expect(parsePolicyInsightContent(fixture, { strictRefs: true }).ok).toBe(true);
     });
 
-    it("rejects selectedSourceRefs sorted by locator but not referenceId", () => {
+    it("rejects selectedSourceRefs sorted by locator but not referenceId under strictRefs", () => {
       const fixture = createValidPairContent();
       fixture.evidence.selectedSourceRefs = [
         {
@@ -358,7 +368,7 @@ describe("PolicyInsight validation", () => {
         }
       ];
 
-      expect(parsePolicyInsightContent(fixture)).toEqual({
+      expect(parsePolicyInsightContent(fixture, { strictRefs: true })).toEqual({
         ok: false,
         issues: [
           {
@@ -370,7 +380,7 @@ describe("PolicyInsight validation", () => {
       });
     });
 
-    it("rejects duplicate selectedSourceRefs referenceId values with different metadata", () => {
+    it("rejects duplicate selectedSourceRefs referenceId values under strictRefs", () => {
       const fixture = createValidPairContent();
       fixture.evidence.selectedSourceRefs = [
         {
@@ -387,7 +397,7 @@ describe("PolicyInsight validation", () => {
         }
       ];
 
-      expect(parsePolicyInsightContent(fixture)).toEqual({
+      expect(parsePolicyInsightContent(fixture, { strictRefs: true })).toEqual({
         ok: false,
         issues: [
           {
@@ -397,6 +407,26 @@ describe("PolicyInsight validation", () => {
           }
         ]
       });
+    });
+
+    it("accepts duplicate selectedSourceRefs referenceId values on read path without strictRefs", () => {
+      const fixture = createValidPairContent();
+      fixture.evidence.selectedSourceRefs = [
+        {
+          referenceId: "ref-a",
+          sourceType: "api",
+          locator: "https://a.example.com",
+          observedAt: "2026-07-19T12:00:00.000Z"
+        },
+        {
+          referenceId: "ref-a",
+          sourceType: "database",
+          locator: "https://b.example.com",
+          observedAt: "2026-07-19T12:01:00.000Z"
+        }
+      ];
+
+      expect(parsePolicyInsightContent(fixture).ok).toBe(true);
     });
   });
 

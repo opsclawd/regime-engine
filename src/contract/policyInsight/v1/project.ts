@@ -4,7 +4,7 @@ import type {
   PolicyInsightHistoryResponse,
   PolicyInsightRead
 } from "./types.generated.js";
-import { parsePolicyInsightContent } from "./validate.js";
+import { parsePolicyInsightContent, type PolicyInsightValidationOptions } from "./validate.js";
 
 function isNonNegativeInteger(value: number): boolean {
   return Number.isInteger(value) && value >= 0;
@@ -39,7 +39,8 @@ export type ProjectPolicyInsightReadResult =
 
 export function projectPolicyInsightRead(
   content: PolicyInsightContent,
-  evaluatedAtUnixMs: number
+  evaluatedAtUnixMs: number,
+  options?: PolicyInsightValidationOptions
 ): ProjectPolicyInsightReadResult {
   if (!Number.isFinite(evaluatedAtUnixMs) || !isNonNegativeInteger(evaluatedAtUnixMs)) {
     return {
@@ -54,7 +55,7 @@ export function projectPolicyInsightRead(
     };
   }
 
-  const contentResult = parsePolicyInsightContent(content);
+  const contentResult = parsePolicyInsightContent(content, options);
   if (!contentResult.ok) {
     return { ok: false, issues: contentResult.issues };
   }
@@ -90,7 +91,8 @@ export function projectPolicyInsightHistoryResponse(
   contents: PolicyInsightContent[],
   limit: number,
   _cursor: string | null,
-  queriedAtUnixMs: number
+  queriedAtUnixMs: number,
+  options?: PolicyInsightValidationOptions
 ): ProjectPolicyInsightHistoryResponseResult {
   if (!Number.isFinite(queriedAtUnixMs) || !isNonNegativeInteger(queriedAtUnixMs)) {
     return {
@@ -121,7 +123,7 @@ export function projectPolicyInsightHistoryResponse(
   const projectedItems: PolicyInsightRead[] = [];
 
   for (let i = 0; i < contents.length && projectedItems.length < limit; i++) {
-    const projectResult = projectPolicyInsightRead(contents[i], queriedAtUnixMs);
+    const projectResult = projectPolicyInsightRead(contents[i], queriedAtUnixMs, options);
     if (!projectResult.ok) {
       return {
         ok: false,

@@ -12,7 +12,10 @@ import {
   PolicyInsightStoreUnavailableError,
   PolicyInsightValidationError
 } from "../../application/errors/policyInsightErrors.js";
-import { parsePolicyInsightContent } from "../../contract/policyInsight/v1/validate.js";
+import {
+  parsePolicyInsightContent,
+  type PolicyInsightValidationOptions
+} from "../../contract/policyInsight/v1/validate.js";
 import { computePolicyInsightContentCanonicalAndHash } from "../../contract/policyInsight/v1/canonical.js";
 import type { PolicyInsightContent } from "../../contract/policyInsight/v1/types.generated.js";
 import type { PolicySynthesisEnvelope } from "../../engine/policy/synthesizePolicyInsight.js";
@@ -143,9 +146,10 @@ const validateSynthesisInput = (value: unknown): PolicySynthesisEnvelope => {
 const validateSynthesisOutput = (
   value: unknown,
   payloadCanonical: string,
-  payloadHash: string
+  payloadHash: string,
+  options?: PolicyInsightValidationOptions
 ): PolicyInsightContent => {
-  const result = parsePolicyInsightContent(value);
+  const result = parsePolicyInsightContent(value, options);
   if (!result.ok) {
     throw new PolicyInsightValidationError(
       `synthesisOutputJson failed PolicyInsightContent validation: ${result.issues.length} issue(s)`,
@@ -202,7 +206,9 @@ const mapRowToStoredInsight = (row: PolicyInsightRow): StoredPolicyInsight => {
 
 const validateNewRecord = (input: NewPolicyInsightRecord): void => {
   validateSynthesisInput(input.synthesisInputJson);
-  validateSynthesisOutput(input.synthesisOutputJson, input.payloadCanonical, input.payloadHash);
+  validateSynthesisOutput(input.synthesisOutputJson, input.payloadCanonical, input.payloadHash, {
+    strictRefs: true
+  });
   validateLineage(input.selectedLineageJson, "INCLUDED", "selectedLineageJson");
   validateLineage(input.excludedLineageJson, "EXCLUDED", "excludedLineageJson");
 };
