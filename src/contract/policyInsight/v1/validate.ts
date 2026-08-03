@@ -95,6 +95,12 @@ function compareReasonCodes(a: ReasonCode, b: ReasonCode): number {
   return a.localeCompare(b);
 }
 
+function compareStrings(a: string, b: string): number {
+  if (a < b) return -1;
+  if (a > b) return 1;
+  return 0;
+}
+
 function compareDecimalStrings(a: string, b: string): number {
   const aParts = a.split(".");
   const bParts = b.split(".");
@@ -151,9 +157,14 @@ function mapAjvErrors(errors: ErrorObject[]): PolicyInsightValidationIssue[] {
   });
 }
 
+export interface PolicyInsightValidationOptions {
+  strictRefs?: boolean;
+}
+
 function validateSemantic(
   content: PolicyInsightRead,
-  issues: PolicyInsightValidationIssue[]
+  issues: PolicyInsightValidationIssue[],
+  options?: PolicyInsightValidationOptions
 ): boolean {
   const asOfDate = parseCanonicalTimestamp(content.asOf);
   const generatedAtDate = parseCanonicalTimestamp(content.generatedAt);
@@ -252,76 +263,53 @@ function validateSemantic(
     return false;
   }
 
-  const bundleRefs = content.evidence.selectedBundleRefs;
-  const bundleRefStrings = bundleRefs.map((r) =>
-    JSON.stringify({
-      bundleHash: r.bundleHash,
-      publisher: r.publisher,
-      runId: r.runId,
-      sourceId: r.sourceId
-    })
-  );
-  const uniqueBundleRefStrings = new Set(bundleRefStrings);
-  if (bundleRefStrings.length !== uniqueBundleRefStrings.size) {
-    issues.push({
-      path: "/evidence/selectedBundleRefs",
-      code: "SEMANTIC",
-      message: "selectedBundleRefs must be unique"
-    });
-    return false;
-  }
-
-  if (bundleRefs.length > 1) {
-    const sortedBundleRefStrings = [...bundleRefStrings].sort();
-    for (let i = 0; i < bundleRefStrings.length; i++) {
-      if (bundleRefStrings[i] !== sortedBundleRefStrings[i]) {
-        issues.push({
-          path: "/evidence/selectedBundleRefs",
-          code: "SEMANTIC",
-          message: "selectedBundleRefs must be in lexicographic order"
-        });
-        return false;
-      }
+  if (options?.strictRefs) {
+    const bundleHashes = content.evidence.selectedBundleRefs.map((ref) => ref.bundleHash);
+    if (new Set(bundleHashes).size !== bundleHashes.length) {
+      issues.push({
+        path: "/evidence/selectedBundleRefs",
+        code: "SEMANTIC",
+        message: "selectedBundleRefs must have unique bundleHash values"
+      });
+      return false;
     }
-  }
 
-  const sourceRefs = content.evidence.selectedSourceRefs;
-  const sourceRefStrings = sourceRefs.map((r) =>
-    JSON.stringify({
-      locator: r.locator,
-      observedAt: r.observedAt,
-      referenceId: r.referenceId,
-      sourceType: r.sourceType
-    })
-  );
-  const uniqueSourceRefStrings = new Set(sourceRefStrings);
-  if (sourceRefStrings.length !== uniqueSourceRefStrings.size) {
-    issues.push({
-      path: "/evidence/selectedSourceRefs",
-      code: "SEMANTIC",
-      message: "selectedSourceRefs must be unique"
-    });
-    return false;
-  }
+    if (!isUniqueAndSorted(bundleHashes, compareStrings)) {
+      issues.push({
+        path: "/evidence/selectedBundleRefs",
+        code: "SEMANTIC",
+        message: "selectedBundleRefs must be sorted by bundleHash"
+      });
+      return false;
+    }
 
-  if (sourceRefs.length > 1) {
-    const sortedSourceRefStrings = [...sourceRefStrings].sort();
-    for (let i = 0; i < sourceRefStrings.length; i++) {
-      if (sourceRefStrings[i] !== sortedSourceRefStrings[i]) {
-        issues.push({
-          path: "/evidence/selectedSourceRefs",
-          code: "SEMANTIC",
-          message: "selectedSourceRefs must be in lexicographic order"
-        });
-        return false;
-      }
+    const referenceIds = content.evidence.selectedSourceRefs.map((ref) => ref.referenceId);
+    if (new Set(referenceIds).size !== referenceIds.length) {
+      issues.push({
+        path: "/evidence/selectedSourceRefs",
+        code: "SEMANTIC",
+        message: "selectedSourceRefs must have unique referenceId values"
+      });
+      return false;
+    }
+
+    if (!isUniqueAndSorted(referenceIds, compareStrings)) {
+      issues.push({
+        path: "/evidence/selectedSourceRefs",
+        code: "SEMANTIC",
+        message: "selectedSourceRefs must be sorted by referenceId"
+      });
+      return false;
     }
   }
 
   return true;
 }
 
-export function parsePolicyInsightContent(raw: unknown): PolicyInsightContentValidationResult {
+export function parsePolicyInsightContent(
+  raw: unknown,
+  options?: PolicyInsightValidationOptions
+): PolicyInsightContentValidationResult {
   const issues: PolicyInsightValidationIssue[] = [];
 
   if (typeof raw !== "object" || raw === null) {
@@ -363,7 +351,7 @@ export function parsePolicyInsightContent(raw: unknown): PolicyInsightContentVal
 
   const read = contentForValidation as unknown as PolicyInsightRead;
 
-  validateSemantic(read, issues);
+  validateSemantic(read, issues, options);
 
   if (issues.length > 0) {
     return { ok: false, issues };
@@ -372,7 +360,10 @@ export function parsePolicyInsightContent(raw: unknown): PolicyInsightContentVal
   return { ok: true, value: read as PolicyInsightContent };
 }
 
-export function parsePolicyInsightRead(raw: unknown): PolicyInsightValidationResult {
+export function parsePolicyInsightRead(
+  raw: unknown,
+  options?: PolicyInsightValidationOptions
+): PolicyInsightValidationResult {
   const issues: PolicyInsightValidationIssue[] = [];
 
   if (typeof raw !== "object" || raw === null) {
@@ -419,7 +410,7 @@ export function parsePolicyInsightRead(raw: unknown): PolicyInsightValidationRes
     };
   }
 
-  validateSemantic(read, issues);
+  validateSemantic(read, issues, options);
 
   if (issues.length > 0) {
     return { ok: false, issues };
@@ -428,7 +419,10 @@ export function parsePolicyInsightRead(raw: unknown): PolicyInsightValidationRes
   return { ok: true, value: read };
 }
 
-export function parsePolicyInsightHistoryResponse(raw: unknown): {
+export function parsePolicyInsightHistoryResponse(
+  raw: unknown,
+  options?: PolicyInsightValidationOptions
+): {
   ok: boolean;
   issues: PolicyInsightValidationIssue[];
   value?: PolicyInsightHistoryResponse;
@@ -494,7 +488,7 @@ export function parsePolicyInsightHistoryResponse(raw: unknown): {
   }
 
   for (let i = 0; i < obj.items.length; i++) {
-    const itemResult = parsePolicyInsightRead(obj.items[i]);
+    const itemResult = parsePolicyInsightRead(obj.items[i], options);
     if (!itemResult.ok) {
       return {
         ok: false,

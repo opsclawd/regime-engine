@@ -803,38 +803,62 @@ export function synthesizePolicyInsightV1(
     ...warningsSlice.map((w) => `${w.code}: ${w.message}`)
   ].slice(0, 16);
 
-  const sortedBundleRefs = envelope.evidence.bundles
-    .filter((b) => b.status === "ACCEPTED")
-    .map((b) => ({
-      bundleHash:
-        b.bundleHash as import("../../contract/policyInsight/v1/types.generated.js").Hex64,
-      publisher:
-        b.publisher as import("../../contract/policyInsight/v1/types.generated.js").Identifier,
-      sourceId:
-        b.sourceId as import("../../contract/policyInsight/v1/types.generated.js").Identifier,
-      runId: b.runId as import("../../contract/policyInsight/v1/types.generated.js").Identifier
-    }))
-    .sort((a, b) => {
-      if (a.bundleHash < b.bundleHash) return -1;
-      if (a.bundleHash > b.bundleHash) return 1;
-      return 0;
-    });
+  const bundleMap = new Map<
+    string,
+    {
+      bundleHash: import("../../contract/policyInsight/v1/types.generated.js").Hex64;
+      publisher: import("../../contract/policyInsight/v1/types.generated.js").Identifier;
+      sourceId: import("../../contract/policyInsight/v1/types.generated.js").Identifier;
+      runId: import("../../contract/policyInsight/v1/types.generated.js").Identifier;
+    }
+  >();
+  for (const b of envelope.evidence.bundles) {
+    if (b.status === "ACCEPTED" && !bundleMap.has(b.bundleHash)) {
+      bundleMap.set(b.bundleHash, {
+        bundleHash:
+          b.bundleHash as import("../../contract/policyInsight/v1/types.generated.js").Hex64,
+        publisher:
+          b.publisher as import("../../contract/policyInsight/v1/types.generated.js").Identifier,
+        sourceId:
+          b.sourceId as import("../../contract/policyInsight/v1/types.generated.js").Identifier,
+        runId: b.runId as import("../../contract/policyInsight/v1/types.generated.js").Identifier
+      });
+    }
+  }
 
-  const sortedSourceRefs = envelope.evidence.sourceReferences
-    .filter((ref) => ref.isSelectedLineage && !ref.isAuditOnly)
-    .map((ref) => ({
-      referenceId:
-        ref.referenceId as import("../../contract/policyInsight/v1/types.generated.js").Identifier,
-      sourceType: ref.sourceType as "api" | "database" | "chain" | "document" | "internal_bundle",
-      locator: ref.locator,
-      observedAt:
-        ref.observedAt as import("../../contract/policyInsight/v1/types.generated.js").CanonicalTimestamp
-    }))
-    .sort((a, b) => {
-      if (a.referenceId < b.referenceId) return -1;
-      if (a.referenceId > b.referenceId) return 1;
-      return 0;
-    });
+  const sortedBundleRefs = Array.from(bundleMap.values()).sort((a, b) => {
+    if (a.bundleHash < b.bundleHash) return -1;
+    if (a.bundleHash > b.bundleHash) return 1;
+    return 0;
+  });
+
+  const sourceMap = new Map<
+    string,
+    {
+      referenceId: import("../../contract/policyInsight/v1/types.generated.js").Identifier;
+      sourceType: "api" | "database" | "chain" | "document" | "internal_bundle";
+      locator: string;
+      observedAt: import("../../contract/policyInsight/v1/types.generated.js").CanonicalTimestamp;
+    }
+  >();
+  for (const ref of envelope.evidence.sourceReferences) {
+    if (ref.isSelectedLineage && !ref.isAuditOnly && !sourceMap.has(ref.referenceId)) {
+      sourceMap.set(ref.referenceId, {
+        referenceId:
+          ref.referenceId as import("../../contract/policyInsight/v1/types.generated.js").Identifier,
+        sourceType: ref.sourceType as "api" | "database" | "chain" | "document" | "internal_bundle",
+        locator: ref.locator,
+        observedAt:
+          ref.observedAt as import("../../contract/policyInsight/v1/types.generated.js").CanonicalTimestamp
+      });
+    }
+  }
+
+  const sortedSourceRefs = Array.from(sourceMap.values()).sort((a, b) => {
+    if (a.referenceId < b.referenceId) return -1;
+    if (a.referenceId > b.referenceId) return 1;
+    return 0;
+  });
 
   const canonicalRecommendedAction = deriveCanonicalRecommendedAction({
     envelope,

@@ -17,6 +17,9 @@ const loadInvalid = (name: string): unknown[] => {
   return JSON.parse(content);
 };
 
+const BUNDLE_HASH_A = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+const BUNDLE_HASH_B = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
+
 function createValidPairContent(): PolicyInsightRead {
   return {
     schemaVersion: "policy-insight.v1",
@@ -270,84 +273,160 @@ describe("PolicyInsight validation", () => {
       expect(result.ok).toBe(false);
     });
 
-    it("rejects unordered selectedBundleRefs", () => {
+    it("accepts selectedBundleRefs sorted by bundleHash when metadata order diverges", () => {
       const fixture = createValidPairContent();
       fixture.evidence.selectedBundleRefs = [
-        {
-          bundleHash: "hash0000000000000000000000000000000000",
-          publisher: "pub2",
-          sourceId: "src2",
-          runId: "run2"
-        },
-        {
-          bundleHash: "hash0000000000000000000000000000000001",
-          publisher: "pub1",
-          sourceId: "src1",
-          runId: "run1"
-        }
+        { bundleHash: BUNDLE_HASH_A, publisher: "pub-z", sourceId: "src-z", runId: "run-z" },
+        { bundleHash: BUNDLE_HASH_B, publisher: "pub-a", sourceId: "src-a", runId: "run-a" }
       ];
-      const result = parsePolicyInsightContent(fixture);
-      expect(result.ok).toBe(false);
+
+      expect(parsePolicyInsightContent(fixture, { strictRefs: true }).ok).toBe(true);
     });
 
-    it("rejects duplicate selectedBundleRefs", () => {
+    it("rejects selectedBundleRefs sorted by metadata but not bundleHash under strictRefs", () => {
       const fixture = createValidPairContent();
       fixture.evidence.selectedBundleRefs = [
-        {
-          bundleHash: "hash0000000000000000000000000000000000",
-          publisher: "pub1",
-          sourceId: "src1",
-          runId: "run1"
-        },
-        {
-          bundleHash: "hash0000000000000000000000000000000000",
-          publisher: "pub1",
-          sourceId: "src1",
-          runId: "run1"
-        }
+        { bundleHash: BUNDLE_HASH_B, publisher: "pub-a", sourceId: "src-a", runId: "run-a" },
+        { bundleHash: BUNDLE_HASH_A, publisher: "pub-z", sourceId: "src-z", runId: "run-z" }
       ];
-      const result = parsePolicyInsightContent(fixture);
-      expect(result.ok).toBe(false);
+
+      expect(parsePolicyInsightContent(fixture, { strictRefs: true })).toEqual({
+        ok: false,
+        issues: [
+          {
+            path: "/evidence/selectedBundleRefs",
+            code: "SEMANTIC",
+            message: "selectedBundleRefs must be sorted by bundleHash"
+          }
+        ]
+      });
     });
 
-    it("rejects unordered selectedSourceRefs", () => {
+    it("rejects duplicate selectedBundleRefs bundleHash values under strictRefs", () => {
+      const fixture = createValidPairContent();
+      fixture.evidence.selectedBundleRefs = [
+        { bundleHash: BUNDLE_HASH_A, publisher: "pub-a", sourceId: "src-a", runId: "run-a" },
+        { bundleHash: BUNDLE_HASH_A, publisher: "pub-b", sourceId: "src-b", runId: "run-b" }
+      ];
+
+      expect(parsePolicyInsightContent(fixture, { strictRefs: true })).toEqual({
+        ok: false,
+        issues: [
+          {
+            path: "/evidence/selectedBundleRefs",
+            code: "SEMANTIC",
+            message: "selectedBundleRefs must have unique bundleHash values"
+          }
+        ]
+      });
+    });
+
+    it("accepts duplicate selectedBundleRefs bundleHash values on read path without strictRefs", () => {
+      const fixture = createValidPairContent();
+      fixture.evidence.selectedBundleRefs = [
+        { bundleHash: BUNDLE_HASH_A, publisher: "pub-a", sourceId: "src-a", runId: "run-a" },
+        { bundleHash: BUNDLE_HASH_A, publisher: "pub-b", sourceId: "src-b", runId: "run-b" }
+      ];
+
+      expect(parsePolicyInsightContent(fixture).ok).toBe(true);
+    });
+
+    it("accepts selectedSourceRefs sorted by referenceId when locator order diverges", () => {
       const fixture = createValidPairContent();
       fixture.evidence.selectedSourceRefs = [
         {
-          referenceId: "ref2",
+          referenceId: "ref-a",
           sourceType: "api",
+          locator: "https://z.example.com",
+          observedAt: "2026-07-19T12:00:00.000Z"
+        },
+        {
+          referenceId: "ref-b",
+          sourceType: "database",
+          locator: "https://a.example.com",
+          observedAt: "2026-07-19T12:01:00.000Z"
+        }
+      ];
+
+      expect(parsePolicyInsightContent(fixture, { strictRefs: true }).ok).toBe(true);
+    });
+
+    it("rejects selectedSourceRefs sorted by locator but not referenceId under strictRefs", () => {
+      const fixture = createValidPairContent();
+      fixture.evidence.selectedSourceRefs = [
+        {
+          referenceId: "ref-b",
+          sourceType: "api",
+          locator: "https://a.example.com",
+          observedAt: "2026-07-19T12:00:00.000Z"
+        },
+        {
+          referenceId: "ref-a",
+          sourceType: "database",
+          locator: "https://z.example.com",
+          observedAt: "2026-07-19T12:01:00.000Z"
+        }
+      ];
+
+      expect(parsePolicyInsightContent(fixture, { strictRefs: true })).toEqual({
+        ok: false,
+        issues: [
+          {
+            path: "/evidence/selectedSourceRefs",
+            code: "SEMANTIC",
+            message: "selectedSourceRefs must be sorted by referenceId"
+          }
+        ]
+      });
+    });
+
+    it("rejects duplicate selectedSourceRefs referenceId values under strictRefs", () => {
+      const fixture = createValidPairContent();
+      fixture.evidence.selectedSourceRefs = [
+        {
+          referenceId: "ref-a",
+          sourceType: "api",
+          locator: "https://a.example.com",
+          observedAt: "2026-07-19T12:00:00.000Z"
+        },
+        {
+          referenceId: "ref-a",
+          sourceType: "database",
           locator: "https://b.example.com",
-          observedAt: "2026-07-19T12:00:00.000Z"
-        },
-        {
-          referenceId: "ref1",
-          sourceType: "api",
-          locator: "https://a.example.com",
-          observedAt: "2026-07-19T12:00:00.000Z"
+          observedAt: "2026-07-19T12:01:00.000Z"
         }
       ];
-      const result = parsePolicyInsightContent(fixture);
-      expect(result.ok).toBe(false);
+
+      expect(parsePolicyInsightContent(fixture, { strictRefs: true })).toEqual({
+        ok: false,
+        issues: [
+          {
+            path: "/evidence/selectedSourceRefs",
+            code: "SEMANTIC",
+            message: "selectedSourceRefs must have unique referenceId values"
+          }
+        ]
+      });
     });
 
-    it("rejects duplicate selectedSourceRefs", () => {
+    it("accepts duplicate selectedSourceRefs referenceId values on read path without strictRefs", () => {
       const fixture = createValidPairContent();
       fixture.evidence.selectedSourceRefs = [
         {
-          referenceId: "ref1",
+          referenceId: "ref-a",
           sourceType: "api",
           locator: "https://a.example.com",
           observedAt: "2026-07-19T12:00:00.000Z"
         },
         {
-          referenceId: "ref1",
-          sourceType: "api",
-          locator: "https://a.example.com",
-          observedAt: "2026-07-19T12:00:00.000Z"
+          referenceId: "ref-a",
+          sourceType: "database",
+          locator: "https://b.example.com",
+          observedAt: "2026-07-19T12:01:00.000Z"
         }
       ];
-      const result = parsePolicyInsightContent(fixture);
-      expect(result.ok).toBe(false);
+
+      expect(parsePolicyInsightContent(fixture).ok).toBe(true);
     });
   });
 
