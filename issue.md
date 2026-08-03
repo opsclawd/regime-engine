@@ -1,39 +1,47 @@
-# Trigger pair PolicyInsight synthesis on new sr_theses_v2 data, not just evidence bundles
+# deterministicStatus coverage check always reports MISSING due to family-key mismatch in selectEvidence.ts
 
-## Problem
+## Summary
 
-Pair-scoped `PolicyInsight` synthesis is gated entirely on evidence-bundle existence — confirmed live, currently blocking real work end-to-end:
+`selectEvidence.ts`'s deterministic-family coverage check is structurally broken and unconditionally reports `deterministicStatus: "MISSING"` on every synthesis run, regardless of whether deterministic evidence was actually collected, transmitted, and selected. This produces the misleading `EVIDENCE_MISSING_FAMILY: "Family deterministic is missing from selected evidence"` reason code seen in real, live `PolicyInsight` output even when deterministic evidence genuinely was used.
 
-`postgresPolicyInsightSynthesisTriggerAdapter.ts`'s `claimLatestPairEvidence` only checks:
-```sql
-SELECT MAX(id) FROM regime_engine.evidence_bundles
-WHERE pair = 'SOL/USDC' AND scope_key = 'pair' AND id > last_processed_receipt_id
+## Root cause
+
+Two separate, inconsistently-keyed bookkeeping structures exist for deterministic-feature candidates:
+
+1. `candidatesByFamily` (`selectEvidence.ts:316-322`) groups every candidate by its **real** `family` value — for deterministic features this is `position_state`/`price_quality`/`market_state`/`liquidity`/`risk` (set upstream in `sol-usdc-clmm-intelligence`'s `mapFeatureKindToFamily`), never the literal string `"deterministic"`.
+2. `countForCoverage` (`selectEvidence.ts:1118-1124`) correctly special-cases `c.kind === "deterministic_feature"` and buckets it under the literal key `"deterministic"` for a *different* counter, independent of `candidatesByFamily`.
+
+The coverage-status derivation at `selectEvidence.ts:1259-1264` queries the wrong structure:
+```ts
+let deterministicStatus: "MISSING" | "REJECTED" | "AVAILABLE" = "AVAILABLE";
+const detCandidates = candidatesByFamily.get("deterministic") || [];
+if (detCandidates.length === 0) {
+  deterministicStatus = "MISSING";
+}
 ```
+`candidatesByFamily.get("deterministic")` is always `undefined` → always `[]` → `deterministicStatus` is unconditionally `"MISSING"`, even when `selectedDeterministic` (populated correctly, `selectEvidence.ts:1127-1134`) is non-empty and deterministic features were genuinely used in scoring elsewhere in this same function.
 
-`sol-usdc-clmm-intelligence` has never produced a pair-scoped evidence bundle (its own contextual collectors — support-resistance, news-evidence — are unconfigured/broken; see that repo's issue history). So this cursor never advances, and the synthesis worker (#78/#79) never runs a single synthesis cycle, ever — confirmed live: `regime_engine.policy_insight_synthesis_cursor` sits at `last_processed_receipt_id = 0` indefinitely.
+## Impact
 
-Meanwhile, `crypto-aggregator` #3 now successfully pushes real SOL/USDC support/resistance data into `regime_engine.sr_theses_v2` (confirmed live, real row present), and #82 wired `synthesizePolicyInsightUseCase` to read it. But that data is completely unreachable in practice — nothing can ever trigger a synthesis cycle to use it.
+- Every `PolicyInsight` this repo has ever produced has carried a spurious `EVIDENCE_MISSING_FAMILY: deterministic` warning, misleading anyone reading the output (including downstream consumers like `clmm-v2`'s UI) into thinking deterministic price/position/market data was unavailable, when it was actually collected, transmitted, and used.
+- This makes the completeness/mode logic (`FULL`/`PARTIAL`/`DEGRADED_NO_RESEARCH`, if `deterministicStatus` feeds into it) potentially incorrect too — worth checking whether `deterministicStatus` gates anything beyond the reason-code text.
 
-## Why this is the right fix (not fixing the evidence-bundle side instead)
+## Fix
 
-Traced how the claimed receipt is actually used: `runPolicyInsightSynthesisCycle` calls `claimLatestPairEvidence` purely to decide *whether to run a cycle* — the claimed `targetReceiptId` is bookkeeping/idempotency identity, not an input to synthesis itself. `synthesizePolicyInsightUseCase` always independently re-queries the *current* evidence selection, market regime, and (post-#82) `sr_theses_v2` state at cycle time, regardless of which specific row triggered the cycle. This means adding a second trigger source is additive and safe — it doesn't change what gets synthesized, only when a cycle runs.
-
-## Scope
-
-1. Extend `regime_engine.policy_insight_synthesis_cursor` with a second tracked pointer, e.g. `last_processed_sr_theses_max_id` (same shape as the existing `last_processed_receipt_id`, just tracking `MAX(id)` from `regime_engine.sr_theses_v2` instead of `evidence_bundles`).
-2. Change `claimLatestPairEvidence`'s claim condition to fire if **either** pointer has advanced: `evidence_bundles.MAX(id) > last_processed_receipt_id` OR `sr_theses_v2.MAX(id) > last_processed_sr_theses_max_id` (scoped to `symbol='SOL/USDC'` for the SR side).
-3. On successful completion, advance **both** pointers to their current maxes (even if only one had actually changed) — otherwise a small lag in one source could cause redundant re-triggering.
-4. Keep the existing lease/retry/attempt-count machinery as-is — this only changes the claim query's trigger condition, not the surrounding coordination logic.
-5. `PolicyInsightSynthesisClaim`/`ClaimLatestPairEvidenceInput` types may need a note clarifying `targetReceiptId` no longer strictly means "an evidence_bundles.id" — document what it represents now (likely just "the evidence_bundles component of this claim's identity," with the SR component tracked separately, or an opaque combined cursor version — pick during implementation).
-
-## Explicitly out of scope
-
-- Fixing `sol-usdc-clmm-intelligence`'s own `support-resistance`/`news-evidence`/`on-chain-flow` collectors — real, separate reliability work, tracked independently. Once fixed, that data becomes an *additional* input to synthesis (already true post-#82's evidence-bundle read path), not a trigger dependency.
-- Position-scoped synthesis (#79) — unaffected, uses a different claim path entirely.
+Replace the broken lookup with a check against `selectedDeterministic`/`countForCoverage["deterministic"]` (the correctly-keyed structures), e.g.:
+```ts
+let deterministicStatus: "MISSING" | "REJECTED" | "AVAILABLE" = "AVAILABLE";
+if (countForCoverage["deterministic"] === 0 && selectedDeterministic.length === 0) {
+  // distinguish "no deterministic candidates were ever registered" (MISSING)
+  // from "candidates existed but none survived selection" (REJECTED)
+}
+```
+Needs a registration-time counter of *all* deterministic-feature candidates (not just selected ones) to correctly distinguish `MISSING` from `REJECTED`, since `candidatesByFamily` can't be reused directly.
 
 ## Acceptance criteria
 
-1. A live `crypto-aggregator` SR emission (with no new evidence bundle) causes the synthesis worker to claim and run a cycle within one poll interval.
-2. `GET /v1/insights/sol-usdc/current` returns a real synthesized `PolicyInsight` reflecting the SR data, without requiring `sol-usdc-clmm-intelligence` to ever publish a pair-scoped evidence bundle.
-3. A new evidence bundle (once `sol-usdc-clmm-intelligence`'s side is eventually fixed) still independently triggers a cycle too — both paths coexist.
-4. No duplicate/redundant synthesis cycles from the same underlying change (verify the dual-pointer advance logic doesn't cause a ping-pong retrigger).
+- [ ] `deterministicStatus` correctly reports `AVAILABLE` when deterministic evidence was collected and selected (confirmed via a real live synthesis, not just a unit fixture).
+- [ ] Still correctly reports `MISSING`/`REJECTED` when deterministic evidence genuinely wasn't available/selected (add a regression test for this negative case too).
+- [ ] Regression test added asserting the previous always-MISSING behavior doesn't regress.
+- [ ] Live-verified: a real `PolicyInsight` no longer carries `EVIDENCE_MISSING_FAMILY: deterministic` when deterministic data was actually used.
+
