@@ -314,8 +314,12 @@ export function selectEvidence(input: SelectEvidenceInput): SelectedEvidenceSumm
   }
 
   const candidatesByFamily = new Map<string, IntermediateCandidate[]>();
+  let registeredDeterministicCount = 0;
 
   const registerCandidate = (c: IntermediateCandidate) => {
+    if (c.kind === "deterministic_feature") {
+      registeredDeterministicCount++;
+    }
     if (!candidatesByFamily.has(c.family)) {
       candidatesByFamily.set(c.family, []);
     }
@@ -1258,8 +1262,7 @@ export function selectEvidence(input: SelectEvidenceInput): SelectedEvidenceSumm
 
   // Derive deterministic family coverage status separately
   let deterministicStatus: "MISSING" | "REJECTED" | "AVAILABLE" = "AVAILABLE";
-  const detCandidates = candidatesByFamily.get("deterministic") || [];
-  if (detCandidates.length === 0) {
+  if (registeredDeterministicCount === 0) {
     deterministicStatus = "MISSING";
   } else if (selectedDeterministic.length === 0) {
     deterministicStatus = "REJECTED";
