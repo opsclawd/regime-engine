@@ -76,6 +76,8 @@ export interface EvidenceBundleRepositoryPort {
     records: EvidenceBundleRecord[];
     nextCursor: EvidenceHistoryCursor | null;
   }>;
+
+  getRunIdById(id: number): Promise<string | null>;
 }
 
 const LENGTH_PREFIX = (s: string): string => `${s.length}:${s}`;

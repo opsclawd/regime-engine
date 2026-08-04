@@ -403,6 +403,26 @@ export const createPostgresEvidenceBundleRepository = (db: Db): EvidenceBundleRe
         }
         throw error;
       }
+    },
+
+    getRunIdById: async (id: number): Promise<string | null> => {
+      try {
+        const rows = await db
+          .select({ runId: evidenceBundles.runId })
+          .from(evidenceBundles)
+          .where(eq(evidenceBundles.id, id))
+          .limit(1);
+
+        if (rows.length === 0) {
+          return null;
+        }
+        return String(rows[0].runId);
+      } catch (error) {
+        if (isTransientPostgresFailure(error)) {
+          throw new EvidenceStoreUnavailableError(undefined, { cause: error });
+        }
+        throw error;
+      }
     }
   };
 };

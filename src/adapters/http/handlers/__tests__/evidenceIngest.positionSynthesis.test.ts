@@ -50,7 +50,8 @@ describe("evidenceIngest position synthesis handler", () => {
         return { status: "already_ingested", receipt };
       }),
       getLatest: vi.fn(),
-      getHistory: vi.fn()
+      getHistory: vi.fn(),
+      getRunIdById: vi.fn().mockResolvedValue(null)
     };
 
     let synthesisCallCount = 0;

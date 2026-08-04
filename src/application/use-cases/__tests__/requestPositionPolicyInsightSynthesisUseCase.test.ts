@@ -309,6 +309,10 @@ class FakeEvidenceRepository implements EvidenceBundleRepositoryPort {
   async getHistory(): Promise<{ records: EvidenceBundleRecord[]; nextCursor: null }> {
     throw new Error("Not implemented");
   }
+
+  async getRunIdById(): Promise<string | null> {
+    return null;
+  }
 }
 
 class FakePlanLedgerReader implements PlanLedgerReadPort {

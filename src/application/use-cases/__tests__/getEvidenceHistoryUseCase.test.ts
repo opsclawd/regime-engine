@@ -41,6 +41,10 @@ class FakeEvidenceBundleRepositoryPort implements EvidenceBundleRepositoryPort {
   async append(): Promise<never> {
     throw new Error("Not implemented");
   }
+
+  async getRunIdById(): Promise<string | null> {
+    return null;
+  }
 }
 
 class FakeClockPort implements ClockPort {
