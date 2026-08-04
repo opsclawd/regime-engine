@@ -141,13 +141,11 @@ describe("createEvidenceRawHandler", () => {
   });
 
   it("returns 503 EVIDENCE_STORE_UNAVAILABLE for cross-schema read failures", async () => {
-    const mockUseCase = vi
-      .fn()
-      .mockRejectedValue(
-        new EvidenceStoreUnavailableError("DB connection failed", {
-          cause: new Error("connection timeout")
-        })
-      ) as unknown as GetRawObservationsForBundleUseCase;
+    const mockUseCase = vi.fn().mockRejectedValue(
+      new EvidenceStoreUnavailableError("DB connection failed", {
+        cause: new Error("connection timeout")
+      })
+    ) as unknown as GetRawObservationsForBundleUseCase;
 
     const app = createTestApp(mockUseCase);
     const response = await app.inject({
