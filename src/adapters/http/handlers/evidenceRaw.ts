@@ -30,20 +30,7 @@ export const createEvidenceRawHandler = (useCase: GetRawObservationsForBundleUse
     }
 
     try {
-      const rawId = request.params.id ?? "";
-      let identifier: string;
-      try {
-        identifier = decodeURIComponent(rawId);
-      } catch {
-        return reply.code(400).send({
-          schemaVersion: EVIDENCE_SCHEMA_VERSION,
-          error: {
-            code: ERROR_CODES.VALIDATION_ERROR,
-            message: `Invalid URI encoding in identifier: ${rawId}`,
-            details: []
-          }
-        });
-      }
+      const identifier = request.params.id ?? "";
 
       const result = await useCase({ identifier });
 

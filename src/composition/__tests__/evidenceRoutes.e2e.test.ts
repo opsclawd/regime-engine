@@ -1,5 +1,9 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { buildApp } from "../buildApp.js";
+import { buildApplication } from "../buildApplication.js";
+import { createLedgerStore } from "../../ledger/store.js";
+import type { RuntimeStoreContext } from "../buildStoreContext.js";
+import type { Db } from "../../ledger/pg/db.js";
 
 describe("evidenceRoutes e2e", () => {
   const TOKEN = "test-evidence-token";
@@ -19,6 +23,46 @@ describe("evidenceRoutes e2e", () => {
     process.env.INSIGHTS_INGEST_TOKEN = INSIGHT_TOKEN;
     return buildApp();
   };
+
+  describe("with configured evidence store", () => {
+    it("GET /v1/evidence/sol-usdc/:id/raw returns 200 when raw observations store is configured", async () => {
+      const mockGetRawObservations = vi.fn().mockResolvedValue({
+        runId: "run-123",
+        items: [{ price: 100 }]
+      });
+
+      const storeContext: RuntimeStoreContext = {
+        ledger: createLedgerStore(":memory:"),
+        pg: {} as unknown as Db,
+        candleStore: null,
+        srThesesV2Store: null,
+        close: async () => {}
+      };
+
+      const deps = {
+        ...buildApplication(storeContext),
+        getRawObservationsForBundle: mockGetRawObservations
+      };
+
+      const app = buildApp({ storeContext, deps });
+
+      const response = await app.inject({
+        method: "GET",
+        url: "/v1/evidence/sol-usdc/123/raw"
+      });
+
+      expect(response.statusCode).toBe(200);
+      expect(response.json()).toEqual({
+        schemaVersion: "evidence-bundle.v1",
+        pair: "SOL/USDC",
+        runId: "run-123",
+        items: [{ price: 100 }]
+      });
+      expect(mockGetRawObservations).toHaveBeenCalledWith({ identifier: "123" });
+
+      await app.close();
+    });
+  });
 
   describe("never routes evidence through final-policy insights", () => {
     it("registers legacy /v1/insights/sol-usdc routes separately", async () => {

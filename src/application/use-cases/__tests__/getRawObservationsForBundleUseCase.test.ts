@@ -6,7 +6,6 @@ import type {
 } from "../../ports/rawObservationsReadPort.js";
 import {
   RawObservationIdentifierValidationError,
-  EvidenceBundleNotFoundError,
   RawObservationsNotFoundError
 } from "../../errors/evidenceErrors.js";
 import { createGetRawObservationsForBundleUseCase } from "../getRawObservationsForBundleUseCase.js";
@@ -121,20 +120,46 @@ describe("getRawObservationsForBundleUseCase", () => {
     expect(rawObs.getByRunIdCalls).toEqual([]);
   });
 
-  it("reports a missing numeric bundle without querying raw observations", async () => {
+  it("falls back to querying raw observations with numeric identifier when bundle is not found", async () => {
     const repo = new FakeEvidenceBundleRepositoryPort();
     const rawObs = new FakeRawObservationsReadPort();
     repo.runIdMap[999] = null;
+    const items: RawObservation[] = [{ price: 100 }];
+    rawObs.observationsMap["999"] = items;
 
     const useCase = createGetRawObservationsForBundleUseCase({
       evidenceRepository: repo,
       rawObservations: rawObs
     });
 
-    await expect(useCase({ identifier: "999" })).rejects.toThrow(EvidenceBundleNotFoundError);
+    const result = await useCase({ identifier: "999" });
 
     expect(repo.getRunIdByIdCalls).toEqual([999]);
-    expect(rawObs.getByRunIdCalls).toEqual([]);
+    expect(rawObs.getByRunIdCalls).toEqual(["999"]);
+    expect(result).toEqual({ runId: "999", items });
+  });
+
+  it("reports missing observations when numeric bundle is not found and raw observations are empty", async () => {
+    const repo = new FakeEvidenceBundleRepositoryPort();
+    const rawObs = new FakeRawObservationsReadPort();
+    repo.runIdMap[999] = null;
+    rawObs.observationsMap["999"] = [];
+
+    const useCase = createGetRawObservationsForBundleUseCase({
+      evidenceRepository: repo,
+      rawObservations: rawObs
+    });
+
+    try {
+      await useCase({ identifier: "999" });
+      expect.fail("Should have thrown RawObservationsNotFoundError");
+    } catch (err) {
+      expect(err).toBeInstanceOf(RawObservationsNotFoundError);
+      expect((err as RawObservationsNotFoundError).runId).toBe("999");
+    }
+
+    expect(repo.getRunIdByIdCalls).toEqual([999]);
+    expect(rawObs.getByRunIdCalls).toEqual(["999"]);
   });
 
   it("reports missing observations for a resolved bundle run id", async () => {

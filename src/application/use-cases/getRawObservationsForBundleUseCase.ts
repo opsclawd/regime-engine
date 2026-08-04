@@ -2,7 +2,6 @@ import type { EvidenceBundleRepositoryPort } from "../ports/evidenceBundleReposi
 import type { RawObservationsReadPort, RawObservation } from "../ports/rawObservationsReadPort.js";
 import {
   RawObservationIdentifierValidationError,
-  EvidenceBundleNotFoundError,
   RawObservationsNotFoundError
 } from "../errors/evidenceErrors.js";
 
@@ -35,11 +34,7 @@ export const createGetRawObservationsForBundleUseCase = (
       }
 
       const resolvedRunId = await deps.evidenceRepository.getRunIdById(numericId);
-      if (resolvedRunId === null) {
-        throw new EvidenceBundleNotFoundError(numericId);
-      }
-
-      targetRunId = resolvedRunId;
+      targetRunId = resolvedRunId ?? identifier;
     } else {
       if (identifier.length === 0 || identifier.length > 256) {
         throw new RawObservationIdentifierValidationError(
