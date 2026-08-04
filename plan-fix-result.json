@@ -1,4 +1,0 @@
-{
-  "verdict": "done_with_fixes",
-  "summary": "Updated Task 1 in plan.md and task-manifest.json to declare the 5 test files (getCurrentEvidenceUseCase.test.ts, getEvidenceHistoryUseCase.test.ts, ingestEvidenceBundleUseCase.test.ts, requestPositionPolicyInsightSynthesisUseCase.test.ts, and selectEvidenceForSynthesisUseCase.test.ts) as expected/modified files rather than reference-only files. Because Task 1 introduces a breaking method addition (getRunIdById) to EvidenceBundleRepositoryPort, these test files' fake repository implementations must be updated in Task 1 to ensure workspace type checking remains green."
-}
