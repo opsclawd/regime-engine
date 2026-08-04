@@ -66,6 +66,26 @@ describe("evidenceRoutes e2e", () => {
 
       await app.close();
     });
+
+    it("registers raw evidence separately from policy insight routes", async () => {
+      const app = await buildAppWithToken();
+
+      const rawResponse = await app.inject({
+        method: "GET",
+        url: "/v1/evidence/sol-usdc/123/raw"
+      });
+      expect(rawResponse.statusCode).toBe(503);
+
+      const insightCurrent = await app.inject({
+        method: "GET",
+        url: "/v1/insights/sol-usdc/current"
+      });
+      expect(insightCurrent.statusCode).not.toBe(404);
+
+      expect(rawResponse.json()).not.toEqual(insightCurrent.json());
+
+      await app.close();
+    });
   });
 
   describe("without DATABASE_URL (no evidence store)", () => {

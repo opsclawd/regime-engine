@@ -88,4 +88,28 @@ describe("evidenceSelectionWiring", () => {
 
     await app.close();
   });
+
+  it("wires raw observation reads only when PostgreSQL is configured", () => {
+    const unconfiguredCtx: RuntimeStoreContext = {
+      ledger: store,
+      pg: null,
+      candleStore: null,
+      srThesesV2Store: null,
+      close: async () => {}
+    };
+    const unconfiguredApp = buildApplication(unconfiguredCtx);
+    expect(unconfiguredApp.getRawObservationsForBundle).toBeNull();
+
+    const dbDouble = {} as unknown as Db;
+    const configuredCtx: RuntimeStoreContext = {
+      ledger: store,
+      pg: dbDouble,
+      candleStore: null,
+      srThesesV2Store: null,
+      close: async () => {}
+    };
+    const configuredApp = buildApplication(configuredCtx);
+    expect(configuredApp.getRawObservationsForBundle).not.toBeNull();
+    expect(typeof configuredApp.getRawObservationsForBundle).toBe("function");
+  });
 });

@@ -19,6 +19,7 @@ import type { GetWeeklyReportUseCase } from "../application/use-cases/getWeeklyR
 import type { IngestEvidenceBundleUseCase } from "../application/use-cases/ingestEvidenceBundleUseCase.js";
 import type { GetCurrentEvidenceUseCase } from "../application/use-cases/getCurrentEvidenceUseCase.js";
 import type { GetEvidenceHistoryUseCase } from "../application/use-cases/getEvidenceHistoryUseCase.js";
+import type { GetRawObservationsForBundleUseCase } from "../application/use-cases/getRawObservationsForBundleUseCase.js";
 import type { SelectEvidenceForSynthesisUseCase } from "../application/use-cases/selectEvidenceForSynthesisUseCase.js";
 import type { SynthesizePolicyInsightUseCase } from "../application/use-cases/synthesizePolicyInsightUseCase.js";
 import type { GetCurrentPolicyInsightUseCase } from "../application/use-cases/getCurrentPolicyInsightUseCase.js";
@@ -33,6 +34,7 @@ import { createGetWeeklyReportUseCase } from "../application/use-cases/getWeekly
 import { createIngestEvidenceBundleUseCase } from "../application/use-cases/ingestEvidenceBundleUseCase.js";
 import { createGetCurrentEvidenceUseCase } from "../application/use-cases/getCurrentEvidenceUseCase.js";
 import { createGetEvidenceHistoryUseCase } from "../application/use-cases/getEvidenceHistoryUseCase.js";
+import { createGetRawObservationsForBundleUseCase } from "../application/use-cases/getRawObservationsForBundleUseCase.js";
 import { createSelectEvidenceForSynthesisUseCase } from "../application/use-cases/selectEvidenceForSynthesisUseCase.js";
 import { createSynthesizePolicyInsightUseCase } from "../application/use-cases/synthesizePolicyInsightUseCase.js";
 import { createGetCurrentPolicyInsightUseCase } from "../application/use-cases/getCurrentPolicyInsightUseCase.js";
@@ -50,6 +52,7 @@ import {
 } from "../adapters/sqlite/sqliteExecutionLedgerAdapter.js";
 import { createSqliteWeeklyReportReadAdapter } from "../adapters/sqlite/sqliteWeeklyReportReadAdapter.js";
 import { createPostgresEvidenceBundleRepository } from "../adapters/postgres/postgresEvidenceBundleRepository.js";
+import { createPostgresRawObservationsReadAdapter } from "../adapters/postgres/postgresRawObservationsReadAdapter.js";
 import { createPostgresPolicyInsightRepository } from "../adapters/postgres/postgresPolicyInsightRepository.js";
 import { createPostgresPositionPolicyInsightSynthesisQueueAdapter } from "../adapters/postgres/postgresPositionPolicyInsightSynthesisQueueAdapter.js";
 import { SOL_USDC_POLICY_V1 } from "../engine/policy/ruleset.js";
@@ -90,6 +93,7 @@ export interface ApplicationDependencies {
   ingestEvidenceBundle: IngestEvidenceBundleUseCase | null;
   getCurrentEvidence: GetCurrentEvidenceUseCase | null;
   getEvidenceHistory: GetEvidenceHistoryUseCase | null;
+  getRawObservationsForBundle: GetRawObservationsForBundleUseCase | null;
   selectEvidenceForSynthesis: SelectEvidenceForSynthesisUseCase | null;
   synthesizePolicyInsight: SynthesizePolicyInsightUseCase | null;
   getCurrentPolicyInsight: GetCurrentPolicyInsightUseCase | null;
@@ -125,6 +129,7 @@ export const buildApplication = (ctx: RuntimeStoreContext): ApplicationDependenc
     : null;
 
   const evidenceRepository = ctx.pg ? createPostgresEvidenceBundleRepository(ctx.pg) : null;
+  const rawObservations = ctx.pg ? createPostgresRawObservationsReadAdapter(ctx.pg) : null;
 
   const requestPositionPolicyInsightSynthesis: RequestPositionPolicyInsightSynthesisUseCase | null =
     ctx.pg && evidenceRepository && positionPolicyInsightSynthesisQueue
@@ -172,6 +177,13 @@ export const buildApplication = (ctx: RuntimeStoreContext): ApplicationDependenc
   const getEvidenceHistory = evidenceRepository
     ? createGetEvidenceHistoryUseCase({ repository: evidenceRepository, clock })
     : null;
+  const getRawObservationsForBundle =
+    evidenceRepository && rawObservations
+      ? createGetRawObservationsForBundleUseCase({
+          evidenceRepository,
+          rawObservations
+        })
+      : null;
   const selectEvidenceForSynthesis = evidenceRepository
     ? createSelectEvidenceForSynthesisUseCase({ repository: evidenceRepository, clock })
     : null;
@@ -228,6 +240,7 @@ export const buildApplication = (ctx: RuntimeStoreContext): ApplicationDependenc
     ingestEvidenceBundle,
     getCurrentEvidence,
     getEvidenceHistory,
+    getRawObservationsForBundle,
     selectEvidenceForSynthesis,
     synthesizePolicyInsight,
     getCurrentPolicyInsight,

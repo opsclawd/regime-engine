@@ -38,6 +38,7 @@ describe("positionSynthesisRequestRoutes e2e", () => {
     ingestEvidenceBundle: null,
     getCurrentEvidence: null,
     getEvidenceHistory: null,
+    getRawObservationsForBundle: null,
     ledgerStore: {} as unknown as LedgerStore,
     getCurrentPolicyInsight: null,
     getPolicyInsightHistory: null,
