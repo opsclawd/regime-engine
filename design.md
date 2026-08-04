@@ -1,53 +1,52 @@
-# Design Document: Fix deterministicStatus coverage check
+# API: Expose Raw Observations API for Evidence Bundles
 
-## The Problem Being Solved and Why It Matters
+## 1. Problem and Why it Matters
 
-`selectEvidence.ts` attempts to determine the coverage status of deterministic features to emit warnings (e.g. `MISSING` or `REJECTED`). It does this by checking `candidatesByFamily.get("deterministic")`. However, deterministic candidates are bucketed in `candidatesByFamily` using their granular real `family` values (e.g., `position_state`, `price_quality`, etc.), not the literal string `"deterministic"`.
+Currently, the `evidence_bundles` table in `regime-engine` stores the synthesized final intelligence received from the `sol-usdc-clmm-intelligence` repo. However, it does not include the raw observations that were gathered originally. To debug, audit, or understand the lineage of a certain evidence bundle, developers need access to the raw observations. These raw observations reside in the `intelligence` schema (`intelligence.raw_observations`) on the same shared database cluster. Creating a read adapter in `regime-engine` to expose these observations via a `GET /v1/evidence/sol-usdc/:id/raw` endpoint enables seamless observability without requiring massive payloads over HTTP during regular evidence ingestion.
 
-Thus, the lookup always returns `undefined`, treating deterministic evidence as unconditionally `"MISSING"`. This creates misleading warning messages (`EVIDENCE_MISSING_FAMILY: deterministic`) in live output and downstream consumers, falsely implying data was omitted even when it was actively selected and used.
+## 2. Key Design Decisions and Trade-offs
 
-## Key Design Decisions and Trade-offs Considered
+- **Querying External Schema (`intelligence.raw_observations`) Directly:**
+  - _Trade-off:_ The architecture doc (`2026-05-09-evidence-driven-policy-pipeline-design.md`) strictly states "repos communicate via HTTP, not shared queries". Querying `intelligence.raw_observations` directly from `regime-engine` creates a direct database coupling to an external schema.
+  - _Decision:_ Since this is an observability-focused read-only endpoint, and both schemas reside in the same database cluster, reading it directly is acceptable to fulfill the issue's requirements. We will use Drizzle's raw `sql` queries rather than defining a rigid schema in `regime-engine`, to keep the footprint small.
+- **Handling the `:id` parameter:**
+  - _Trade-off:_ Users might refer to an evidence bundle by its `regime-engine` primary key (`id`) or by the intelligence pipeline's `runId`.
+  - _Decision:_ The read adapter will support fetching by either the bundle ID (numeric) or the pipeline run ID (string). If numeric, we can query `regime_engine.evidence_bundles` to resolve the `runId`, then fetch the raw observations matching that `runId`.
 
-1. **Change the key in `candidatesByFamily`:** We could group deterministic features under `"deterministic"` in `candidatesByFamily`. _Trade-off:_ This discards the granular family bucketing which might be useful elsewhere, or requires creating a secondary artificial entry for the same candidate.
-2. **Scan `allRegisteredCandidates`:** We could iterate through the map of `allRegisteredCandidates` to check if any have `kind === "deterministic_feature"`. _Trade-off:_ This requires an `O(N)` iteration for something that can be tracked in `O(1)`.
-3. **Add a registration-time counter (Chosen):** Introduce a counter (e.g., `registeredDeterministicCount`) that increments directly within `registerCandidate` or immediately prior, specific to deterministic features. _Rationale:_ This provides exactly the information needed (were any deterministic features ever registered as candidates?) efficiently, while mirroring the existing `selectedDeterministic.length` structure.
+## 3. Proposed Approach with Rationale
 
-## Proposed Approach with Rationale
+1. **Domain Port and Adapter (`src/application/ports/`, `src/adapters/postgres/`)**
+   - Create `RawObservationsReadPort.ts` in `src/application/ports/` defining the interface to fetch raw observations by `runId`.
+   - Create `postgresRawObservationsReadAdapter.ts` in `src/adapters/postgres/`. It will use Drizzle's `sql` to execute: `SELECT * FROM intelligence.raw_observations WHERE run_id = $1`.
+2. **Use Case (`src/application/use-cases/`)**
+   - Create `GetRawObservationsForBundleUseCase.ts`.
+   - The use case takes an identifier (bundle `id` or `runId`). If it's a numeric bundle `id`, it first delegates to the evidence bundles repository to get the `runId`. It then calls the `RawObservationsReadPort` to get the raw observations.
+3. **HTTP Handler and Routing (`src/adapters/http/`)**
+   - Create `src/adapters/http/handlers/evidenceRaw.ts` implementing the Fastify handler.
+   - Wire the handler in `routes.ts` to `app.get("/v1/evidence/sol-usdc/:id/raw", ...)`.
+4. **Testing (`src/adapters/http/handlers/__tests__/` and `src/adapters/postgres/__tests__/`)**
+   - Create `evidenceRaw.test.ts` for HTTP testing.
+   - Vitest tests to ensure determinism and correct handling of 404s when a bundle or its raw observations are missing.
 
-1. Add a `registeredDeterministicCount` variable initialized to `0` alongside the other trackers.
-2. Modify `registerCandidate()` (or the call sites inside `for (const record of sortedRecords)`) to increment `registeredDeterministicCount` when a candidate is a `deterministic_feature`.
-3. Update the derivation logic around line 1260 to use this counter instead of `candidatesByFamily`:
-   ```ts
-   let deterministicStatus: "MISSING" | "REJECTED" | "AVAILABLE" = "AVAILABLE";
-   if (registeredDeterministicCount === 0) {
-     deterministicStatus = "MISSING";
-   } else if (selectedDeterministic.length === 0) {
-     deterministicStatus = "REJECTED";
-   }
-   ```
-   _Rationale:_ This guarantees we accurately distinguish between truly missing inputs (never registered) versus rejected inputs (registered but fell below a threshold or excluded), directly solving the bug.
+## 4. Assumptions Made
 
-## Assumptions Made
+- **Database Permissions:** We assume that the PostgreSQL role used by `regime-engine` has `SELECT` privileges on the `intelligence.raw_observations` table. No DDL grants will be included in this implementation.
+- **Schema Shape:** We assume `intelligence.raw_observations` has a `run_id` (or equivalent) column that corresponds to the `runId` stored in `regime_engine.evidence_bundles`.
+- **Read-Only Access:** We assume `regime-engine` only needs to read this table and never write to it.
 
-1. **Mode Derivation:** The calculated `mode` (`FULL` | `PARTIAL` | `DEGRADED_NO_RESEARCH`) currently only checks contextual families and research briefs, entirely ignoring `deterministicStatus`. We assume this is intentional and will not alter the `mode` calculation to include `deterministicStatus`.
-2. **Registration Semantics:** A candidate is only considered "registered" if it actually passes fundamental lifecycle/scope exclusions. If all bundles containing deterministic features were expired or mismatched scopes, the features are correctly classified as `MISSING` (not `REJECTED`), which aligns with how contextual claims are currently treated.
-3. **Acceptance Criteria "Live-verified":** The issue implies manual operator testing for live insights. This design covers only the code modifications and deterministic unit/regression tests.
+## 5. Scope
 
-## What is in scope and what is explicitly out of scope
+- **In Scope:**
+  - Creating `GetRawObservationsForBundleUseCase`.
+  - Creating the new Postgres read adapter for `intelligence.raw_observations`.
+  - Exposing the `GET /v1/evidence/sol-usdc/:id/raw` endpoint.
+  - Adding corresponding tests.
+- **Out of Scope:**
+  - Defining Drizzle ORM schema files for `intelligence.raw_observations` (since it is owned by another repository).
+  - Provisioning cross-schema DB permissions (handled via IaC/DBA processes).
+  - Any multi-pair logic beyond `SOL/USDC`.
 
-**In Scope:**
+## 6. Risks or Concerns Identified
 
-- Fixing `deterministicStatus` derivation in `selectEvidence.ts`.
-- Introducing `registeredDeterministicCount` (or equivalent registration check).
-- Adding unit/regression tests to cover the "always MISSING" regression and the proper "REJECTED" and "AVAILABLE" cases.
-
-**Out of Scope:**
-
-- Changes to `mode` calculation logic.
-- Changes to other families (contextual/research).
-- Modifying how deterministic features are fundamentally scored or filtered.
-
-## Risks or Concerns Identified from Code Analysis
-
-- Consumers parsing warnings might have hardcoded logic expecting the `missing_family` warning for deterministic data (since it's always been there). Fixing this will suppress that warning in healthy runs, meaning consumers expecting it will see it disappear.
-- While tests ensure the code behavior is correct, we need to ensure the test snapshot diff correctly reflects this change, as the system utilizes snapshot tests for determinism verification. The fix will change the snapshot outputs for cases where deterministic data is used, requiring snapshots to be updated.
+- **Architectural Drift:** Direct database reads into another repository's schema violate the strict isolation explicitly defined in `2026-05-09-evidence-driven-policy-pipeline-design.md`. This introduces fragile coupling: if the `sol-usdc-clmm-intelligence` repo renames its table or columns, the `regime-engine` endpoint will break without compilation warnings.
+- **Mitigation:** Rely strictly on raw SQL with defensive try-catch blocks and explicit error taxonomy, ensuring failures in this observability endpoint do not affect core synthesis logic.

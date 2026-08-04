@@ -1,6 +1,6 @@
 # Task Context: Task 1
 
-Title: Correct deterministic coverage classification with focused regression tests
+Title: Add the raw-observation and bundle-resolution persistence ports
 ## Workspace & Scope Constraints
 
 ## WORKSPACE CONSTRAINTS
@@ -9,233 +9,136 @@ Your working directory is a dedicated git worktree with the repository's complet
 
 .ai-orchestrator.local.json, if one exists, lives only in the main checkout and is intentionally not copied into your worktree — it is operator-machine-specific and not part of your task. Do not search for it or read it outside this directory. Reason about configuration using only .ai-orchestrator.json in your own working directory; treat it as the effective config for your task.
 
-Working Directory: /home/gary/.openclaw/workspace/regime-engine/.ai-worktrees/issue-86
+Working Directory: /home/gary/.openclaw/workspace/regime-engine/.ai-worktrees/issue-90
 Repository: opsclawd/regime-engine
-Branch: ai/issue-86
-Start Commit: fbdec486b4e744aee5c65c378eed5a113f0da68c
+Branch: ai/issue-90
+Start Commit: 328d6f19ce6af8533dfdf3d11fe585d193cbfc18
 
 ## Task Requirements
 
 **Files:**
 
-- Create: `src/engine/evidence/__tests__/selectEvidence.deterministicCoverage.test.ts`
-- Modify: `src/engine/evidence/selectEvidence.ts` (candidate registration near `registerCandidate`, and deterministic coverage derivation near `deterministicStatus`)
-- Read only: `src/engine/evidence/__tests__/evidenceSelectionFixtures.ts`
-- Read only: `src/engine/evidence/selectionPolicy.ts`
-- Read only: `src/engine/evidence/__tests__/selectEvidence.summary.test.ts`
+- Create: `src/application/ports/rawObservationsReadPort.ts`
+- Modify: `src/application/ports/evidenceBundleRepositoryPort.ts`
+- Create: `src/adapters/postgres/postgresRawObservationsReadAdapter.ts`
+- Modify: `src/adapters/postgres/postgresEvidenceBundleRepository.ts`
+- Create: `src/adapters/postgres/__tests__/postgresRawObservationsReadAdapter.test.ts`
+- Create: `src/adapters/postgres/__tests__/postgresEvidenceBundleRepository.runId.test.ts`
+- Modify: `src/application/use-cases/__tests__/getCurrentEvidenceUseCase.test.ts`
+- Modify: `src/application/use-cases/__tests__/getEvidenceHistoryUseCase.test.ts`
+- Modify: `src/application/use-cases/__tests__/ingestEvidenceBundleUseCase.test.ts`
+- Modify: `src/application/use-cases/__tests__/requestPositionPolicyInsightSynthesisUseCase.test.ts`
+- Modify: `src/application/use-cases/__tests__/selectEvidenceForSynthesisUseCase.test.ts`
+- Reference only: `src/ledger/pg/db.ts`
+- Reference only: `src/ledger/pg/schema/evidenceBundles.ts`
+- Reference only: `src/application/errors/evidenceErrors.ts`
 
-**Named invariant tests to write first:**
+**Behavioral invariants (write these named tests first):**
 
-- `does not warn that deterministic evidence is missing when a registered feature is selected`
-- `warns that deterministic evidence was rejected when registered features fail selection`
-- `warns that deterministic evidence is missing when no feature is registered`
+1. `returns raw observations for a run id in deterministic JSON order`: the adapter parameterizes `runId`, converts each external row with `to_jsonb`, and returns the same JSON ordering regardless of database insertion order.
+2. `returns an empty list when a run id has no raw observations`: zero external rows produce `[]`; absence interpretation remains in the use case.
+3. `rejects malformed raw-observation rows as unavailable`: any selected value that is null, an array, or a scalar is not allowed through the port as a JSON object.
+4. `maps raw-observation query failures to EvidenceStoreUnavailableError`: connection, missing-schema/table, permission, or row-shape failures are isolated as an evidence-store availability failure with the original cause.
+5. `resolves an existing evidence bundle id to its run id`: the evidence repository reads one `run_id` for the exact numeric primary key.
+6. `returns null when an evidence bundle id does not exist`: no matching regime-engine row returns `null`.
+7. `maps transient bundle-id lookup failures to EvidenceStoreUnavailableError`: the new repository method follows the existing transient-failure policy.
 
-- [ ] **Step 1: Create the focused regression test file before changing selection logic**
+- [ ] **Step 1: Write focused failing adapter tests**
 
-Create `src/engine/evidence/__tests__/selectEvidence.deterministicCoverage.test.ts` with three direct cases and a helper that filters only deterministic-family warnings, so unrelated missing contextual-family warnings cannot make assertions brittle:
+  Build typed `Db` doubles whose `execute` method captures the Drizzle SQL object and returns representative rows. Assert exact result objects, empty results, deterministic ordering, malformed row rejection, availability translation, `run_id` coercion to string, and `null` for no evidence bundle. Name the test cases exactly as the invariants above.
 
-```ts
-import { describe, expect, it } from "vitest";
-import { selectEvidence } from "../selectEvidence.js";
-import { EVIDENCE_SELECTION_POLICY_V1 } from "../selectionPolicy.js";
-import { buildEvidenceBundle, buildEvidenceRecord } from "./evidenceSelectionFixtures.js";
+- [ ] **Step 2: Run the new adapter tests and confirm the missing modules/method fail**
 
-function selectWithThreshold(
-  bundle: ReturnType<typeof buildEvidenceBundle>,
-  minimumEffectiveScoreBps: number
-) {
-  return selectEvidence({
-    records: [
-      buildEvidenceRecord(bundle, {
-        lifecycle: "FRESH",
-        evidenceHash: "hash-deterministic-coverage"
-      })
-    ],
-    selectedAtUnixMs: Date.parse(bundle.asOf),
-    scope: { kind: "pair" },
-    policy: {
-      ...EVIDENCE_SELECTION_POLICY_V1,
-      defaultSourceQualityBps: 10_000,
-      minimumEffectiveScoreBps
-    }
-  });
-}
+  Run: `pnpm exec vitest run src/adapters/postgres/__tests__/postgresRawObservationsReadAdapter.test.ts src/adapters/postgres/__tests__/postgresEvidenceBundleRepository.runId.test.ts`
 
-function deterministicWarnings(result: ReturnType<typeof selectEvidence>) {
-  return result.warnings.filter((warning) => warning.message.includes("deterministic"));
-}
+  Expected: FAIL because `rawObservationsReadPort.ts`, `postgresRawObservationsReadAdapter.ts`, and `EvidenceBundleRepositoryPort.getRunIdById` do not exist.
 
-describe("deterministic evidence coverage status", () => {
-  it("does not warn that deterministic evidence is missing when a registered feature is selected", () => {
-    const result = selectWithThreshold(buildEvidenceBundle(), 1_000);
+- [ ] **Step 3: Define both ports and implement every affected Postgres adapter in this same task**
 
-    expect(result.selected.deterministicFeatures).toHaveLength(1);
-    expect(deterministicWarnings(result)).toEqual([]);
-    expect(result.mode).toBe("DEGRADED_NO_RESEARCH");
-  });
+  Add this application-facing shape in `rawObservationsReadPort.ts`:
 
-  it("warns that deterministic evidence was rejected when registered features fail selection", () => {
-    const result = selectWithThreshold(buildEvidenceBundle(), 10_000);
+  ```ts
+  export type RawObservation = Readonly<Record<string, unknown>>;
 
-    expect(result.selected.deterministicFeatures).toHaveLength(0);
-    expect(deterministicWarnings(result)).toEqual([
-      {
-        code: "rejected_family",
-        message: "Family deterministic has candidates but none were selected"
-      }
-    ]);
-  });
-
-  it("warns that deterministic evidence is missing when no feature is registered", () => {
-    const result = selectWithThreshold(
-      buildEvidenceBundle({ deterministicFeatures: [] }),
-      1_000
-    );
-
-    expect(result.selected.deterministicFeatures).toHaveLength(0);
-    expect(deterministicWarnings(result)).toEqual([
-      {
-        code: "missing_family",
-        message: "Family deterministic is missing from selected evidence"
-      }
-    ]);
-  });
-});
-```
-
-- [ ] **Step 2: Run the focused test and confirm the regression is exposed**
-
-Run:
-
-```bash
-pnpm exec vitest run src/engine/evidence/__tests__/selectEvidence.deterministicCoverage.test.ts
-```
-
-Expected: FAIL before the implementation change. The AVAILABLE case receives the false deterministic `missing_family` warning, and the REJECTED case receives `missing_family` instead of `rejected_family`; the MISSING case should already pass.
-
-- [ ] **Step 3: Count deterministic candidates at their single registration boundary**
-
-In `src/engine/evidence/selectEvidence.ts`, initialize a local counter beside `candidatesByFamily`, and increment it inside `registerCandidate` before retaining the existing granular-family insertion:
-
-```ts
-  const candidatesByFamily = new Map<string, IntermediateCandidate[]>();
-  let registeredDeterministicCount = 0;
-
-  const registerCandidate = (c: IntermediateCandidate) => {
-    if (c.kind === "deterministic_feature") {
-      registeredDeterministicCount++;
-    }
-    if (!candidatesByFamily.has(c.family)) {
-      candidatesByFamily.set(c.family, []);
-    }
-    candidatesByFamily.get(c.family)!.push(c);
-  };
-```
-
-This placement deliberately counts candidates after the existing fundamental lifecycle, scope, availability, and validity exclusions, but before threshold, dependency, or cap decisions.
-
-- [ ] **Step 4: Derive deterministic coverage from registration and terminal selection**
-
-Replace only the broken literal-family lookup in `src/engine/evidence/selectEvidence.ts`; preserve the existing status union and downstream warning mapping:
-
-```ts
-  let deterministicStatus: "MISSING" | "REJECTED" | "AVAILABLE" = "AVAILABLE";
-  if (registeredDeterministicCount === 0) {
-    deterministicStatus = "MISSING";
-  } else if (selectedDeterministic.length === 0) {
-    deterministicStatus = "REJECTED";
+  export interface RawObservationsReadPort {
+    getByRunId(runId: string): Promise<readonly RawObservation[]>;
   }
-```
+  ```
 
-Do not change `countForCoverage`, contextual `familyStatus`, `mode`, warning text/order, or selected-output normalization.
+  Add this method to `EvidenceBundleRepositoryPort` and implement it in `createPostgresEvidenceBundleRepository` before leaving the task:
 
-- [ ] **Step 5: Verify the focused behavior and touched-file quality checks**
+  ```ts
+  getRunIdById(id: number): Promise<string | null>;
+  ```
 
-Run:
+  Its query must select only `evidenceBundles.runId`, filter with `eq(evidenceBundles.id, id)`, limit to one row, return `null` when absent, and reuse the repository's existing transient Postgres error translation.
 
-```bash
-pnpm exec vitest run src/engine/evidence/__tests__/selectEvidence.deterministicCoverage.test.ts
-pnpm exec eslint src/engine/evidence/selectEvidence.ts src/engine/evidence/__tests__/selectEvidence.deterministicCoverage.test.ts --max-warnings 0
-pnpm exec prettier --check src/engine/evidence/selectEvidence.ts src/engine/evidence/__tests__/selectEvidence.deterministicCoverage.test.ts
-```
+  Update fake `EvidenceBundleRepositoryPort` implementations in `getCurrentEvidenceUseCase.test.ts`, `getEvidenceHistoryUseCase.test.ts`, `ingestEvidenceBundleUseCase.test.ts`, `requestPositionPolicyInsightSynthesisUseCase.test.ts`, and `selectEvidenceForSynthesisUseCase.test.ts` to include `getRunIdById` (e.g. returning `null` or a stubbed run ID) so that workspace type checks pass.
 
-Expected: all three named invariant tests pass, ESLint exits with zero warnings, and Prettier reports both files formatted.
+  Implement `createPostgresRawObservationsReadAdapter(db: Db): RawObservationsReadPort` with a parameterized query equivalent to:
 
-- [ ] **Step 6: Review the scoped diff and commit the atomic fix**
+  ```sql
+  SELECT to_jsonb(raw_observation) AS observation
+  FROM intelligence.raw_observations AS raw_observation
+  WHERE raw_observation.run_id = ${runId}
+  ORDER BY to_jsonb(raw_observation)::text
+  ```
 
-Run:
+  Validate that each returned `observation` is a non-null, non-array object before returning it. Wrap query and row-shape errors in `EvidenceStoreUnavailableError` with `{ cause: error }`, because this adapter crosses an externally owned schema and its failures must not leak database details.
 
-```bash
-git diff -- src/engine/evidence/selectEvidence.ts src/engine/evidence/__tests__/selectEvidence.deterministicCoverage.test.ts
-git add src/engine/evidence/selectEvidence.ts src/engine/evidence/__tests__/selectEvidence.deterministicCoverage.test.ts
-git commit -m "fix: classify deterministic evidence coverage correctly"
-```
+- [ ] **Step 4: Run scoped adapter tests and lint**
 
-The diff must contain only the new focused tests, the internal counter, and the replacement of the broken lookup. No exported signature changes are expected.
+  Run: `pnpm exec vitest run src/adapters/postgres/__tests__/postgresRawObservationsReadAdapter.test.ts src/adapters/postgres/__tests__/postgresEvidenceBundleRepository.runId.test.ts`
 
-**Task acceptance criteria**
+  Expected: PASS with all seven named invariants covered.
 
-- The three named invariant tests pass and directly distinguish AVAILABLE, REJECTED, and MISSING output.
-- `candidatesByFamily` remains keyed by granular feature family; there is no synthetic `"deterministic"` entry.
-- Existing warning strings and canonical sorting logic remain untouched.
-- `mode` remains `DEGRADED_NO_RESEARCH` for the deterministic-only AVAILABLE fixture.
-- After deployment to an environment with live evidence, an operator triggers one normal policy-insight synthesis whose selected evidence contains at least one deterministic feature and confirms the resulting `PolicyInsight.warnings` has no `EVIDENCE_MISSING_FAMILY` entry for deterministic data. Because deployment URL, credentials, and trigger mechanism are environment-specific and absent from this repository, this is a release acceptance check rather than a local shell command; lack of that access does not justify inventing a substitute endpoint.
+  Run: `pnpm exec eslint src/application/ports/rawObservationsReadPort.ts src/application/ports/evidenceBundleRepositoryPort.ts src/adapters/postgres/postgresRawObservationsReadAdapter.ts src/adapters/postgres/postgresEvidenceBundleRepository.ts src/adapters/postgres/__tests__/postgresRawObservationsReadAdapter.test.ts src/adapters/postgres/__tests__/postgresEvidenceBundleRepository.runId.test.ts src/application/use-cases/__tests__/getCurrentEvidenceUseCase.test.ts src/application/use-cases/__tests__/getEvidenceHistoryUseCase.test.ts src/application/use-cases/__tests__/ingestEvidenceBundleUseCase.test.ts src/application/use-cases/__tests__/requestPositionPolicyInsightSynthesisUseCase.test.ts src/application/use-cases/__tests__/selectEvidenceForSynthesisUseCase.test.ts`
 
-**Tests to add or update**
+  Expected: exit 0 with no warnings.
 
-- Add `src/engine/evidence/__tests__/selectEvidence.deterministicCoverage.test.ts` with exactly the three named cases above.
-- Do not update `src/engine/evidence/__tests__/selectEvidence.summary.test.ts` (683 lines, 11 test cases) or snapshot files; the new file complies with the oversized-test split rule and keeps the regression isolated.
+- [ ] **Step 5: Commit the persistence boundary**
 
-**Dedicated validation phase (runs after all implementation tasks, not as a task)**
-
-The implement loop automatically runs `pnpm -r typecheck` after the task. The repository quality gate then runs:
-
-```bash
-pnpm run typecheck && pnpm run test && pnpm run lint && pnpm run build
-```
-
-Expected: strict TypeScript checks, contract checks plus the complete Vitest suite, zero-warning lint, and the production build all pass. Any failure outside the two changed files must be reported separately and must not be hidden by broad unrelated edits.
-
-**Risk areas**
-
-- The counter must increment only through `registerCandidate`; counting raw bundle features would incorrectly classify expired, mismatched, unavailable, or invalid inputs as REJECTED rather than MISSING.
-- The counter must represent all registered deterministic candidates, not only selected candidates, or the REJECTED branch remains unreachable.
-- Healthy warning output changes by removing a historically spurious warning. Downstream consumers must tolerate the warning disappearing; no schema change is involved.
-- Moving candidates into a synthetic deterministic family would alter scoring caps and lineage behavior, so the granular family map must remain unchanged.
-- The live acceptance check depends on operator environment access that is intentionally not encoded in repository scripts.
-
-**Stop conditions**
-
-- Abort implementation if current code no longer routes every eligible deterministic feature through the single `registerCandidate` helper; first revise this plan so registration counting cannot miss a path or double-count.
-- Abort if contract/domain requirements establish that unavailable, invalid, expired, or scope-mismatched deterministic features must be classified as REJECTED rather than MISSING; that contradicts the approved design assumption and requires product clarification.
-- Abort if satisfying the regression requires changing exported types, policy-insight schemas, warning codes/messages, mode semantics, adapters, or persistence. Those are explicit non-goals and require a new design decision.
-- Abort before committing if the scoped diff includes unrelated user changes or if the focused tests demonstrate a pre-existing fixture/contract inconsistency that cannot be resolved within the two affected files.
-- If the local quality gate passes but the live synthesis environment is unavailable, stop at code-complete status and hand the explicit operator verification criterion to the release owner; do not fabricate live verification.
+  ```bash
+  git add src/application/ports/rawObservationsReadPort.ts src/application/ports/evidenceBundleRepositoryPort.ts src/adapters/postgres/postgresRawObservationsReadAdapter.ts src/adapters/postgres/postgresEvidenceBundleRepository.ts src/adapters/postgres/__tests__/postgresRawObservationsReadAdapter.test.ts src/adapters/postgres/__tests__/postgresEvidenceBundleRepository.runId.test.ts src/application/use-cases/__tests__/getCurrentEvidenceUseCase.test.ts src/application/use-cases/__tests__/getEvidenceHistoryUseCase.test.ts src/application/use-cases/__tests__/ingestEvidenceBundleUseCase.test.ts src/application/use-cases/__tests__/requestPositionPolicyInsightSynthesisUseCase.test.ts src/application/use-cases/__tests__/selectEvidenceForSynthesisUseCase.test.ts
+  git commit -m "m90: add raw observation read adapters"
+  ```
 
 ## Repository Targets
 
 ### Expected Files
-- src/engine/evidence/selectEvidence.ts
-- src/engine/evidence/__tests__/selectEvidence.deterministicCoverage.test.ts
+- src/application/ports/rawObservationsReadPort.ts
+- src/application/ports/evidenceBundleRepositoryPort.ts
+- src/adapters/postgres/postgresRawObservationsReadAdapter.ts
+- src/adapters/postgres/postgresEvidenceBundleRepository.ts
+- src/adapters/postgres/__tests__/postgresRawObservationsReadAdapter.test.ts
+- src/adapters/postgres/__tests__/postgresEvidenceBundleRepository.runId.test.ts
+- src/application/use-cases/__tests__/getCurrentEvidenceUseCase.test.ts
+- src/application/use-cases/__tests__/getEvidenceHistoryUseCase.test.ts
+- src/application/use-cases/__tests__/ingestEvidenceBundleUseCase.test.ts
+- src/application/use-cases/__tests__/requestPositionPolicyInsightSynthesisUseCase.test.ts
+- src/application/use-cases/__tests__/selectEvidenceForSynthesisUseCase.test.ts
 
 ### Reference Files
-- src/engine/evidence/__tests__/evidenceSelectionFixtures.ts
-- src/engine/evidence/selectionPolicy.ts
-- src/engine/evidence/__tests__/selectEvidence.summary.test.ts
+- src/ledger/pg/db.ts
+- src/ledger/pg/schema/evidenceBundles.ts
+- src/application/errors/evidenceErrors.ts
 
 ## Validation Commands
 
 ```bash
-["pnpm","exec","vitest","run","src/engine/evidence/__tests__/selectEvidence.deterministicCoverage.test.ts"]
-["pnpm","exec","eslint","src/engine/evidence/selectEvidence.ts","src/engine/evidence/__tests__/selectEvidence.deterministicCoverage.test.ts","--max-warnings","0"]
-["pnpm","exec","prettier","--check","src/engine/evidence/selectEvidence.ts","src/engine/evidence/__tests__/selectEvidence.deterministicCoverage.test.ts"]
+pnpm exec vitest run src/adapters/postgres/__tests__/postgresRawObservationsReadAdapter.test.ts src/adapters/postgres/__tests__/postgresEvidenceBundleRepository.runId.test.ts
+["pnpm","exec","eslint","src/application/ports/rawObservationsReadPort.ts","src/application/ports/evidenceBundleRepositoryPort.ts","src/adapters/postgres/postgresRawObservationsReadAdapter.ts","src/adapters/postgres/postgresEvidenceBundleRepository.ts","src/adapters/postgres/__tests__/postgresRawObservationsReadAdapter.test.ts","src/adapters/postgres/__tests__/postgresEvidenceBundleRepository.runId.test.ts","src/application/use-cases/__tests__/getCurrentEvidenceUseCase.test.ts","src/application/use-cases/__tests__/getEvidenceHistoryUseCase.test.ts","src/application/use-cases/__tests__/ingestEvidenceBundleUseCase.test.ts","src/application/use-cases/__tests__/requestPositionPolicyInsightSynthesisUseCase.test.ts","src/application/use-cases/__tests__/selectEvidenceForSynthesisUseCase.test.ts"]
 ```
 
 ## Behavioral Invariants
 
 You MUST implement the following behavioral invariants as named tests first (TDD):
 
-- **available deterministic evidence emits no deterministic coverage warning**: When an eligible deterministic feature is registered and survives selection, neither deterministic missing_family nor deterministic rejected_family is emitted, and deterministic-only input does not alter mode derivation. (Test: `does not warn that deterministic evidence is missing when a registered feature is selected`)
-- **registered but unselected deterministic evidence is rejected**: When an eligible deterministic feature is registered but all deterministic candidates fail terminal selection, rejected_family is emitted for deterministic evidence and missing_family is not. (Test: `warns that deterministic evidence was rejected when registered features fail selection`)
-- **unregistered deterministic evidence is missing**: When no deterministic feature reaches registration, missing_family is emitted for deterministic evidence and rejected_family is not. (Test: `warns that deterministic evidence is missing when no feature is registered`)
+- **deterministic raw row order**: A run ID query returns full JSON objects in deterministic JSON-text order regardless of insertion order. (Test: `returns raw observations for a run id in deterministic JSON order`)
+- **empty raw read**: A run ID with no external rows returns an empty array from the persistence port. (Test: `returns an empty list when a run id has no raw observations`)
+- **raw row shape isolation**: Null, array, and scalar raw values cannot cross the port as observation objects. (Test: `rejects malformed raw-observation rows as unavailable`)
+- **cross-schema failure isolation**: Raw query and row-shape failures become EvidenceStoreUnavailableError with their cause retained internally. (Test: `maps raw-observation query failures to EvidenceStoreUnavailableError`)
+- **bundle run resolution**: An existing numeric evidence bundle primary key resolves to exactly its stored run ID. (Test: `resolves an existing evidence bundle id to its run id`)
+- **missing bundle lookup**: An unknown numeric evidence bundle primary key returns null from the repository. (Test: `returns null when an evidence bundle id does not exist`)
+- **bundle lookup availability**: Transient database failure during bundle-ID resolution follows the existing evidence-store availability taxonomy. (Test: `maps transient bundle-id lookup failures to EvidenceStoreUnavailableError`)
 
