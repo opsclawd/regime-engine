@@ -28,12 +28,8 @@ describe("postgresRawObservationsReadAdapter", () => {
     expect(capturedQuery).not.toBeNull();
 
     const compiled = new PgDialect().sqlToQuery(capturedQuery!);
-    expect(compiled.sql).toContain(
-      "raw_observation.source_request_meta->>'intelligencePipelineRunId' = $1"
-    );
-    expect(compiled.sql).toContain("OR raw_observation.source_request_meta->>'runId' = $2");
-    expect(compiled.sql).not.toContain("raw_observation.run_id");
-    expect(compiled.params).toEqual(["run-123", "run-123"]);
+    expect(compiled.sql).toContain("WHERE raw_observation.run_id = $1");
+    expect(compiled.params).toEqual(["run-123"]);
   });
 
   it("returns an empty list when a run id has no raw observations", async () => {

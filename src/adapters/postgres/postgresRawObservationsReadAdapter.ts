@@ -13,8 +13,7 @@ export const createPostgresRawObservationsReadAdapter = (db: Db): RawObservation
         const rows = await db.execute(sql`
           SELECT to_jsonb(raw_observation) AS observation
           FROM intelligence.raw_observations AS raw_observation
-          WHERE raw_observation.source_request_meta->>'intelligencePipelineRunId' = ${runId}
-             OR raw_observation.source_request_meta->>'runId' = ${runId}
+          WHERE raw_observation.run_id = ${runId}
           ORDER BY to_jsonb(raw_observation)::text
         `);
 
