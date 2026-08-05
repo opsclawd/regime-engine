@@ -15,7 +15,6 @@ import { createSrLevelsV2CurrentHandler } from "./handlers/srLevelsV2Current.js"
 import { createEvidenceIngestHandler } from "./handlers/evidenceIngest.js";
 import { createEvidenceCurrentHandler } from "./handlers/evidenceCurrent.js";
 import { createEvidenceHistoryHandler } from "./handlers/evidenceHistory.js";
-import { createEvidenceRawHandler } from "./handlers/evidenceRaw.js";
 import { createPositionSynthesisRequestHandler } from "./handlers/positionSynthesisRequest.js";
 import { EVIDENCE_BODY_LIMIT_BYTES } from "./evidenceHttp.js";
 import type { ClockPort } from "../../application/ports/clock.js";
@@ -28,7 +27,6 @@ import type { GetWeeklyReportUseCase } from "../../application/use-cases/getWeek
 import type { IngestEvidenceBundleUseCase } from "../../application/use-cases/ingestEvidenceBundleUseCase.js";
 import type { GetCurrentEvidenceUseCase } from "../../application/use-cases/getCurrentEvidenceUseCase.js";
 import type { GetEvidenceHistoryUseCase } from "../../application/use-cases/getEvidenceHistoryUseCase.js";
-import type { GetRawObservationsForBundleUseCase } from "../../application/use-cases/getRawObservationsForBundleUseCase.js";
 import type { SrThesesV2Store } from "../../ledger/srThesesV2Store.js";
 import type { GetCurrentPolicyInsightUseCase } from "../../application/use-cases/getCurrentPolicyInsightUseCase.js";
 import type { GetPolicyInsightHistoryUseCase } from "../../application/use-cases/getPolicyInsightHistoryUseCase.js";
@@ -58,7 +56,6 @@ export interface HttpRouteDependencies {
   ingestEvidenceBundle: IngestEvidenceBundleUseCase | null;
   getCurrentEvidence: GetCurrentEvidenceUseCase | null;
   getEvidenceHistory: GetEvidenceHistoryUseCase | null;
-  getRawObservationsForBundle: GetRawObservationsForBundleUseCase | null;
   ledgerStore: LedgerStore;
   getCurrentPolicyInsight: GetCurrentPolicyInsightUseCase | null;
   getPolicyInsightHistory: GetPolicyInsightHistoryUseCase | null;
@@ -116,10 +113,6 @@ export const registerRoutes = (app: FastifyInstance, deps: HttpRouteDependencies
   );
   app.get("/v1/evidence/sol-usdc/current", createEvidenceCurrentHandler(deps.getCurrentEvidence));
   app.get("/v1/evidence/sol-usdc/history", createEvidenceHistoryHandler(deps.getEvidenceHistory));
-  app.get(
-    "/v1/evidence/sol-usdc/:id/raw",
-    createEvidenceRawHandler(deps.getRawObservationsForBundle)
-  );
   app.post(
     "/v1/internal/insights/sol-usdc/synthesis-requests",
     createPositionSynthesisRequestHandler(deps.requestPositionPolicyInsightSynthesis)

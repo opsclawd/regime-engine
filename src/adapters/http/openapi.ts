@@ -169,24 +169,6 @@ export const buildOpenApiDocument = () => {
               }
             }
           }
-        },
-        RawObservation: {
-          type: "object",
-          additionalProperties: true
-        },
-        RawObservationsResponse: {
-          type: "object",
-          additionalProperties: false,
-          required: ["schemaVersion", "pair", "runId", "items"],
-          properties: {
-            schemaVersion: { type: "string" },
-            pair: { type: "string" },
-            runId: { type: "string" },
-            items: {
-              type: "array",
-              items: { $ref: "#/components/schemas/RawObservation" }
-            }
-          }
         }
       }
     },
@@ -1164,78 +1146,6 @@ export const buildOpenApiDocument = () => {
             },
             "503": {
               description: "Evidence store unavailable"
-            }
-          }
-        }
-      },
-      "/v1/evidence/sol-usdc/{id}/raw": {
-        get: {
-          summary: "Get raw evidence observations for a bundle ID or pipeline run ID",
-          description:
-            "Returns unconstrained raw observations matching a numeric bundle ID or pipeline run ID string. Numeric dispatch resolves digit-only identifiers as evidence bundle IDs first before falling back to pipeline run ID matching.",
-          security: [],
-          parameters: [
-            {
-              name: "id",
-              in: "path",
-              required: true,
-              schema: { type: "string", minLength: 1, maxLength: 256 },
-              description:
-                "Evidence bundle ID (numeric dispatch resolves digits as bundle ID) or pipeline run ID"
-            }
-          ],
-          responses: {
-            "200": {
-              description: "Raw evidence observations",
-              content: {
-                "application/json": {
-                  schema: { $ref: "#/components/schemas/RawObservationsResponse" },
-                  example: {
-                    schemaVersion: "1.0",
-                    pair: "SOL/USDC",
-                    runId: "run-123",
-                    items: [
-                      {
-                        observedAt: "2026-07-18T12:00:00.000Z",
-                        source: "jupiter",
-                        price: 150.25
-                      }
-                    ]
-                  }
-                }
-              }
-            },
-            "400": {
-              description: "Validation error (invalid bundle ID or run ID format)",
-              content: {
-                "application/json": {
-                  schema: { $ref: "#/components/schemas/EvidenceError" }
-                }
-              }
-            },
-            "404": {
-              description: "Evidence bundle or raw observations not found",
-              content: {
-                "application/json": {
-                  schema: { $ref: "#/components/schemas/EvidenceError" }
-                }
-              }
-            },
-            "500": {
-              description: "Internal server error",
-              content: {
-                "application/json": {
-                  schema: { $ref: "#/components/schemas/EvidenceError" }
-                }
-              }
-            },
-            "503": {
-              description: "Evidence store unavailable",
-              content: {
-                "application/json": {
-                  schema: { $ref: "#/components/schemas/EvidenceError" }
-                }
-              }
             }
           }
         }
