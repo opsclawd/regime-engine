@@ -1,3 +1,5 @@
+import type { SQL } from "drizzle-orm";
+import { PgDialect } from "drizzle-orm/pg-core";
 import { describe, expect, it } from "vitest";
 import { createPostgresRawObservationsReadAdapter } from "../postgresRawObservationsReadAdapter.js";
 import { EvidenceStoreUnavailableError } from "../../../application/errors/evidenceErrors.js";
@@ -5,9 +7,9 @@ import type { Db } from "../../../ledger/pg/db.js";
 
 describe("postgresRawObservationsReadAdapter", () => {
   it("returns raw observations for a run id in deterministic JSON order", async () => {
-    let capturedQuery: unknown = null;
+    let capturedQuery: SQL | null = null;
     const mockDb = {
-      execute: async (query: unknown) => {
+      execute: async (query: SQL) => {
         capturedQuery = query;
         return [
           { observation: { alpha: 1, beta: "first" } },
@@ -23,7 +25,15 @@ describe("postgresRawObservationsReadAdapter", () => {
       { alpha: 1, beta: "first" },
       { alpha: 2, beta: "second" }
     ]);
-    expect(capturedQuery).toBeDefined();
+    expect(capturedQuery).not.toBeNull();
+
+    const compiled = new PgDialect().sqlToQuery(capturedQuery!);
+    expect(compiled.sql).toContain(
+      "raw_observation.source_request_meta->>'intelligencePipelineRunId' = $1"
+    );
+    expect(compiled.sql).toContain("OR raw_observation.source_request_meta->>'runId' = $2");
+    expect(compiled.sql).not.toContain("raw_observation.run_id");
+    expect(compiled.params).toEqual(["run-123", "run-123"]);
   });
 
   it("returns an empty list when a run id has no raw observations", async () => {
