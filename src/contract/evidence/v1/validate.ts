@@ -446,6 +446,27 @@ function checkCalendarValidity(bundle: EvidenceBundleV1, issues: EvidenceValidat
       });
     }
   }
+
+  if (bundle.assessment.liveness) {
+    for (const [familyId, state] of Object.entries(bundle.assessment.liveness)) {
+      if (state && state.lastCollectedAt !== null) {
+        if (!isCanonicalTimestamp(state.lastCollectedAt)) {
+          issues.push({
+            path: `/assessment/liveness/${familyId}/lastCollectedAt`,
+            code: "STRUCTURAL",
+            message: `Invalid canonical timestamp: ${state.lastCollectedAt}`
+          });
+        }
+      }
+      if (state && !state.isConfigured && state.lastCollectedAt !== null) {
+        issues.push({
+          path: `/assessment/liveness/${familyId}/lastCollectedAt`,
+          code: "SEMANTIC",
+          message: "lastCollectedAt must be null when isConfigured is false"
+        });
+      }
+    }
+  }
 }
 
 function checkCoverageAgreement(bundle: EvidenceBundleV1, issues: EvidenceValidationIssue[]): void {
