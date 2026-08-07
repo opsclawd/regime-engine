@@ -458,13 +458,11 @@ function checkCalendarValidity(bundle: EvidenceBundleV1, issues: EvidenceValidat
           });
         }
       }
-      if (state && !state.isConfigured && state.lastCollectedAt !== null) {
-        issues.push({
-          path: `/assessment/liveness/${familyId}/lastCollectedAt`,
-          code: "SEMANTIC",
-          message: "lastCollectedAt must be null when isConfigured is false"
-        });
-      }
+      // Deliberately no rule forcing lastCollectedAt to null when isConfigured
+      // is false. A family that was collecting and has since been switched off
+      // keeps its last successful run, which is what distinguishes "recently
+      // disabled" from "never configured" — the distinction consumers render.
+      // The producer emits this shape (sol-usdc-clmm-intelligence#166).
     }
   }
 }

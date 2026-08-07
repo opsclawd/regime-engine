@@ -204,6 +204,7 @@ When `contextualEvidence` arrays are empty or `researchBrief` is `null`, this re
 - **Required State Fields**: Each present family liveness entry must be a strict object containing exactly `isConfigured` (boolean) and `lastCollectedAt` (`canonicalTimestamp` string or `null`).
 - **Null Semantics & Coverage Distinction**:
   - Setting `lastCollectedAt: null` indicates that the family collector is configured (`isConfigured: true`) but has not yet recorded a successful collection timestamp. A `null` value bypasses ISO 8601 calendar date parsing while maintaining the configured flag.
+  - A family may report `isConfigured: false` alongside a non-null `lastCollectedAt`. That is a collector which was running and has since been switched off, and it is deliberately accepted: retaining the last successful run is what separates "recently disabled" from "never configured". Publishers emit this shape, so it is not a validation error.
   - Collector liveness is distinct from evidence availability (`assessment.coverage`): liveness describes collector infrastructure setup and collection attempt timing, whereas coverage reflects the presence or absence of usable evidence claims within the bundle.
 - **Strict Boundary Rejection**: `additionalProperties: false` is strictly enforced at both boundaries. Unknown family keys in `assessment.liveness` and unknown properties in a family liveness state object are rejected with a `STRUCTURAL` error.
 

@@ -90,20 +90,29 @@ describe("EvidenceBundleV1 Liveness Validation", () => {
     expect(result.ok).toBe(false);
   });
 
-  it("rejects non-null lastCollectedAt when isConfigured is false", () => {
+  it("accepts a historical lastCollectedAt when isConfigured is false", () => {
+    // A family that was collecting and has since been switched off keeps its
+    // last successful run. That is what separates "recently disabled" from
+    // "never configured", and the producer emits it
+    // (sol-usdc-clmm-intelligence#166 — "preserves a historical last run when a
+    // family is now unconfigured"). Rejecting it here would 400 every bundle
+    // containing such a family.
     const bundle = JSON.parse(livenessFixtureRaw);
     bundle.assessment.liveness.derivatives = {
       isConfigured: false,
       lastCollectedAt: "2024-01-15T10:00:00.000Z"
     };
     const result = validateEvidenceBundleV1(bundle);
+    expect(result.ok).toBe(true);
+  });
+
+  it("still rejects a malformed lastCollectedAt on an unconfigured family", () => {
+    const bundle = JSON.parse(livenessFixtureRaw);
+    bundle.assessment.liveness.derivatives = {
+      isConfigured: false,
+      lastCollectedAt: "not-a-timestamp"
+    };
+    const result = validateEvidenceBundleV1(bundle);
     expect(result.ok).toBe(false);
-    if (!result.ok) {
-      expect(result.issues).toContainEqual({
-        path: "/assessment/liveness/derivatives/lastCollectedAt",
-        code: "SEMANTIC",
-        message: "lastCollectedAt must be null when isConfigured is false"
-      });
-    }
   });
 });
