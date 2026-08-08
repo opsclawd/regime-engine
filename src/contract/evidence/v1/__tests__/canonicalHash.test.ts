@@ -224,7 +224,10 @@ describe("deterministic fixtures produce expected canonical forms", () => {
       deterministicOnly: JSON.parse(
         readFileSync(resolve(__fixturesDir, "valid/deterministic-only.json"), "utf-8")
       ),
-      contextual: JSON.parse(readFileSync(resolve(__fixturesDir, "valid/contextual.json"), "utf-8"))
+      contextual: JSON.parse(
+        readFileSync(resolve(__fixturesDir, "valid/contextual.json"), "utf-8")
+      ),
+      liveness: JSON.parse(readFileSync(resolve(__fixturesDir, "valid/liveness.json"), "utf-8"))
     }
   };
 
@@ -247,6 +250,19 @@ describe("deterministic fixtures produce expected canonical forms", () => {
     if (!vector) return;
 
     const canonical = toCanonicalJson(fixtures.valid.contextual);
+    expect(canonical).toBe(vector.canonical);
+    expect(Buffer.byteLength(canonical, "utf8")).toBe(vector.utf8ByteLength);
+    expect(sha256Hex(canonical)).toBe(vector.sha256.toLowerCase());
+  });
+
+  it("liveness fixture canonicalizes and hashes", () => {
+    const vectors = loadVectors();
+    const vector = vectors.vectors.find((v) => v.name === "valid/liveness");
+
+    expect(vector).toBeDefined();
+    if (!vector) return;
+
+    const canonical = toCanonicalJson(fixtures.valid.liveness);
     expect(canonical).toBe(vector.canonical);
     expect(Buffer.byteLength(canonical, "utf8")).toBe(vector.utf8ByteLength);
     expect(sha256Hex(canonical)).toBe(vector.sha256.toLowerCase());

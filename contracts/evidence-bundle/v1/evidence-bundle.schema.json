@@ -1025,6 +1025,19 @@
     "qualityLevel": {
       "enum": ["complete", "partial", "degraded"]
     },
+    "livenessState": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["isConfigured", "lastCollectedAt"],
+      "properties": {
+        "isConfigured": {
+          "type": "boolean"
+        },
+        "lastCollectedAt": {
+          "anyOf": [{ "$ref": "#/$defs/canonicalTimestamp" }, { "type": "null" }]
+        }
+      }
+    },
     "bundleAssessment": {
       "type": "object",
       "additionalProperties": false,
@@ -1044,6 +1057,33 @@
           "maxItems": 64,
           "items": {
             "$ref": "#/$defs/bundleWarning"
+          }
+        },
+        "liveness": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "deterministic": {
+              "$ref": "#/$defs/livenessState"
+            },
+            "supportResistance": {
+              "$ref": "#/$defs/livenessState"
+            },
+            "flows": {
+              "$ref": "#/$defs/livenessState"
+            },
+            "derivatives": {
+              "$ref": "#/$defs/livenessState"
+            },
+            "events": {
+              "$ref": "#/$defs/livenessState"
+            },
+            "newsRegulatory": {
+              "$ref": "#/$defs/livenessState"
+            },
+            "researchBrief": {
+              "$ref": "#/$defs/livenessState"
+            }
           }
         }
       }

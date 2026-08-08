@@ -446,6 +446,25 @@ function checkCalendarValidity(bundle: EvidenceBundleV1, issues: EvidenceValidat
       });
     }
   }
+
+  if (bundle.assessment.liveness) {
+    for (const [familyId, state] of Object.entries(bundle.assessment.liveness)) {
+      if (state && state.lastCollectedAt !== null) {
+        if (!isCanonicalTimestamp(state.lastCollectedAt)) {
+          issues.push({
+            path: `/assessment/liveness/${familyId}/lastCollectedAt`,
+            code: "STRUCTURAL",
+            message: `Invalid canonical timestamp: ${state.lastCollectedAt}`
+          });
+        }
+      }
+      // Deliberately no rule forcing lastCollectedAt to null when isConfigured
+      // is false. A family that was collecting and has since been switched off
+      // keeps its last successful run, which is what distinguishes "recently
+      // disabled" from "never configured" — the distinction consumers render.
+      // The producer emits this shape (sol-usdc-clmm-intelligence#166).
+    }
+  }
 }
 
 function checkCoverageAgreement(bundle: EvidenceBundleV1, issues: EvidenceValidationIssue[]): void {

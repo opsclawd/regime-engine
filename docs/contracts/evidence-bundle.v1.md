@@ -1,10 +1,10 @@
 # EvidenceBundle v1 Contract Specification
 
-<!-- schema-sha256:0146b073cc607b47e52c615f6299294b1fd8f133d8a4b128bd2a95dc20f77b17 -->
+<!-- schema-sha256:08c32eb2afda78be55d5c59417b3cd1ceaa693ff0bcd98baa66417af8c469be9 -->
 
 ## Schema Identity
 
-- **Schema SHA-256**: `0146b073cc607b47e52c615f6299294b1fd8f133d8a4b128bd2a95dc20f77b17`
+- **Schema SHA-256**: `08c32eb2afda78be55d5c59417b3cd1ceaa693ff0bcd98baa66417af8c469be9`
 - **$id**: `https://contracts.opsclawd.dev/regime-engine/evidence-bundle/v1/evidence-bundle.schema.json`
 - **Version**: `evidence-bundle.v1`
 
@@ -194,6 +194,19 @@ When `contextualEvidence` arrays are empty or `researchBrief` is `null`, this re
 | `complete` | All evidence families available            |
 | `partial`  | Some evidence families available           |
 | `degraded` | No contextual evidence, only deterministic |
+
+### Assessment and Collector Liveness
+
+`bundleAssessment` optionally includes a `liveness` map (`assessment.liveness`) tracking the operational status and last collection timestamp of each evidence family collector.
+
+- **Optionality & Partial Rollout**: `assessment.liveness` is optional on `bundleAssessment`, allowing legacy publishers without liveness metadata to remain valid. Individual family entries within `assessment.liveness` are also optional; omitted families are accepted without Regime Engine synthesizing defaults.
+- **Supported Family Keys**: The liveness map accepts only the seven standard coverage family IDs: `deterministic`, `supportResistance`, `flows`, `derivatives`, `events`, `newsRegulatory`, and `researchBrief`.
+- **Required State Fields**: Each present family liveness entry must be a strict object containing exactly `isConfigured` (boolean) and `lastCollectedAt` (`canonicalTimestamp` string or `null`).
+- **Null Semantics & Coverage Distinction**:
+  - Setting `lastCollectedAt: null` indicates that the family collector is configured (`isConfigured: true`) but has not yet recorded a successful collection timestamp. A `null` value bypasses ISO 8601 calendar date parsing while maintaining the configured flag.
+  - A family may report `isConfigured: false` alongside a non-null `lastCollectedAt`. That is a collector which was running and has since been switched off, and it is deliberately accepted: retaining the last successful run is what separates "recently disabled" from "never configured". Publishers emit this shape, so it is not a validation error.
+  - Collector liveness is distinct from evidence availability (`assessment.coverage`): liveness describes collector infrastructure setup and collection attempt timing, whereas coverage reflects the presence or absence of usable evidence claims within the bundle.
+- **Strict Boundary Rejection**: `additionalProperties: false` is strictly enforced at both boundaries. Unknown family keys in `assessment.liveness` and unknown properties in a family liveness state object are rejected with a `STRUCTURAL` error.
 
 ## Evidence Cannot Author Policy
 
