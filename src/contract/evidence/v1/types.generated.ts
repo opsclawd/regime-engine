@@ -1,4 +1,4 @@
-// Generated from contracts/evidence-bundle/v1/evidence-bundle.schema.json (sha256: 08c32eb2afda78be55d5c59417b3cd1ceaa693ff0bcd98baa66417af8c469be9). Do not edit.
+// Generated from contracts/evidence-bundle/v1/evidence-bundle.schema.json (sha256: 42df76fa2a5b24d866c8f0a6e2f0458fe4486f65035075016f9a2b35093c7b17). Do not edit.
 export type SchemaVersion = "evidence-bundle.v1";
 export type Pair = "SOL/USDC";
 export type Scope =
@@ -1075,6 +1075,12 @@ export interface BundleAssessment {
   warnings: BundleWarning[];
   liveness?: {
     deterministic?: LivenessState;
+    market_state?: LivenessState;
+    price_quality?: LivenessState;
+    clmm_economics?: LivenessState;
+    position_state?: LivenessState;
+    liquidity?: LivenessState;
+    risk?: LivenessState;
     supportResistance?: LivenessState;
     flows?: LivenessState;
     derivatives?: LivenessState;
