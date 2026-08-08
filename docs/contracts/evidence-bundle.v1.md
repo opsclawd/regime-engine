@@ -1,10 +1,10 @@
 # EvidenceBundle v1 Contract Specification
 
-<!-- schema-sha256:08c32eb2afda78be55d5c59417b3cd1ceaa693ff0bcd98baa66417af8c469be9 -->
+<!-- schema-sha256:42df76fa2a5b24d866c8f0a6e2f0458fe4486f65035075016f9a2b35093c7b17 -->
 
 ## Schema Identity
 
-- **Schema SHA-256**: `08c32eb2afda78be55d5c59417b3cd1ceaa693ff0bcd98baa66417af8c469be9`
+- **Schema SHA-256**: `42df76fa2a5b24d866c8f0a6e2f0458fe4486f65035075016f9a2b35093c7b17`
 - **$id**: `https://contracts.opsclawd.dev/regime-engine/evidence-bundle/v1/evidence-bundle.schema.json`
 - **Version**: `evidence-bundle.v1`
 
@@ -200,7 +200,8 @@ When `contextualEvidence` arrays are empty or `researchBrief` is `null`, this re
 `bundleAssessment` optionally includes a `liveness` map (`assessment.liveness`) tracking the operational status and last collection timestamp of each evidence family collector.
 
 - **Optionality & Partial Rollout**: `assessment.liveness` is optional on `bundleAssessment`, allowing legacy publishers without liveness metadata to remain valid. Individual family entries within `assessment.liveness` are also optional; omitted families are accepted without Regime Engine synthesizing defaults.
-- **Supported Family Keys**: The liveness map accepts only the seven standard coverage family IDs: `deterministic`, `supportResistance`, `flows`, `derivatives`, `events`, `newsRegulatory`, and `researchBrief`.
+- **Supported Family Keys**: The liveness map accepts the legacy aggregate deterministic key (`deterministic`), the six deterministic sub-family keys (`market_state`, `price_quality`, `clmm_economics`, `position_state`, `liquidity`, and `risk`), and the contextual family keys (`supportResistance`, `flows`, `derivatives`, `events`, `newsRegulatory`, and `researchBrief`).
+- **Deterministic Precedence**: When both `deterministic` and a relevant deterministic sub-family key are present, consumers must use the specific sub-family entry for that sub-family. When a specific key is absent, consumers may use `deterministic` only as a legacy fallback; they must not let a fresh aggregate entry override or mask a present stale specific entry. Regime Engine does not synthesize missing specific entries.
 - **Required State Fields**: Each present family liveness entry must be a strict object containing exactly `isConfigured` (boolean) and `lastCollectedAt` (`canonicalTimestamp` string or `null`).
 - **Null Semantics & Coverage Distinction**:
   - Setting `lastCollectedAt: null` indicates that the family collector is configured (`isConfigured: true`) but has not yet recorded a successful collection timestamp. A `null` value bypasses ISO 8601 calendar date parsing while maintaining the configured flag.

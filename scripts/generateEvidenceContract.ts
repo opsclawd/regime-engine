@@ -206,11 +206,15 @@ function generateVectors(schemaDigest: string): HashVectorsDocument {
   );
   const contextualPayload = loadFixture(resolve(FIXTURES_DIR, "valid/contextual.json"));
   const livenessPayload = loadFixture(resolve(FIXTURES_DIR, "valid/liveness.json"));
+  const livenessSubfamiliesPayload = loadFixture(
+    resolve(FIXTURES_DIR, "valid/liveness-subfamilies.json")
+  );
 
   const vectors: EvidenceHashVector[] = [
     createVector("valid/deterministic-only", deterministicOnlyPayload, schemaDigest),
     createVector("valid/contextual", contextualPayload, schemaDigest),
     createVector("valid/liveness", livenessPayload, schemaDigest),
+    createVector("valid/liveness-subfamilies", livenessSubfamiliesPayload, schemaDigest),
 
     createVector("empty-context", buildEmptyContextPayload(contextualPayload), schemaDigest),
     createVector("null-brief", deterministicOnlyPayload, schemaDigest),

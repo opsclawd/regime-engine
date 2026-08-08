@@ -10,3 +10,4 @@ tmp
 .worktrees/
 .context/
 .ai-worktrees/
+validate/

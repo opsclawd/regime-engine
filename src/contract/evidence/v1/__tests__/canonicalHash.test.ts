@@ -73,6 +73,8 @@ describe("EvidenceBundle canonical hash vectors", () => {
       const nonPrimitiveNames = [
         "valid/deterministic-only",
         "valid/contextual",
+        "valid/liveness",
+        "valid/liveness-subfamilies",
         "empty-context",
         "null-brief"
       ];
@@ -227,7 +229,10 @@ describe("deterministic fixtures produce expected canonical forms", () => {
       contextual: JSON.parse(
         readFileSync(resolve(__fixturesDir, "valid/contextual.json"), "utf-8")
       ),
-      liveness: JSON.parse(readFileSync(resolve(__fixturesDir, "valid/liveness.json"), "utf-8"))
+      liveness: JSON.parse(readFileSync(resolve(__fixturesDir, "valid/liveness.json"), "utf-8")),
+      livenessSubfamilies: JSON.parse(
+        readFileSync(resolve(__fixturesDir, "valid/liveness-subfamilies.json"), "utf-8")
+      )
     }
   };
 
@@ -263,6 +268,19 @@ describe("deterministic fixtures produce expected canonical forms", () => {
     if (!vector) return;
 
     const canonical = toCanonicalJson(fixtures.valid.liveness);
+    expect(canonical).toBe(vector.canonical);
+    expect(Buffer.byteLength(canonical, "utf8")).toBe(vector.utf8ByteLength);
+    expect(sha256Hex(canonical)).toBe(vector.sha256.toLowerCase());
+  });
+
+  it("liveness-subfamilies fixture canonicalizes and hashes", () => {
+    const vectors = loadVectors();
+    const vector = vectors.vectors.find((v) => v.name === "valid/liveness-subfamilies");
+
+    expect(vector).toBeDefined();
+    if (!vector) return;
+
+    const canonical = toCanonicalJson(fixtures.valid.livenessSubfamilies);
     expect(canonical).toBe(vector.canonical);
     expect(Buffer.byteLength(canonical, "utf8")).toBe(vector.utf8ByteLength);
     expect(sha256Hex(canonical)).toBe(vector.sha256.toLowerCase());

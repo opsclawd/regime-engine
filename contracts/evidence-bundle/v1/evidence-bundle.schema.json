@@ -1066,6 +1066,24 @@
             "deterministic": {
               "$ref": "#/$defs/livenessState"
             },
+            "market_state": {
+              "$ref": "#/$defs/livenessState"
+            },
+            "price_quality": {
+              "$ref": "#/$defs/livenessState"
+            },
+            "clmm_economics": {
+              "$ref": "#/$defs/livenessState"
+            },
+            "position_state": {
+              "$ref": "#/$defs/livenessState"
+            },
+            "liquidity": {
+              "$ref": "#/$defs/livenessState"
+            },
+            "risk": {
+              "$ref": "#/$defs/livenessState"
+            },
             "supportResistance": {
               "$ref": "#/$defs/livenessState"
             },
