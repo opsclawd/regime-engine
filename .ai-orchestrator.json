@@ -1,5 +1,13 @@
 {
   "validation": {
-    "commands": ["pnpm test:pg", "pnpm format", "pnpm boundaries"]
+    "commands": [
+      "pnpm build",
+      "pnpm lint",
+      "pnpm typecheck",
+      "pnpm test",
+      "pnpm boundaries",
+      "pnpm test:pg",
+      "pnpm format"
+    ]
   }
 }
